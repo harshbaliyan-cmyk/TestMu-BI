@@ -1,0 +1,76 @@
+# Render Blueprint for the TestMu BI API.
+#
+# A persistent Node process, not a serverless function: dashboard rows, the two
+# cron schedules and the rate-limit counters all live in this process's memory,
+# and every one of them needs the process to outlive a single request.
+#
+# Secrets are declared with `sync: false`, which makes Render prompt for them in
+# the dashboard instead of reading them from this file. Nothing secret belongs
+# in a committed blueprint.
+services:
+  - type: web
+    name: testmu-bi-api
+    runtime: node
+    plan: free          # upgrade to `starter` to stop the ~15-min idle spin-down
+    # Same region as the Neon database (ap-southeast-1) — keeps query latency
+    # low and keeps the data in one jurisdiction rather than crossing regions
+    # by accident.
+    region: singapore
+    rootDir: server
+    buildCommand: npm ci --omit=dev
+    startCommand: node server.js
+    # Cheap, unauthenticated, and it actually exercises the database rather than
+    # just proving the process is alive.
+    healthCheckPath: /api/health/database
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+
+      # Two proxies sit in front of this app: Vercel's edge, then Render's.
+      # Secure cookies and per-IP rate limiting both depend on resolving the
+      # real client address through them. Verify after deploying (see
+      # DEPLOYMENT.md) — too low and everyone shares one rate-limit bucket, too
+      # high and a client can forge X-Forwarded-For to evade the limit.
+      - key: TRUSTED_PROXY_HOPS
+        value: 2
+
+      # Prompted for in the Render dashboard. The server refuses to boot in
+      # production if SESSION_SECRET is short or a placeholder, or if
+      # CLIENT_ORIGIN is missing.
+      - key: DATABASE_URL
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: CLIENT_ORIGIN
+        sync: false
+      - key: TABLEAU_CREDENTIAL_ENCRYPTION_KEY
+        sync: false
+      - key: ALLOWED_DOMAIN
+        sync: false
+      - key: ADMIN_EMAILS
+        sync: false
+
+      # Optional. Leaving SMTP_HOST unset disables security notifications; the
+      # server warns once at startup rather than failing.
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+
+      - key: DATABASE_SSL
+        value: true
+      - key: SYNC_ON_STARTUP
+        value: false
+      - key: TABLEAU_SOURCE_SYNC_CRON
+        value: 0 */12 * * *
+      - key: CRON_TZ_OFFSET
+        value: UTC
