@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+
+# ---------------------------------------------------------------------------
+# Secrets. These files hold live credentials (database password, Tableau PAT,
+# the AES key protecting stored PATs, the session signing secret).
+#
+# The patterns are deliberately broad and cover backups, dumps and editor
+# swap copies as well as the files themselves: a leak is just as bad from
+# ".env.backup-20260818" or ".env.save" as from ".env". Only *.example files
+# are allowed through, and those must never contain a real value.
+# ---------------------------------------------------------------------------
+.env
+.env.*
+*/.env
+*/.env.*
+**/.env
+**/.env.*
+*.env
+!.env.example
+!**/.env.example
+
+# Database dumps and backups — these contain customer data, not just secrets.
+*.dump
+*.sql.gz
+*.bak
+backup/
+backups/
+
+# Build output
+client/dist/
+
+# Playwright artifacts (may embed session cookies in traces and storage state)
+.playwright/
+.playwright-cli/
+client/.playwright-cli/
+*storage-state*.json
+auth.json
+trace.zip
+
+# Local scratch
+tmp-*.mjs
+*.log
+
+# Editor/OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp

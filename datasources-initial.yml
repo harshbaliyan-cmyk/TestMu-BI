@@ -1,0 +1,49 @@
+- generic [ref=f2e10]:
+  - generic [ref=f2e11]:
+    - generic [ref=f2e12]:
+      - img "TestMu BI" [ref=f2e13]
+      - generic [ref=f2e14]: TestMu BI
+    - generic [ref=f2e15]:
+      - button "Switch to light mode" [ref=f2e16] [cursor=pointer]:
+        - generic [ref=f2e17]: ☀
+        - generic [ref=f2e18]: Light
+      - button "Back to templates" [ref=f2e19] [cursor=pointer]
+  - heading "Data Sources" [level=2] [ref=f2e21]
+  - navigation [ref=f2e22]:
+    - button "Upload file" [ref=f2e23] [cursor=pointer]
+    - button "Connect Tableau" [ref=f2e24] [cursor=pointer]
+  - generic [ref=f2e25]:
+    - heading "Upload files" [level=3] [ref=f2e26]
+    - generic [ref=f2e27]: Select up to 10 CSV, TSV, Excel or JSON files. Max 25 MB each.
+    - generic [ref=f2e28] [cursor=pointer]:
+      - generic [ref=f2e29]: Drop a file here, or click to browse
+      - generic [ref=f2e30]: You'll see a preview of the mapped data before anything loads.
+  - generic [ref=f2e31]:
+    - heading "Connected data sources" [level=3] [ref=f2e32]
+    - generic [ref=f2e33]: Metadata and mappings are stored in Neon; uploaded business rows remain in runtime memory.
+    - table [ref=f2e35]:
+      - rowgroup [ref=f2e36]:
+        - row [ref=f2e37]:
+          - columnheader "Source" [ref=f2e38] [cursor=pointer]
+          - columnheader "Type" [ref=f2e39] [cursor=pointer]
+          - columnheader "Rows" [ref=f2e40] [cursor=pointer]
+          - columnheader "Dashboards" [ref=f2e41] [cursor=pointer]
+          - columnheader "Status" [ref=f2e42] [cursor=pointer]
+          - columnheader "Last refreshed" [ref=f2e43] [cursor=pointer]
+          - columnheader [ref=f2e44] [cursor=pointer]
+      - rowgroup [ref=f2e45]:
+        - row [ref=f2e46]:
+          - cell "Harsh · AE/AM performance" [ref=f2e47]
+          - cell "tableau datasource" [ref=f2e48]
+          - cell "17,069" [ref=f2e49]
+          - cell [ref=f2e50]:
+            - button "Win Board ↗" [ref=f2e52] [cursor=pointer]
+          - cell "loaded" [ref=f2e53]
+          - cell "Never" [ref=f2e55]
+          - cell [ref=f2e56]:
+            - button "Refresh" [ref=f2e57] [cursor=pointer]
+            - button "Enable auto-refresh" [ref=f2e58] [cursor=pointer]
+            - button "Delete" [ref=f2e59] [cursor=pointer]
+  - button "Sync history (68) ▼" [ref=f2e61] [cursor=pointer]:
+    - generic [ref=f2e62]: Sync history (68)
+    - generic [ref=f2e63]: ▼

@@ -1,0 +1,1142 @@
+import express from 'express';
+import cors from 'cors';
+import session from 'express-session';
+import connectPgSimple from 'connect-pg-simple';
+import { OAuth2Client } from 'google-auth-library';
+import { createDataSourceRouter } from './datasources.js';
+import axios from 'axios';
+import cron from 'node-cron';
+import dotenv from 'dotenv';
+import bcrypt from 'bcryptjs';
+import { databaseEnabled, pool, closePool } from './db/pool.js';
+import { randomBytes } from 'node:crypto';
+import {
+  upsertUser, findUserByEmail, createPasswordUser, markLogin,
+  findUserById, listUsers, setPassword, createInvitedUser, updateUserAccess,
+  countOtherActiveAdmins, revokeOtherSessions, deleteUserData,
+} from './repositories/users.js';
+import { getDashboardState, saveDashboardState } from './repositories/dashboardState.js';
+import { logSourceAccess, logAudit } from './repositories/activityLogs.js';
+import {
+  authAttemptStatus, recordAuthFailure, clearAuthFailures, verifyPassword, passwordProblem,
+} from './services/authGuard.js';
+import { sendSecurityNotification } from './services/mailer.js';
+import { listSavedContent, createSavedContent, deleteSavedContent } from './repositories/savedContent.js';
+import { listAdminLogs, cleanupOldRecords } from './repositories/adminLogs.js';
+import { buildWinBoardSnapshot } from './services/winBoardMetrics.js';
+import { buildLossBoardSnapshot } from './services/lossBoardMetrics.js';
+import { buildAePerformanceSnapshot } from './services/aePerformanceMetrics.js';
+import { buildGenericComparison } from './services/periodComparison.js';
+
+dotenv.config();
+const app = express();
+const PORT = process.env.PORT || 3001;
+const oAuth2Client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+const GOOGLE_AUTH_ENABLED = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_ID !== 'mock');
+
+// ===== CACHE LAYER =====
+const cache = new Map();
+const runtimeSourceRows = new Map();
+const runtimeDashboardSources = new Map();
+let lastSyncTime = null;
+let nextSyncTime = null;
+let syncStatus = 'idle'; // idle | syncing | success | failed
+let syncError = null;
+
+const CACHE_TTL = 12 * 60 * 60 * 1000; // 12 hours (longer than 1-day sync interval)
+
+function cacheGet(key) {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.fetchedAt > CACHE_TTL) {
+    cache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+function cacheSet(key, data) {
+  cache.set(key, { data, fetchedAt: Date.now() });
+}
+
+// ===== TENANT ISOLATION =====
+// Business rows live in this process's memory, and every cache entry that
+// holds them is namespaced by the owning user. Previously the dashboard cache
+// was keyed by template alone, so the rows one user connected were served to
+// every other signed-in user: the data_sources table scoped ownership
+// correctly, but the in-memory rows those sources produced had no owner at
+// all. Anyone with an account could read everyone's pipeline.
+//
+// Read paths must therefore never take a bare template key. They take the
+// session's userId, and a user with no sources of their own sees an empty
+// dashboard rather than somebody else's.
+const userScope = (userId, templateId) => `u:${userId ?? 'anonymous'}:${templateId}`;
+// The legacy WORKSHEET_CONFIG sync is server-wide (it has no owner) and feeds
+// only the deprecated /api/dashboard-data endpoint. It is kept in its own
+// namespace so it can never collide with, or leak into, a user's rows.
+const systemScope = templateId => `sys:${templateId}`;
+
+// Win Board and Loss Board both read live Tableau opportunity data that may
+// be mapped independently of (and more sparsely than) the Opportunity
+// Analytics source — this backfills any of these fields left blank on a row
+// from the same Opportunity ID's Opportunity Analytics record, when present.
+const DASHBOARDS_WITH_OPPORTUNITY_ENRICHMENT = new Set(['win-board', 'loss-board', 'ae-performance']);
+function dashboardRows(userId, key) {
+  const rows = cacheGet(userScope(userId, key)) || [];
+  if (!DASHBOARDS_WITH_OPPORTUNITY_ENRICHMENT.has(key) || !rows.length) return rows;
+  // Enrichment reads the SAME user's Opportunity Analytics rows. Crossing the
+  // scope here would reintroduce the leak through the back door.
+  const opportunityRows = cacheGet(userScope(userId, 'opportunity-analytics')) || [];
+  if (!opportunityRows.length) return rows;
+  const byOpportunityId = new Map(opportunityRows.map(row => [String(row.id || '').trim(), row]));
+  const supplementalFields = ['type','region','orgType','industry','pod','team','lossReason','trialStageAt'];
+  return rows.map(row => {
+    const peer = byOpportunityId.get(String(row.id || '').trim());
+    if (!peer) return row;
+    let enriched = row;
+    for (const field of supplementalFields) {
+      if (!enriched[field] && peer[field]) enriched = { ...enriched, [field]: peer[field] };
+    }
+    return enriched;
+  });
+}
+
+// ownerUserId is required, not optional: a source whose owner we cannot name
+// has no scope to live in, and defaulting it to a shared bucket is exactly the
+// bug this replaced. Callers all know the owner — the commit and delete routes
+// from the session, the refresh path from the source's own record.
+function setSourceRows(sourceId, dashboardKeys, rows, ownerUserId) {
+  if (!ownerUserId) throw new Error('setSourceRows requires the owning userId');
+  runtimeSourceRows.set(sourceId, rows);
+  dashboardKeys.forEach(key => {
+    const scope = userScope(ownerUserId, key);
+    if (!runtimeDashboardSources.has(scope)) runtimeDashboardSources.set(scope, new Set());
+    runtimeDashboardSources.get(scope).add(sourceId);
+    cacheSet(scope, [...runtimeDashboardSources.get(scope)].flatMap(id => runtimeSourceRows.get(id) || []));
+  });
+}
+
+function removeSourceRows(sourceId, dashboardKeys, ownerUserId) {
+  if (!ownerUserId) throw new Error('removeSourceRows requires the owning userId');
+  runtimeSourceRows.delete(sourceId);
+  dashboardKeys.forEach(key => {
+    const bound = runtimeDashboardSources.get(userScope(ownerUserId, key));
+    if (!bound) return;
+    bound.delete(sourceId);
+    cacheSet(userScope(ownerUserId, key), [...bound].flatMap(id => runtimeSourceRows.get(id) || []));
+  });
+}
+
+function getCacheAge(key) {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  return Math.floor((Date.now() - entry.fetchedAt) / 60000); // minutes
+}
+
+// ===== TABLEAU API CLIENT =====
+class TableauClient {
+  constructor(serverUrl, siteId, patName, patSecret) {
+    this.serverUrl = serverUrl;
+    this.siteId = siteId;
+    this.patName = patName;
+    this.patSecret = patSecret;
+    this.token = null;
+    this.tokenExpiry = null;
+    this.axios = axios.create({
+      baseURL: `${serverUrl}/api/3.19`,
+      timeout: 30000,
+    });
+  }
+
+  async signin() {
+    try {
+      const response = await this.axios.post('/auth/signin', {
+        credentials: {
+          personalAccessTokenName: this.patName,
+          personalAccessTokenSecret: this.patSecret,
+          site: { contentUrl: this.siteId },
+        },
+      });
+
+      this.token = response.data.credentials.token;
+      this.tokenExpiry = Date.now() + 12 * 60 * 60 * 1000; // 12 hours
+      this.axios.defaults.headers.common['X-Tableau-Auth'] = this.token;
+
+      console.log('[Tableau] Signed in successfully');
+      return true;
+    } catch (err) {
+      console.error('[Tableau] Signin failed:', err.response?.data || err.message);
+      throw err;
+    }
+  }
+
+  async ensureAuth() {
+    if (!this.token || Date.now() > this.tokenExpiry - 60000) {
+      await this.signin();
+    }
+  }
+
+  async listViews() {
+    try {
+      await this.ensureAuth();
+      const response = await this.axios.get(
+        `/sites/${this.siteId}/views?includeUsageStatistics=true`
+      );
+      return response.data.view || [];
+    } catch (err) {
+      console.error('[Tableau] List views failed:', err.message);
+      throw err;
+    }
+  }
+
+  async getViewData(viewId) {
+    try {
+      await this.ensureAuth();
+      const response = await this.axios.get(
+        `/sites/${this.siteId}/views/${viewId}/data`,
+        { responseType: 'text' } // CSV as text
+      );
+      return response.data; // Raw CSV string
+    } catch (err) {
+      console.error(`[Tableau] Get view data failed (${viewId}):`, err.message);
+      throw err;
+    }
+  }
+
+  async signout() {
+    try {
+      await this.ensureAuth();
+      await this.axios.post('/auth/signout');
+      this.token = null;
+      console.log('[Tableau] Signed out');
+    } catch (err) {
+      console.warn('[Tableau] Signout failed (non-fatal):', err.message);
+    }
+  }
+}
+
+// ===== CSV TO JSON CONVERTER =====
+function csvToJson(csvText) {
+  const lines = csvText.trim().split('\n');
+  if (lines.length < 2) return [];
+
+  const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/[^a-z0-9_]/g, ''));
+  const rows = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const values = lines[i].split(',').map(v => v.trim());
+    const row = {};
+    headers.forEach((header, idx) => {
+      let val = values[idx] || '';
+      // Try to parse as number
+      if (val && !isNaN(val) && val !== '') {
+        val = parseFloat(val);
+      }
+      // Parse booleans
+      if (val === 'true') val = true;
+      if (val === 'false') val = false;
+      row[header] = val;
+    });
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+// ===== WORKSHEET CONFIGURATION =====
+// Define which worksheets to fetch. Map Tableau view IDs to dashboard keys.
+const WORKSHEET_CONFIG = [
+  {
+    key: 'opportunity-analytics',
+    name: 'Opportunity Analytics',
+    tableauViewId: process.env.TABLEAU_VIEW_ID_OPPORTUNITIES || '',
+    description: 'Opportunity funnel, win rates, rep performance',
+  },
+  {
+    key: 'event-analytics',
+    name: 'Event Analytics',
+    tableauViewId: process.env.TABLEAU_VIEW_ID_EVENTS || '',
+    description: 'Feature adoption, churn signals',
+  },
+  {
+    key: 'tenant-health',
+    name: 'Tenant Health',
+    tableauViewId: process.env.TABLEAU_VIEW_ID_HEALTH || '',
+    description: 'Account whitespace, expansion candidates',
+  },
+];
+
+// ===== SYNC ENGINE =====
+let tableauClient = null;
+
+async function initializeTableauClient() {
+  if (!process.env.TABLEAU_SERVER || !process.env.TABLEAU_SITE_ID) {
+    console.warn('[Tableau] Not configured. Set TABLEAU_SERVER, TABLEAU_SITE_ID, TABLEAU_PAT_NAME, TABLEAU_PAT_SECRET in .env');
+    return null;
+  }
+
+  tableauClient = new TableauClient(
+    process.env.TABLEAU_SERVER,
+    process.env.TABLEAU_SITE_ID,
+    process.env.TABLEAU_PAT_NAME,
+    process.env.TABLEAU_PAT_SECRET
+  );
+
+  return tableauClient;
+}
+
+async function syncAllWorksheets(retries = 3) {
+  if (!tableauClient) {
+    console.log('[Sync] Tableau not configured. Skipping sync.');
+    return { success: false, error: 'Tableau not configured' };
+  }
+
+  syncStatus = 'syncing';
+  syncError = null;
+
+  try {
+    console.log('[Sync] Starting data sync...');
+
+    for (const worksheet of WORKSHEET_CONFIG) {
+      if (!worksheet.tableauViewId) {
+        console.warn(`[Sync] Skipping ${worksheet.key}: no view ID configured`);
+        continue;
+      }
+
+      let attempt = 0;
+      while (attempt < retries) {
+        try {
+          console.log(`[Sync] Fetching ${worksheet.key} (attempt ${attempt + 1}/${retries})...`);
+
+          const csvData = await tableauClient.getViewData(worksheet.tableauViewId);
+          const jsonData = csvToJson(csvData);
+
+          cacheSet(systemScope(worksheet.key), jsonData);
+          console.log(`[Sync] ✓ Cached ${worksheet.key}: ${jsonData.length} rows`);
+          break;
+        } catch (err) {
+          attempt++;
+          if (attempt >= retries) {
+            throw err;
+          }
+          // Exponential backoff: 2s, 4s, 8s
+          const backoffMs = Math.pow(2, attempt) * 1000;
+          console.log(`[Sync] Retrying in ${backoffMs}ms...`);
+          await new Promise(resolve => setTimeout(resolve, backoffMs));
+        }
+      }
+    }
+
+    lastSyncTime = new Date().toISOString();
+    syncStatus = 'success';
+    console.log(`[Sync] Completed at ${lastSyncTime}`);
+
+    return { success: true, syncedAt: lastSyncTime };
+  } catch (err) {
+    syncStatus = 'failed';
+    syncError = err.message;
+    console.error('[Sync] Failed:', err.message);
+    return { success: false, error: syncError };
+  }
+}
+
+// ===== CRON SCHEDULER =====
+// Runs daily at 11:35 PM UTC (adjust TZ_OFFSET for your timezone)
+const TZ_OFFSET = process.env.CRON_TZ_OFFSET || 'UTC';
+const SYNC_TIME = '35 23 * * *'; // 11:35 PM every day
+
+function scheduleSync() {
+  cron.schedule(SYNC_TIME, async () => {
+    console.log(`[Cron] Sync job triggered at ${new Date().toISOString()}`);
+    await syncAllWorksheets();
+    nextSyncTime = new Date(new Date().getTime() + 24 * 60 * 60 * 1000).toISOString();
+  }, { timezone: TZ_OFFSET });
+
+  console.log(`[Cron] Scheduled daily sync at 23:35 ${TZ_OFFSET}`);
+}
+
+// ===== MIDDLEWARE =====
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
+// Fail fast rather than boot insecurely. A missing or placeholder session
+// secret means every cookie this process signs is forgeable by anyone who
+// knows the default — which, for a value committed to a repo, is everyone.
+if (IS_PRODUCTION) {
+  const secret = process.env.SESSION_SECRET || '';
+  const placeholder = /^(your-|change-?me|secret|local-development)/i.test(secret);
+  if (secret.length < 32 || placeholder) {
+    console.error('FATAL: SESSION_SECRET must be a unique random value of at least 32 characters in production.');
+    process.exit(1);
+  }
+  if (!process.env.CLIENT_ORIGIN) {
+    console.error('FATAL: CLIENT_ORIGIN must name the exact browser origin in production.');
+    process.exit(1);
+  }
+}
+
+// Secure cookies and per-IP rate limiting both depend on knowing the real
+// client address. Behind a load balancer Express sees the proxy unless told
+// how many hops to trust; trusting blindly (`true`) is worse than not
+// trusting, since any client could then spoof X-Forwarded-For.
+app.set('trust proxy', Number(process.env.TRUSTED_PROXY_HOPS || 0));
+app.disable('x-powered-by');
+
+// Response hardening. The API returns JSON only, so the CSP can be maximally
+// restrictive — there is nothing legitimate for a browser to execute, frame,
+// or load from an API response, and that is precisely what turns a reflected
+// value into a stored-XSS vector.
+app.use((req, res, next) => {
+  res.set({
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'no-referrer',
+    'Cross-Origin-Resource-Policy': 'same-origin',
+    'Cross-Origin-Opener-Policy': 'same-origin',
+    'Permissions-Policy': 'geolocation=(), microphone=(), camera=(), payment=()',
+    'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+    'Cache-Control': 'no-store',
+  });
+  if (IS_PRODUCTION) res.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  next();
+});
+
+app.use(cors({
+  origin: process.env.CLIENT_ORIGIN || (IS_PRODUCTION ? false : 'http://localhost:5173'),
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+}));
+app.use(express.json({ limit: '25mb' }));
+const PgSession = connectPgSimple(session);
+app.use(session({
+  name: process.env.SESSION_COOKIE_NAME || 'testmu.sid',
+  secret: process.env.SESSION_SECRET || (IS_PRODUCTION ? '' : 'local-development-only-change-me'),
+  ...(databaseEnabled ? { store: new PgSession({ pool, createTableIfMissing: true }) } : {}),
+  resave: false,
+  saveUninitialized: false,
+  // Idle timeout: touching the session on each request slides the window, so
+  // an unattended browser loses its session while an active user is not
+  // logged out mid-task.
+  rolling: true,
+  cookie: {
+    secure: IS_PRODUCTION,
+    httpOnly: true,
+    // 'strict' would drop the cookie on any cross-site navigation into the
+    // app (an emailed dashboard link lands logged-out). 'lax' keeps top-level
+    // GET navigations working while still withholding the cookie from
+    // cross-site POSTs, which is the CSRF case that matters here.
+    sameSite: 'lax',
+    maxAge: Number(process.env.SESSION_MAX_AGE_HOURS || 8) * 60 * 60 * 1000,
+  },
+}));
+
+// ===== AUTH =====
+// req.ip is only trustworthy once Express is told how many proxies sit in
+// front (see `trust proxy` below); without that a client can forge
+// X-Forwarded-For and give itself a fresh rate-limit bucket per request.
+const clientIp = req => req.ip || req.socket?.remoteAddress || 'unknown';
+
+// Auth attempts are security-relevant events and belong in the audit trail
+// whether or not they succeed — a burst of failures is the signal that someone
+// is being attacked. Never log the password, and never fail the request
+// because logging failed.
+async function logAuthEvent({ email, action, req, outcome }) {
+  try {
+    await logAudit({
+      userId: null, action, entityType: 'auth', entityId: null,
+      // The address is bounded before storage: on a FAILED attempt this string
+      // is whatever the caller posted, and the body limit is 25 MB. Storing it
+      // is what makes "someone is being targeted" visible in the audit trail,
+      // but it must not become an attacker-controlled write of arbitrary size.
+      afterState: { email: String(email || '').slice(0, 254), outcome },
+      ipAddress: clientIp(req),
+      userAgent: String(req.get('user-agent') || '').slice(0, 200),
+    });
+  } catch { /* auditing must never block authentication */ }
+}
+
+function requireAuth(req, res, next) {
+  if (!req.session?.email) return res.status(401).json({ error: 'Not authenticated' });
+  // An admin-issued temporary password gets the holder exactly as far as
+  // replacing it. Without this the "temporary" password is simply a working
+  // password that two people know, for as long as the user ignores the prompt.
+  if (req.session.mustChangePassword && req.path !== '/api/auth/change-password') {
+    return res.status(403).json({ error: 'password_change_required' });
+  }
+  next();
+}
+
+function requireAdmin(req, res, next) {
+  if (!req.session?.email) return res.status(401).json({ error: 'Not authenticated' });
+  const admins = (process.env.ADMIN_EMAILS||'').split(',').map(e => e.trim()).filter(Boolean);
+  if (req.session.role !== 'admin' && !admins.includes(req.session.email)) return res.status(403).json({ error: 'Admin access required' });
+  next();
+}
+
+app.post('/api/auth/verify', async (req, res) => {
+  try {
+    if (!GOOGLE_AUTH_ENABLED) return res.status(503).json({ error: 'Google sign-in is not configured' });
+    const { credential, intent = 'login' } = req.body;
+    if (!credential) return res.status(400).json({ error: 'Missing credential' });
+    const ticket = await oAuth2Client.verifyIdToken({ idToken: credential, audience: process.env.GOOGLE_CLIENT_ID });
+    const payload = ticket.getPayload();
+    const email = payload.email;
+    const domain = process.env.ALLOWED_DOMAIN;
+    if (domain && !email.endsWith(`@${domain}`)) return res.status(403).json({ error: `Only @${domain} emails allowed` });
+
+    let user = await findUserByEmail(email);
+    // Google has already proved the caller owns this address, so telling them
+    // whether it has an account here reveals nothing they cannot confirm by
+    // simply continuing — unlike the password endpoints, where the caller has
+    // proved nothing. Both intents therefore resolve to the same session
+    // rather than erroring, which also removes a pointless dead end.
+    if (!user) user = null;
+    if (!user) user = await upsertUser({
+      email, googleSubject: payload.sub, displayName: payload.name, pictureUrl: payload.picture,
+      role: (process.env.ADMIN_EMAILS || '').split(',').map(v => v.trim()).includes(email) ? 'admin' : 'user',
+    });
+    if (user.status === 'disabled') return res.status(403).json({ error: 'This account is disabled' });
+    await markLogin(user.id);
+    establishSession(req, res, user);
+  } catch (err) {
+    res.status(401).json({ error: 'Invalid token', detail: err.message });
+  }
+});
+
+app.post('/api/auth/signup', async (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  try {
+    const displayName = String(req.body?.name || '').trim();
+    const password = String(req.body?.password || '');
+    const gate = authAttemptStatus(clientIp(req), email);
+    if (gate.blocked) {
+      res.set('Retry-After', String(gate.retryAfterSeconds));
+      return res.status(429).json({ error: 'Too many attempts. Try again later.' });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+      return res.status(400).json({ error: 'Enter a valid email address' });
+    }
+    if (displayName.length < 2 || displayName.length > 100) return res.status(400).json({ error: 'Enter your name' });
+    const weak = passwordProblem(password, { email, name: displayName });
+    if (weak) return res.status(400).json({ error: weak });
+    const domain = process.env.ALLOWED_DOMAIN;
+    if (domain && !email.endsWith(`@${domain}`)) return res.status(403).json({ error: `Only @${domain} emails are allowed` });
+
+    // Deliberately NOT "an account already exists": that reply turned this
+    // endpoint into a free membership oracle — anyone could test an address
+    // list and learn who has an account here. Signing up over an existing
+    // address returns the same acknowledgement as a fresh one, and the real
+    // owner is told out of band.
+    if (await findUserByEmail(email)) {
+      recordAuthFailure(clientIp(req), email);
+      return res.status(202).json({ pending: true, message: 'Check your email to finish setting up this account.' });
+    }
+    const user = await createPasswordUser({ email, displayName, passwordHash: await bcrypt.hash(password, 12) });
+    clearAuthFailures(clientIp(req), email);
+    await logAuthEvent({ email, action: 'auth.signup', req, outcome: 'success' });
+    establishSession(req, res, user);
+  } catch (error) {
+    // Never the raw error: a Postgres unique violation on this path carries
+    // `detail: "Key (email)=(someone@example.com) already exists"`, which would
+    // write the address of everyone who ever retried a signup into the log.
+    console.error('[error] POST /api/auth/signup', safeError(error));
+    res.status(500).json({ error: 'Could not create account' });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  const password = String(req.body?.password || '');
+  const ip = clientIp(req);
+
+  const gate = authAttemptStatus(ip, email);
+  if (gate.blocked) {
+    res.set('Retry-After', String(gate.retryAfterSeconds));
+    await logAuthEvent({ email, action: 'auth.login', req, outcome: 'rate_limited' });
+    return res.status(429).json({ error: 'Too many attempts. Try again later.' });
+  }
+
+  const user = await findUserByEmail(email);
+  // verifyPassword runs bcrypt even when the account does not exist, so an
+  // unknown address and a wrong password take the same time and return the
+  // same message. A disabled account is folded into the same reply for the
+  // same reason: "this account is disabled" confirms the account exists.
+  const ok = await verifyPassword(password, user?.passwordHash);
+  if (!ok || !user || user.status === 'disabled') {
+    recordAuthFailure(ip, email);
+    await logAuthEvent({ email, action: 'auth.login', req, outcome: 'failure' });
+    return res.status(401).json({ error: 'Incorrect email or password' });
+  }
+
+  clearAuthFailures(ip, email);
+  await markLogin(user.id);
+  await logAuthEvent({ email, action: 'auth.login', req, outcome: 'success' });
+  establishSession(req, res, user);
+});
+
+app.get('/api/auth/config', (req, res) => {
+  res.json({ googleClientId: GOOGLE_AUTH_ENABLED ? process.env.GOOGLE_CLIENT_ID : null });
+});
+
+// The development login is deliberately gone. It minted an *admin* session for
+// dev@localhost with no credential at all, so anyone who could reach the API
+// — including anyone on the same network as a laptop running the dev server —
+// held full administrative access. An env flag is not a sufficient guard for a
+// credential-free admin door: flags get copied into the wrong environment.
+
+app.get('/api/auth/me', (req, res) => {
+  if (!req.session?.email) return res.json(null);
+  res.json({ id: req.session.userId, email: req.session.email, name: req.session.name,
+    picture: req.session.picture, role: req.session.role || 'user',
+    mustChangePassword: Boolean(req.session.mustChangePassword) });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  req.session.destroy(() => res.json({ ok: true }));
+});
+
+// ===== TEMPLATES =====
+const TEMPLATES = [
+  {
+    id: 'opportunity-analytics',
+    name: 'Opportunity Analytics',
+    description: 'Revenue funnel, win rates, rep performance',
+    tags: ['Salesforce', '6 views'],
+  },
+  {
+    id: 'event-analytics',
+    name: 'Event Analytics',
+    description: 'Feature adoption, churn signals',
+    tags: ['orgType', '4 views'],
+  },
+  {
+    id: 'tenant-health',
+    name: 'Tenant Health',
+    description: 'Account whitespace, expansion candidates',
+    tags: ['HubSpot', '5 views'],
+  },
+  {
+    id: 'win-board',
+    name: 'Win Board',
+    description: 'Won ARR, ARR win rate, and contribution performance',
+    tags: ['Tableau', 'Won ARR'],
+  },
+  {
+    id: 'loss-board',
+    name: 'Loss Board',
+    description: 'Where business is being lost — ARR lost rate, loss reasons, and lost-after-trial',
+    tags: ['Tableau', 'Lost ARR'],
+  },
+  {
+    id: 'ae-performance',
+    name: 'AE Performance',
+    description: 'AE rep ranking by share of closed ARR, with period comparison',
+    tags: ['Tableau', 'ARR Contribution'],
+  },
+];
+
+app.get('/api/templates', requireAuth, (req, res) => {
+  res.json(TEMPLATES);
+});
+
+app.get('/api/dashboards/:templateId/state', requireAuth, async (req, res, next) => {
+  try { res.json(await getDashboardState(req.session.userId, req.params.templateId)); }
+  catch (error) { next(error); }
+});
+
+app.put('/api/dashboards/:templateId/state', requireAuth, async (req, res, next) => {
+  try { res.json(await saveDashboardState(req.session.userId, req.params.templateId, req.body || {})); }
+  catch (error) { next(error); }
+});
+
+for (const kind of ['views','reports']) {
+  app.get(`/api/dashboards/:templateId/saved-${kind}`, requireAuth, async (req,res,next) => {
+    try { res.json({ items: await listSavedContent(req.session.userId,req.params.templateId,kind) }); } catch(error){ next(error); }
+  });
+  app.post(`/api/dashboards/:templateId/saved-${kind}`, requireAuth, async (req,res,next) => {
+    try {
+      if (!String(req.body?.name||'').trim()) return res.status(400).json({error:'Name is required'});
+      res.status(201).json(await createSavedContent(req.session.userId,req.params.templateId,kind,req.body));
+    } catch(error){ next(error); }
+  });
+  app.delete(`/api/saved-${kind}/:id`, requireAuth, async (req,res,next) => {
+    try { res.json({ok:await deleteSavedContent(req.session.userId,req.params.id,kind)}); } catch(error){ next(error); }
+  });
+}
+
+// ===== ACCOUNT =====
+app.post('/api/auth/change-password', requireAuth, async (req, res, next) => {
+  try {
+    const currentPassword = String(req.body?.currentPassword || '');
+    const newPassword = String(req.body?.newPassword || '');
+    const user = await findUserById(req.session.userId);
+    if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+    // Rate-limited like a sign-in: this endpoint verifies a password, so
+    // without a limit it is a brute-force oracle that happens to sit behind a
+    // session rather than in front of one.
+    const gate = authAttemptStatus(clientIp(req), user.email);
+    if (gate.blocked) {
+      res.set('Retry-After', String(gate.retryAfterSeconds));
+      return res.status(429).json({ error: 'Too many attempts. Try again later.' });
+    }
+
+    // Someone who signed up through Google has no password to confirm; they
+    // set one here for the first time instead of being locked out of the flow.
+    if (user.hasPassword && !(await verifyPassword(currentPassword, user.passwordHash))) {
+      recordAuthFailure(clientIp(req), user.email);
+      await logAuthEvent({ email: user.email, action: 'auth.password_change', req, outcome: 'failure' });
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+    const weak = passwordProblem(newPassword, { email: user.email, name: user.displayName });
+    if (weak) return res.status(400).json({ error: weak });
+    if (user.hasPassword && await verifyPassword(newPassword, user.passwordHash)) {
+      return res.status(400).json({ error: 'New password must be different from the current one' });
+    }
+
+    await setPassword(user.id, await bcrypt.hash(newPassword, 12), { mustChange: false });
+    clearAuthFailures(clientIp(req), user.email);
+    // Every other session for this account dies. If the reason for changing
+    // was a suspected compromise, leaving the attacker's session alive would
+    // defeat the entire exercise.
+    const revoked = await revokeOtherSessions(user.id, req.sessionID);
+    await logAuthEvent({ email: user.email, action: 'auth.password_change', req, outcome: 'success' });
+    // Not awaited: the password has already changed, and an unreachable mail
+    // host must not turn a completed change into a reported failure.
+    sendSecurityNotification({ to: user.email, event: 'password_changed',
+      context: { ip: clientIp(req) } }).catch(() => {});
+    req.session.mustChangePassword = false;
+    res.json({ ok: true, otherSessionsSignedOut: revoked });
+  } catch (error) { next(error); }
+});
+
+// Self-service erasure. Requires the current password so that a hijacked
+// session cannot destroy the account, and requires typing the email so it
+// cannot be a misclick. The last active admin is refused, for the same reason
+// they cannot demote themselves: it would leave the workspace unadministrable.
+app.delete('/api/auth/account', requireAuth, async (req, res, next) => {
+  try {
+    const user = await findUserById(req.session.userId);
+    if (!user) return res.status(401).json({ error: 'Not authenticated' });
+    const confirmEmail = String(req.body?.confirmEmail || '').trim().toLowerCase();
+    if (confirmEmail !== user.email.toLowerCase()) {
+      return res.status(400).json({ error: 'Type your email address exactly to confirm' });
+    }
+    if (user.hasPassword && !(await verifyPassword(String(req.body?.currentPassword || ''), user.passwordHash))) {
+      recordAuthFailure(clientIp(req), user.email);
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+    if (user.role === 'admin' && await countOtherActiveAdmins(user.id) === 0) {
+      return res.status(400).json({ error: 'You are the last active admin. Promote someone else first.' });
+    }
+    // Captured before deletion — afterwards there is no address left to notify,
+    // which is the entire point of the erasure.
+    const notifyAddress = user.email;
+    const result = await deleteUserData(user.id);
+    sendSecurityNotification({ to: notifyAddress, event: 'account_deleted' }).catch(() => {});
+    // Audited with the actor already null — the point of the record is that a
+    // deletion happened, not who it was.
+    await logAudit({ userId: null, action: 'user.self_deleted', entityType: 'user', entityId: null,
+      afterState: { subject: 'deleted-user' }, ipAddress: clientIp(req) });
+    req.session.destroy(() => res.json({ ok: true, deleted: Boolean(result) }));
+  } catch (error) { next(error); }
+});
+
+// ===== ADMIN: USERS =====
+const ROLES = new Set(['user', 'admin']);
+const STATUSES = new Set(['active', 'disabled']);
+const temporaryPasswordValue = () => `${randomBytes(9).toString('base64url')}-${randomBytes(6).toString('base64url')}`;
+
+app.get('/api/admin/users', requireAdmin, async (req, res, next) => {
+  try { res.json({ items: await listUsers() }); } catch (error) { next(error); }
+});
+
+app.post('/api/admin/users', requireAdmin, async (req, res, next) => {
+  try {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const displayName = String(req.body?.name || '').trim();
+    const role = ROLES.has(req.body?.role) ? req.body.role : 'user';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+      return res.status(400).json({ error: 'Enter a valid email address' });
+    }
+    if (displayName.length < 2 || displayName.length > 100) return res.status(400).json({ error: 'Enter a name' });
+    const domain = process.env.ALLOWED_DOMAIN;
+    if (domain && !email.endsWith(`@${domain}`)) return res.status(403).json({ error: `Only @${domain} emails are allowed` });
+    if (await findUserByEmail(email)) return res.status(409).json({ error: 'That address already has an account' });
+
+    // Generated here rather than chosen by the admin: an admin-chosen password
+    // is one the admin knows, and this one is single-use by construction —
+    // must_change_password blocks everything until the new user replaces it.
+    const temporaryPassword = temporaryPasswordValue();
+    const user = await createInvitedUser({
+      email, displayName, role, invitedBy: req.session.userId,
+      passwordHash: await bcrypt.hash(temporaryPassword, 12),
+    });
+    await logAudit({ userId: req.session.userId, action: 'user.invited', entityType: 'user',
+      entityId: user.id, afterState: { email, role } });
+    // Tells them an account exists; deliberately does NOT carry the temporary
+    // password. Mailing a credential publishes it to every relay and backup
+    // the message passes through.
+    sendSecurityNotification({ to: email, event: 'account_created',
+      context: { actor: req.session.email } }).catch(() => {});
+    // Returned exactly once and never stored in readable form.
+    res.status(201).json({ user, temporaryPassword });
+  } catch (error) { next(error); }
+});
+
+app.patch('/api/admin/users/:id', requireAdmin, async (req, res, next) => {
+  try {
+    const target = await findUserById(req.params.id);
+    if (!target) return res.status(404).json({ error: 'No such user' });
+    const role = req.body?.role === undefined ? undefined : String(req.body.role);
+    const status = req.body?.status === undefined ? undefined : String(req.body.status);
+    if (role !== undefined && !ROLES.has(role)) return res.status(400).json({ error: 'Unknown role' });
+    if (status !== undefined && !STATUSES.has(status)) return res.status(400).json({ error: 'Unknown status' });
+
+    // Two lockout guards. Self-demotion is refused outright because it is
+    // almost always a misclick and not something you can undo yourself. The
+    // last-admin check then covers demoting or disabling somebody else.
+    const losesAdmin = (role !== undefined && role !== 'admin') || status === 'disabled';
+    if (target.id === req.session.userId && losesAdmin) {
+      return res.status(400).json({ error: 'You cannot remove your own admin access. Ask another admin.' });
+    }
+    if (target.role === 'admin' && losesAdmin && await countOtherActiveAdmins(target.id) === 0) {
+      return res.status(400).json({ error: 'This is the last active admin. Promote someone else first.' });
+    }
+
+    const updated = await updateUserAccess(target.id, { role, status });
+    // A disabled account must lose its live sessions immediately; otherwise
+    // "disabled" only takes effect at their next sign-in, which is exactly
+    // when it matters least.
+    if (status === 'disabled') await revokeOtherSessions(target.id, null);
+    await logAudit({ userId: req.session.userId, action: 'user.access_changed', entityType: 'user',
+      entityId: target.id, afterState: { role: updated.role, status: updated.status } });
+    res.json(updated);
+  } catch (error) { next(error); }
+});
+
+app.delete('/api/admin/users/:id', requireAdmin, async (req, res, next) => {
+  try {
+    const target = await findUserById(req.params.id);
+    if (!target) return res.status(404).json({ error: 'No such user' });
+    if (target.id === req.session.userId) {
+      return res.status(400).json({ error: 'Delete your own account from the Account page.' });
+    }
+    if (target.role === 'admin' && await countOtherActiveAdmins(target.id) === 0) {
+      return res.status(400).json({ error: 'This is the last active admin. Promote someone else first.' });
+    }
+    // Their data sources move to the admin doing the removal rather than
+    // vanishing — a departing colleague's connected sources are usually the
+    // team's, not theirs personally.
+    const notifyAddress = target.email;
+    const result = await deleteUserData(target.id, { transferTo: req.session.userId });
+    sendSecurityNotification({ to: notifyAddress, event: 'account_deleted' }).catch(() => {});
+    await logAudit({ userId: req.session.userId, action: 'user.deleted', entityType: 'user',
+      entityId: null, afterState: { subject: 'deleted-user', transferred: result?.moved } });
+    res.json({ ok: true, transferred: result?.moved || null });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/admin/users/:id/reset-password', requireAdmin, async (req, res, next) => {
+  try {
+    const target = await findUserById(req.params.id);
+    if (!target) return res.status(404).json({ error: 'No such user' });
+    const temporaryPassword = temporaryPasswordValue();
+    await setPassword(target.id, await bcrypt.hash(temporaryPassword, 12), { mustChange: true });
+    // Reset exists for the case where the account may be compromised, so every
+    // existing session for it is destroyed.
+    const revoked = await revokeOtherSessions(target.id, null);
+    await logAudit({ userId: req.session.userId, action: 'user.password_reset', entityType: 'user',
+      entityId: target.id, afterState: { email: target.email, sessionsRevoked: revoked } });
+    // The person whose password was reset needs to hear it from somewhere
+    // other than the person who reset it.
+    sendSecurityNotification({ to: target.email, event: 'password_reset_by_admin',
+      context: { actor: req.session.email } }).catch(() => {});
+    res.json({ ok: true, temporaryPassword, sessionsRevoked: revoked });
+  } catch (error) { next(error); }
+});
+
+app.get('/api/admin/logs', requireAdmin, async (req,res,next) => {
+  try { res.json({items:await listAdminLogs(req.query.type,req.query.limit)}); } catch(error){ next(error); }
+});
+app.post('/api/admin/retention-cleanup', requireAdmin, async (req,res,next) => {
+  try { res.json({ok:true,deleted:await cleanupOldRecords(req.body?.days)}); } catch(error){ next(error); }
+});
+
+app.get('/api/health/database', async (req,res) => {
+  if (!databaseEnabled) return res.status(503).json({ok:false,database:'not configured'});
+  try { const result=await pool.query('SELECT now() AS time'); res.json({ok:true,database:'postgresql',time:result.rows[0].time}); }
+  catch { res.status(503).json({ok:false,database:'unavailable'}); }
+});
+
+// ===== DATA ENDPOINTS =====
+
+// Main endpoint: fetch cached worksheet data
+app.get('/api/dashboard-data', requireAuth, (req, res) => {
+  const { worksheetKey } = req.query;
+
+  if (syncStatus === 'syncing') {
+    return res.status(503).json({
+      error: 'Data sync in progress',
+      status: 'syncing',
+      lastUpdated: lastSyncTime,
+    });
+  }
+
+  let data = {};
+
+  if (worksheetKey) {
+    // Single worksheet
+    const cached = cacheGet(systemScope(worksheetKey));
+    if (cached === null) {
+      return res.status(503).json({
+        error: 'Data not available',
+        status: 'not_synced',
+      });
+    }
+    data[worksheetKey] = cached;
+  } else {
+    // All worksheets
+    for (const ws of WORKSHEET_CONFIG) {
+      const cached = cacheGet(systemScope(ws.key));
+      if (cached !== null) {
+        data[ws.key] = cached;
+      }
+    }
+
+    if (Object.keys(data).length === 0) {
+      return res.status(503).json({
+        error: 'No data available. Run sync first.',
+        status: 'not_synced',
+      });
+    }
+  }
+
+  res.json({
+    status: 'success',
+    data,
+    lastUpdated: lastSyncTime,
+    cacheAgeMins: Math.min(...Object.keys(data).map(k => getCacheAge(k) || 0)),
+  });
+});
+
+// Opportunity-specific endpoint (maps to opportunity-analytics worksheet)
+app.get('/api/data/:templateId', requireAuth, (req, res) => {
+  const { templateId } = req.params;
+  const {
+    region, orgType, stage, owner, source, type, industry, pod, team,
+    createdFrom, createdTo, closeFrom, closeTo,
+  } = req.query;
+
+  let data = cacheGet(userScope(req.session.userId, templateId)) || [];
+
+  const asList = value => (Array.isArray(value) ? value : value ? [value] : []).filter(Boolean);
+  const selections = { region, orgType, stage, owner, source, type, industry, pod, team };
+
+  Object.entries(selections).forEach(([field, value]) => {
+    const selected = asList(value);
+    if (!selected.length) return;
+
+    data = data.filter(row => selected.includes(row[field]));
+  });
+
+  // Dates are stored as YYYY-MM-DD, so string comparison is date comparison.
+  // Rows with a null date are excluded once a bound is set on that field.
+  if (createdFrom) data = data.filter(r => r.createdDate && r.createdDate >= createdFrom);
+  if (createdTo)   data = data.filter(r => r.createdDate && r.createdDate <= createdTo);
+  if (closeFrom)   data = data.filter(r => r.closeDate   && r.closeDate   >= closeFrom);
+  if (closeTo)     data = data.filter(r => r.closeDate   && r.closeDate   <= closeTo);
+
+  // Tableau can return duplicate physical rows after joins. Dashboard metrics
+  // are opportunity-level, matching CNTD(Opportunity ID), so count each ID once.
+  const seenIds = new Set();
+  data = data.filter(row => {
+    const id = String(row.id || '').trim();
+    if (!id) return false;
+    if (seenIds.has(id)) return false;
+    seenIds.add(id);
+    return true;
+  });
+
+  res.json(data);
+  logSourceAccess({ userId: req.session.userId, dashboardKey: templateId,
+    action: 'dashboard.data.read', rowCount: data.length, details: { filtered: Object.keys(req.query).length > 0 } })
+    .catch(error => console.error('access log', error.message));
+});
+// Manual refresh (admin only)
+app.post('/api/refresh-now', requireAdmin, async (req, res) => {
+  if (syncStatus === 'syncing') {
+    return res.status(409).json({
+      error: 'Sync already in progress',
+      status: 'syncing',
+    });
+  }
+
+  res.status(202).json({
+    message: 'Refresh queued',
+    jobId: `refresh-${Date.now()}`,
+  });
+
+  // Run sync in background (non-blocking)
+  await syncAllWorksheets();
+});
+
+// Sync status endpoint
+app.get('/api/sync-status', requireAuth, (req, res) => {
+  res.json({
+    status: syncStatus,
+    lastSync: lastSyncTime,
+    nextSync: nextSyncTime,
+    error: syncError,
+    worksheetCount: WORKSHEET_CONFIG.length,
+    // Only this caller's own cache entries. Returning every key listed each
+    // signed-in user's dashboards — and their user IDs — to anybody who asked.
+    cachedWorksheets: Array.from(cache.keys())
+      .filter(key => key.startsWith(userScope(req.session.userId, '')))
+      .map(key => key.slice(userScope(req.session.userId, '').length)),
+  });
+});
+
+// Dev helper: load mock data
+app.post('/api/data/:templateId/load', requireAdmin, (req, res) => {
+  const { templateId } = req.params;
+  if (!Array.isArray(req.body)) {
+    return res.status(400).json({ error: 'Body must be a JSON array' });
+  }
+  cacheSet(userScope(req.session.userId, templateId), req.body);
+  res.json({ ok: true, rowCount: req.body.length });
+});
+
+// Filter menus always describe the complete uploaded dataset. Active filters
+// affect dashboard rows, but do not hide valid choices from another menu.
+app.get('/api/options/:templateId', requireAuth, (req, res) => {
+  const FIELDS = ['region', 'orgType', 'stage', 'owner', 'source', 'type', 'industry', 'pod', 'team'];
+  const all = dashboardRows(req.session.userId,req.params.templateId);
+  const out = {};
+  FIELDS.forEach(field => {
+    out[field] = [...new Set(all.map(r => r[field]).filter(Boolean))].sort();
+  });
+
+  res.json(out);
+});
+
+app.use('/api/datasources', createDataSourceRouter({
+  requireAuth,
+  store: {
+    setSourceRows,
+    removeSourceRows,
+  },
+}));
+
+app.get('/api/win-board/metrics', requireAuth, (req, res) => {
+  res.json(buildWinBoardSnapshot(dashboardRows(req.session.userId,'win-board'),req.query).metrics);
+});
+
+app.get('/api/win-board/snapshot', requireAuth, (req,res) => {
+  res.json(buildWinBoardSnapshot(dashboardRows(req.session.userId,'win-board'),req.query));
+});
+
+app.get('/api/loss-board/metrics', requireAuth, (req, res) => {
+  res.json(buildLossBoardSnapshot(dashboardRows(req.session.userId,'loss-board'),req.query).metrics);
+});
+
+app.get('/api/loss-board/snapshot', requireAuth, (req,res) => {
+  res.json(buildLossBoardSnapshot(dashboardRows(req.session.userId,'loss-board'),req.query));
+});
+
+// AE Performance is its own connectable data source (see DataSources.jsx's
+// dashboard picker) — 'ae-performance' is a distinct cache key, mapped and
+// loaded independently of Win Board, not read off Win Board's rows.
+app.get('/api/ae-performance/metrics', requireAuth, (req, res) => {
+  res.json(buildAePerformanceSnapshot(dashboardRows(req.session.userId,'ae-performance'),req.query).metrics);
+});
+
+app.get('/api/ae-performance/snapshot', requireAuth, (req,res) => {
+  res.json(buildAePerformanceSnapshot(dashboardRows(req.session.userId,'ae-performance'),req.query));
+});
+
+app.get('/api/comparison/:templateId', requireAuth, (req,res) => {
+  if(req.params.templateId==='win-board'){
+    return res.json(buildWinBoardSnapshot(dashboardRows(req.session.userId,'win-board'),req.query).comparison);
+  }
+  if(req.params.templateId==='loss-board'){
+    return res.json(buildLossBoardSnapshot(dashboardRows(req.session.userId,'loss-board'),req.query).comparison);
+  }
+  if(req.params.templateId==='ae-performance'){
+    return res.json(buildAePerformanceSnapshot(dashboardRows(req.session.userId,'ae-performance'),req.query).comparison);
+  }
+  res.json(buildGenericComparison(dashboardRows(req.session.userId,req.params.templateId),req.query));
+});
+
+// Error-handling middleware must stay last: Express only routes thrown/next(error)
+// errors to error middleware registered before the route that threw.
+// Logging an error object wholesale is a quiet way to write secrets to disk.
+// An axios failure carries `config.data` — the outbound request body — so a
+// failed Tableau sign-in would print the Personal Access Token in clear text
+// to the server log, and a pg failure can carry the connection string. Log the
+// parts that aid diagnosis and drop the parts that carry credentials.
+function safeError(error) {
+  if (!error || typeof error !== 'object') return { message: String(error) };
+  return {
+    name: error.name, message: error.message, code: error.code,
+    status: error.status ?? error.response?.status,
+    route: error.config?.url,
+    stack: IS_PRODUCTION ? undefined : error.stack,
+  };
+}
+
+app.use(async (error,req,res,next) => {
+  console.error('[error]', req.method, req.originalUrl, safeError(error));
+  if(databaseEnabled){
+    try{await pool.query(`INSERT INTO application_errors(user_id,route,method,error_code,message,stack_trace)
+      VALUES($1,$2,$3,$4,$5,$6)`,[req.session?.userId||null,req.originalUrl,req.method,
+      error.code||null,error.message||'Unexpected error',process.env.NODE_ENV==='production'?null:error.stack]);}catch{}
+  }
+  if(res.headersSent)return next(error);
+  res.status(error.status||500).json({error:error.status?error.message:'Unexpected server error'});
+});
+
+// ===== STARTUP =====
+app.listen(PORT, async () => {
+  console.log(`\n📊 Dashboard Server running on http://localhost:${PORT}`);
+  console.log(`Auth mode: ${GOOGLE_AUTH_ENABLED ? `Google SSO @${process.env.ALLOWED_DOMAIN || 'any'}` : 'Email and password'}`);
+  console.log(`Database: ${databaseEnabled ? 'PostgreSQL' : 'not configured (memory-only development mode)'}`);
+  if(databaseEnabled) await pool.query(`UPDATE data_sources SET status='needs_reload',updated_at=now()
+    WHERE source_type='file' AND status='loaded'`);
+
+  // Initialize Tableau if configured
+  await initializeTableauClient();
+  if (tableauClient) {
+    scheduleSync();
+    // Run first sync immediately if requested
+    if (process.env.SYNC_ON_STARTUP === 'true') {
+      console.log('🔄 Running initial sync...');
+      await syncAllWorksheets();
+    }
+  }
+
+  console.log('\n✅ Server ready\n');
+});
+
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, async () => {
+    await closePool();
+    process.exit(0);
+  });
+}
+
+function establishSession(req, res, user) {
+  req.session.regenerate(error => {
+    if (error) return res.status(500).json({ error: 'Could not create login session' });
+    const mustChangePassword = Boolean(user.mustChangePassword ?? user.must_change_password);
+    const safe = {
+      id: user.id, email: user.email, name: user.displayName,
+      picture: user.pictureUrl || '', role: user.role, mustChangePassword,
+    };
+    Object.assign(req.session, {
+      userId: safe.id, email: safe.email, name: safe.name,
+      picture: safe.picture, role: safe.role, mustChangePassword,
+    });
+    res.json(safe);
+  });
+}
