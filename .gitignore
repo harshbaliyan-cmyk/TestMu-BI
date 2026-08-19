@@ -53,3 +53,10 @@ Thumbs.db
 # They are written to the repo root by default and look like real YAML.
 /*-check.yml
 /*-initial.yml
+
+# Local agent tooling — personal config, not product code.
+.claude/
+skills-lock.json
+
+# Full-resolution source assets, kept locally for re-export.
+.asset-originals/
