@@ -48,3 +48,8 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# playwright-cli accessibility snapshots — debugging artifacts, not config.
+# They are written to the repo root by default and look like real YAML.
+/*-check.yml
+/*-initial.yml

@@ -1,0 +1,69 @@
+name: CI
+
+# Runs on every push and pull request. The suite covers the metric formulas,
+# field mapping, tenant isolation and the auth guard — the things most likely
+# to break silently, since a wrong percentage still renders as a percentage.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  server:
+    name: Server tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      # Same command Render runs, so a lockfile drift breaks CI before it
+      # breaks a deploy.
+      - run: npm ci
+        working-directory: server
+      - run: npm test
+        working-directory: server
+
+  client:
+    name: Client build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+        working-directory: client
+      - run: npm run build
+        working-directory: client
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Belt and braces alongside .gitignore: catches a committed .env or a
+      # credential pasted into source, which is the one mistake that cannot be
+      # undone by a later commit.
+      - name: Fail if a .env file is tracked
+        run: |
+          if git ls-files | grep -E '(^|/)\.env($|\.)' | grep -v '\.env\.example'; then
+            echo "::error::A .env file is tracked. Remove it and rotate every value it contained."
+            exit 1
+          fi
+          echo "No .env files tracked."
+      # The connection-string pattern excludes '<' so documented placeholders
+      # like postgresql://<role>:<NEW_PASSWORD>@<host> do not trip it — a
+      # scanner that cries wolf on the docs gets muted, and then it catches
+      # nothing at all.
+      - name: Fail on credential-shaped strings in tracked files
+        run: |
+          if git grep -nIE '(postgres(ql)?://[^ "'"'"'<]+:[^ "'"'"'<@]+@|npg_[A-Za-z0-9]{10,}|github_pat_[A-Za-z0-9_]{20,}|sk_live_[A-Za-z0-9]+|AKIA[0-9A-Z]{16})' -- . ':!*.example' ':!.github/workflows/ci.yml'; then
+            echo "::error::A credential-shaped string is committed. Rotate it, then remove it."
+            exit 1
+          fi
+          echo "No credential-shaped strings found."
