@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import Chart from 'chart.js/auto';
-import { getData, getOptions, getDashboardState, saveDashboardState, listSavedViews, createSavedView, createSavedReport, getPeriodComparison } from '../lib/api';
+import { getData, getOptions, getDashboardState, saveDashboardState, listSavedViews, createSavedView, createSavedReport } from '../lib/api';
 import { useAuth } from '../hooks/useAuth';
 import ThemeToggle from '../components/ThemeToggle';
 import AppLoader from '../components/AppLoader';
@@ -10,7 +11,7 @@ import {
   ConcentricRings, NeonColumns, LollipopList, MiniBar, Pill, Th, useTableSort,
   fmtCurrency, fmtPercent, fmtNumber, fmtDays,
   timeAxis, trimEmpty, valueLabels, baseOptions, rateTone,
-  ComparisonProvider, ComparisonBadge, CHART_PALETTE,
+  CHART_PALETTE,
 } from '../components/charts';
 
 const TABS = [
@@ -101,7 +102,6 @@ export default function Dashboard({ user }) {
   const [grain, setGrain] = useState(null);   // null = automatic
   const [savedViews, setSavedViews] = useState([]);
   const [stateHydrated, setStateHydrated] = useState(false);
-  const [comparison, setComparison] = useState({ available: false });
   const persistedStateRef = useRef({});
   const tableStateRestored = useRef(false);
 
@@ -144,14 +144,6 @@ export default function Dashboard({ user }) {
     getData(templateId, filters)
       .then(rows => { setData(rows); setLoading(false); })
       .catch(err => { console.error(err); setData([]); setLoading(false); });
-  }, [templateId, filters]);
-
-  useEffect(() => {
-    let cancelled = false;
-    getPeriodComparison(templateId, filters)
-      .then(result => { if (!cancelled) setComparison(result); })
-      .catch(() => { if (!cancelled) setComparison({ available: false }); });
-    return () => { cancelled = true; };
   }, [templateId, filters]);
 
   const [options, setOptions] = useState({
@@ -1014,7 +1006,6 @@ export default function Dashboard({ user }) {
     indSort.sort, podSort.sort, repSort.sort, repeatLossSort.sort, expansionSort.sort]);
 
   return (
-    <ComparisonProvider value={comparison}>
     <div className="wrap">
       <div className="top-nav" style={{ margin: '-18px -18px 18px' }}>
         <div className="brand" style={{ cursor: 'pointer' }} onClick={() => navigate('/gallery')}>
@@ -1646,7 +1637,6 @@ export default function Dashboard({ user }) {
         </aside>
       )}
     </div>
-    </ComparisonProvider>
   );
 }
 
@@ -1654,7 +1644,7 @@ export default function Dashboard({ user }) {
 function Kpi({ tone, label, value, foot }) {
   return (
     <div className={`kpi acc-${tone}`}>
-      <div className="kpi-label-row"><div className="lb">{label}</div><ComparisonBadge /></div>
+      <div className="kpi-label-row"><div className="lb">{label}</div></div>
       <div className="vl">{value}</div>
       <div className="ft">{foot}</div>
     </div>
@@ -1785,7 +1775,7 @@ function DateRangeFilter({ filters, setFilters }) {
         <span style={{ opacity: .5, fontSize: 9, marginLeft: 'auto' }}>▼</span>
       </button>
 
-      {open && rect && (
+      {open && rect && createPortal(
         <div style={{
           position: 'fixed', left: rect.left, top: rect.top, zIndex: 1000, width: 340,
           background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10,
@@ -1840,8 +1830,7 @@ function DateRangeFilter({ filters, setFilters }) {
             </button>
             <button type="button" className="btn-primary" onClick={() => setOpen(false)}>Done</button>
           </div>
-        </div>
-      )}
+        </div>, document.body)}
     </div>
   );
 }
