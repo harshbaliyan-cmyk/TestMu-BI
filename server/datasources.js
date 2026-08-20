@@ -313,6 +313,44 @@ function scoreHeader(header, def, field) {
   return best;
 }
 
+// Where Tableau will POST webhook events, derived from APP_BASE_URL.
+//
+// Validated rather than trusted, because every way this can be wrong fails
+// SILENTLY: Tableau accepts the registration, the webhook sits there looking
+// enabled in the UI, and no event ever arrives. The dashboard just quietly
+// goes stale, and the only symptom is data that is up to 12 hours old — which
+// reads as "the sync is slow", not "the callback address is unreachable".
+//
+// Rejected up front instead:
+//   - a bare host or path ("testmu-bi-api.onrender.com") — not a URL Tableau
+//     can post to, and the string concatenation would produce nonsense
+//   - http:// — Tableau Cloud requires HTTPS for webhook destinations
+//   - localhost and RFC1918 addresses — reachable from a dev machine, and from
+//     nowhere on the internet. This is the one people actually hit, by copying
+//     a working local .env into the hosting environment.
+export function resolveWebhookBaseUrl(env = process.env) {
+  const raw = String(env.APP_BASE_URL || '').trim();
+  if (!raw) {
+    return { error: 'APP_BASE_URL is not configured on the server — Tableau needs a publicly reachable URL to deliver webhook events to. Set it in the server environment and restart.' };
+  }
+  let url;
+  try { url = new URL(raw); }
+  catch {
+    return { error: `APP_BASE_URL ("${raw}") is not an absolute URL. Use the full public address of this API, including the scheme — for example https://your-api.onrender.com` };
+  }
+  if (url.protocol !== 'https:') {
+    return { error: `APP_BASE_URL uses ${url.protocol}// — Tableau Cloud only delivers webhooks over HTTPS. Use an https:// address.` };
+  }
+  const host = url.hostname.toLowerCase();
+  const unroutable = host === 'localhost' || host === '::1' || host.endsWith('.local')
+    || /^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host)
+    || /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+  if (unroutable) {
+    return { error: `APP_BASE_URL points at ${url.hostname}, which Tableau cannot reach from the internet. Set it to this API's public address, not a local one.` };
+  }
+  return { base: url.origin };
+}
+
 export function autoMap(headers) {
   const candidates = [];
   for (const field of OPP_COLUMNS) {
@@ -940,9 +978,8 @@ export function createDataSourceRouter({ store, requireAuth }) {
   // the event by POSTing to this app from the outside, which a bare
   // localhost address can never receive.
   router.post('/:sourceId/webhook/enable', requireAuth, async (req,res) => {
-    if(!process.env.APP_BASE_URL) {
-      return res.status(400).json({error:'APP_BASE_URL is not configured on the server — Tableau needs a publicly reachable URL to deliver webhook events to. Set it in the server environment and restart.'});
-    }
+    const callbackBase=resolveWebhookBaseUrl();
+    if(callbackBase.error) return res.status(400).json({error:callbackBase.error});
     const state=await getSourceWebhookState(req.session.userId,req.params.sourceId);
     if(!state) return res.status(404).json({error:'Data source not found'});
     const eventDef=WEBHOOK_EVENTS[state.sourceType];
@@ -963,7 +1000,7 @@ export function createDataSourceRouter({ store, requireAuth }) {
       if(state.webhookId) await session.deleteWebhook(state.webhookId).catch(()=>{});
 
       const webhookSecret=randomUUID();
-      const callbackUrl=`${process.env.APP_BASE_URL.replace(/\/+$/,'')}/api/datasources/webhook/${req.params.sourceId}/${webhookSecret}`;
+      const callbackUrl=`${callbackBase.base}/api/datasources/webhook/${req.params.sourceId}/${webhookSecret}`;
       const webhook=await session.createWebhook(`TestMu BI — ${state.sourceType==='tableau_view'?'workbook':'datasource'} refresh`,eventDef,resourceId,callbackUrl);
       await saveSourceWebhook(req.params.sourceId,{webhookId:webhook.id,webhookSecret,webhookEvent:eventDef.sourceKey,enabled:true});
       res.json({ok:true});

@@ -53,6 +53,22 @@ services:
       - key: ADMIN_EMAILS
         sync: false
 
+      # This service's own public URL, e.g. https://testmu-bi-api.onrender.com
+      #
+      # Only used to build the Tableau webhook callback address, so Tableau can
+      # POST here when an extract refreshes and the dashboard updates in
+      # moments instead of waiting for the 12-hour sync.
+      #
+      # Prompted rather than hard-coded to the service name: Render appends a
+      # suffix when the name is already taken, and a wrong value here fails
+      # silently — Tableau accepts the registration, the UI shows auto-refresh
+      # as on, and no event ever arrives. Paste the URL Render actually shows.
+      #
+      # This is the API's own address, NOT the Vercel one. Tableau talks to
+      # this service directly; Vercel only proxies the browser.
+      - key: APP_BASE_URL
+        sync: false
+
       # Optional. Leaving SMTP_HOST unset disables security notifications; the
       # server warns once at startup rather than failing.
       - key: SMTP_HOST

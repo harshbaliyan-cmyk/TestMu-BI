@@ -152,6 +152,35 @@ recorded `ip_address` should be your public IP, not a Vercel or Render address.
 
 ---
 
+## Step 5 — Instant refresh via Tableau webhooks (optional)
+
+Without this, data refreshes on the 12-hour schedule (and on every restart).
+With it, Tableau notifies this app the moment an extract finishes refreshing and
+the dashboard updates within seconds.
+
+1. Set `APP_BASE_URL` on Render to **this API's own public URL** — the Render
+   one, e.g. `https://testmu-bi-api.onrender.com`. Not the Vercel URL: Tableau
+   posts to this service directly, and Vercel only proxies the browser.
+2. Redeploy the API so it picks the variable up.
+3. In the app, open **Data Sources** and click **Enable auto-refresh** on each
+   Tableau source. That registers the webhook with Tableau over its REST API —
+   there is nothing to configure in Tableau by hand.
+
+The callback is `POST /api/datasources/webhook/<source-id>/<secret>`, public by
+necessity: Tableau arrives with no session. The unguessable source-id + secret
+pair in the URL is what stands in for auth, and the handler answers 200
+immediately, then re-pulls in the background — Tableau's delivery timeout is
+shorter than a full VizQL query.
+
+The value is validated on enable, because every wrong form of it fails silently:
+Tableau accepts the registration, the UI shows auto-refresh as on, and no event
+ever arrives. A bare hostname, an `http://` address, `localhost` or any private
+address is refused with an explanation instead.
+
+On Render's free plan a webhook arriving while the service is asleep has to wait
+out a cold start, so the first delivery after an idle period may be missed;
+Tableau retries, and the next scheduled sync catches anything lost.
+
 ## Known limitations of this deployment
 
 Accepted for an internal rollout; each needs addressing before wider use.

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {autoMap,applyMapping} from '../datasources.js';
+import {autoMap,applyMapping,resolveWebhookBaseUrl} from '../datasources.js';
 import {encryptCredential,decryptCredential} from '../services/credentialCipher.js';
 import {buildWinBoardMetrics,buildWinBoardComparisons,buildWinBoardSnapshot} from '../services/winBoardMetrics.js';
 import {buildLossBoardMetrics,buildLossBoardComparisons,buildLossBoardSnapshot} from '../services/lossBoardMetrics.js';
@@ -1260,4 +1260,43 @@ test('AM and AE boards share one metric implementation, differing only in scope'
   // Same formula on each side of the scope line.
   assert.equal(am.reps[0].attainment,50);
   assert.equal(ae.reps[0].attainment,80);
+});
+
+// ===== WEBHOOK CALLBACK ADDRESS =====
+
+test('the webhook callback base rejects every address Tableau cannot reach', () => {
+  // Each of these fails SILENTLY in production if it slips through: Tableau
+  // accepts the registration, the UI shows auto-refresh as on, and no event
+  // ever arrives. Stale data reads as a slow sync, not a bad address.
+  const bad = {
+    '': 'unset',
+    '   ': 'whitespace only',
+    'testmu-bi-api.onrender.com': 'bare host, no scheme',
+    '/api': 'path only',
+    'http://testmu-bi-api.onrender.com': 'http — Tableau Cloud requires HTTPS',
+    'https://localhost:3001': 'localhost',
+    'https://127.0.0.1:3001': 'loopback',
+    'https://10.0.0.5': 'RFC1918 10/8',
+    'https://192.168.1.20': 'RFC1918 192.168/16',
+    'https://172.16.4.4': 'RFC1918 172.16/12',
+    'https://build.local': '.local mDNS name',
+  };
+  for (const [value, why] of Object.entries(bad)) {
+    const result = resolveWebhookBaseUrl({ APP_BASE_URL: value });
+    assert.ok(result.error, `${why} must be refused`);
+    assert.equal(result.base, undefined, `${why} must not yield a base URL`);
+  }
+});
+
+test('the webhook callback base accepts a public https address and normalises it', () => {
+  assert.equal(resolveWebhookBaseUrl({ APP_BASE_URL: 'https://testmu-bi-api.onrender.com' }).base,
+    'https://testmu-bi-api.onrender.com');
+  // A trailing slash or stray path must not survive into the callback URL, or
+  // the address Tableau receives contains a double slash.
+  assert.equal(resolveWebhookBaseUrl({ APP_BASE_URL: 'https://testmu-bi-api.onrender.com/' }).base,
+    'https://testmu-bi-api.onrender.com');
+  assert.equal(resolveWebhookBaseUrl({ APP_BASE_URL: '  https://api.example.com/ignored/path  ' }).base,
+    'https://api.example.com');
+  // 172.32 is OUTSIDE the private 172.16-31 range and must not be caught.
+  assert.equal(resolveWebhookBaseUrl({ APP_BASE_URL: 'https://172.32.0.1' }).base, 'https://172.32.0.1');
 });
