@@ -98,7 +98,36 @@ loudly rather than running insecurely.
 4. Deploy. Set `CLIENT_ORIGIN` on Render to the Vercel URL if you had to guess
    it in Step 1, and redeploy the API.
 
-## Step 3 — Verify
+## Step 3 — Create the first administrator
+
+There is no self-service signup. `POST /api/auth/signup` returns 403 unless
+`ALLOW_SELF_SIGNUP=true`, which production must **not** set: the old behaviour
+accepted any address ending in `ALLOWED_DOMAIN` and issued a session on the
+spot, and a domain suffix is not proof that the address belongs to anyone.
+
+**If you pointed `DATABASE_URL` at the database you already use**, your existing
+admin account carries over and there is nothing to do here.
+
+**For a fresh database**, run the migrations and create the first admin from
+your own machine, pointed at the production database:
+
+```bash
+cd server
+DATABASE_URL='<production-url>' node scripts/migrate.js
+DATABASE_URL='<production-url>' node scripts/create-admin.mjs
+```
+
+The script prompts for the address, name and password, applies the same
+password policy and `ALLOWED_DOMAIN` rule the app enforces, and needs no shell
+on the server — which matters, because Render's free plan does not give you one.
+Everyone else is then added from **Admin → Users**, which issues a temporary
+password and forces a change on first login.
+
+Deliberately not a route: any network-facing bootstrap ("first account wins",
+or "a listed address may sign up while no admin exists") is opened by whoever
+reaches the URL first, and on a public URL that is not necessarily you.
+
+## Step 4 — Verify
 
 ```bash
 curl -s https://<your-vercel-url>/api/health/database
@@ -106,7 +135,9 @@ curl -s https://<your-vercel-url>/api/health/database
 ```
 
 Then sign in and confirm a dashboard loads. If dashboards are empty, the Tableau
-sources have not re-synced yet — open Data Sources and refresh one.
+sources have not re-synced yet — open Data Sources and refresh one. A cold start
+re-syncs every bound source automatically, which takes roughly ten seconds per
+source, so give it a moment before assuming something is wrong.
 
 ### Check the proxy hop count
 
