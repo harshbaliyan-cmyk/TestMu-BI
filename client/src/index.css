@@ -4394,11 +4394,19 @@ span.ae-leader-avatar { border-color: transparent; }
    The leader avatar is a fourth grid child, so the no-avatar template needs its
    own column back. Without this the row overflowed and wrapped: the value fell
    to a second line and the two names ran together as "EMEA AESaif Rizvi". */
+/* The avatar column and the avatar itself must carry the SAME number: the row
+   is a fixed grid, so growing the photo without growing its track pushes the
+   name and value out and the row wraps.
+
+   112px is the ceiling worth taking. The sources are 256x256, so this still
+   renders under 1:1 on a 2x display (224 device px) and stays sharp; past
+   ~128px they would be upscaled and go soft, which is how these looked wrong
+   the first time. */
 .ae-leaderboard-no-avatar.ae-leaderboard-leaders .ae-leaderboard-row {
-  grid-template-columns: 36px 72px minmax(0, 1fr) auto;
+  grid-template-columns: 36px 112px minmax(0, 1fr) auto;
 }
 .ae-leaderboard-leaders .ae-leader-avatar {
-  width: 72px; height: 72px; flex: 0 0 72px; font-size: 20px;
+  width: 112px; height: 112px; flex: 0 0 112px; font-size: 30px;
 }
 /* The two names stack; as flex row siblings they had no separation at all. */
 .ae-leaderboard-leaders .ae-leaderboard-name {
@@ -4413,8 +4421,8 @@ span.ae-leader-avatar { border-color: transparent; }
 .ae-leaderboard-leaders .ae-leaderboard-row { padding: 14px 16px; }
 
 @media (max-width: 900px) {
-  .ae-leaderboard-no-avatar.ae-leaderboard-leaders .ae-leaderboard-row { grid-template-columns: 30px 56px minmax(0, 1fr) auto; gap: 10px; }
-  .ae-leaderboard-leaders .ae-leader-avatar { width: 56px; height: 56px; flex-basis: 56px; }
+  .ae-leaderboard-no-avatar.ae-leaderboard-leaders .ae-leaderboard-row { grid-template-columns: 30px 76px minmax(0, 1fr) auto; gap: 10px; }
+  .ae-leaderboard-leaders .ae-leader-avatar { width: 76px; height: 76px; flex-basis: 76px; font-size: 22px; }
 }
 
 /* TV shell: everything scales with the container. */
