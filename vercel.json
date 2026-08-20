@@ -7,7 +7,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://testmu-bi-api.onrender.com/api/:path*"
+      "destination": "https://testmu-bi-api-0ca0.onrender.com/api/:path*"
     },
     {
       "source": "/(.*)",
