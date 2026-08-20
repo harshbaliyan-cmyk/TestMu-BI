@@ -7,13 +7,14 @@ import DataSources from './pages/DataSources';
 import Presentation from './pages/Presentation';
 import WinBoardPresentation from './pages/WinBoardPresentation';
 import LossBoardPresentation from './pages/LossBoardPresentation';
-import NeonVoidBackground from './components/NeonVoidBackground';
 import AppLoader from './components/AppLoader';
 import AdminLogs from './pages/AdminLogs';
 import WinBoard from './pages/WinBoard';
 import LossBoard from './pages/LossBoard';
 import AePerformance from './pages/AePerformance';
+import AmPerformance from './pages/AmPerformance';
 import AePerformancePresentation from './pages/AePerformancePresentation';
+import AmPerformancePresentation from './pages/AmPerformancePresentation';
 import AccountSettings from './pages/AccountSettings';
 
 function App() {
@@ -26,7 +27,6 @@ function App() {
 
   return (
     <div className="app-shell">
-      <NeonVoidBackground />
       {isLoading ? (
         <AppLoader fullscreen label="Initializing TestMu BI…" />
       ) : (
@@ -39,10 +39,12 @@ function App() {
           <Route path="/dashboard/loss-board" element={user ? <LossBoard user={user} /> : <Navigate to="/" />} />
           <Route path="/loss-board" element={<Navigate to="/dashboard/loss-board" replace />} />
           <Route path="/dashboard/ae-performance" element={user ? <AePerformance user={user} /> : <Navigate to="/" />} />
+          <Route path="/dashboard/am-performance" element={user ? <AmPerformance user={user} /> : <Navigate to="/" />} />
           <Route path="/dashboard/:templateId" element={user ? <Dashboard user={user} /> : <Navigate to="/" />} />
           <Route path="/present/win-board" element={user ? <WinBoardPresentation /> : <Navigate to="/" />} />
           <Route path="/present/loss-board" element={user ? <LossBoardPresentation /> : <Navigate to="/" />} />
           <Route path="/present/ae-performance" element={user ? <AePerformancePresentation /> : <Navigate to="/" />} />
+          <Route path="/present/am-performance" element={user ? <AmPerformancePresentation /> : <Navigate to="/" />} />
           <Route path="/present/:templateId" element={user ? <Presentation /> : <Navigate to="/" />} />
           <Route path="/account" element={user ? <AccountSettings user={user} /> : <Navigate to="/" />} />
           <Route path="*" element={<Navigate to="/" />} />

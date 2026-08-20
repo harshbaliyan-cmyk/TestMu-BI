@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getData, getDashboardState } from '../lib/api';
 import { BarList, Donut, MetricGauges, NeonColumns, Pill,
-  fmtCurrency, fmtNumber, fmtPercent, CHART_PALETTE, STATUS_COLORS } from '../components/charts';
+  fmtCurrency, fmtNumber, fmtPercent, seriesColor, STATUS_COLORS } from '../components/charts';
 import AppLoader from '../components/AppLoader';
 
 const splitProducts = value => String(value || '').split(';').map(v => v.trim()).filter(Boolean);
@@ -118,12 +118,12 @@ export default function Presentation() {
   const regionData = useMemo(() => [...new Set(data.map(r => r.region).filter(Boolean))].map((region, i) => {
     const rows = data.filter(r => r.region === region && r.isWon);
     return { label: region, value: rows.reduce((s, r) => s + (r.arr || 0), 0),
-      meta: `${rows.length} wins`, color: CHART_PALETTE[i % CHART_PALETTE.length] };
+      meta: `${rows.length} wins`, color: seriesColor(i) };
   }), [data]);
 
   const stageData = useMemo(() => [...new Set(metrics.open.map(r => r.stage).filter(Boolean))].map(stage => {
     const rows = metrics.open.filter(r => r.stage === stage);
-    return { label: stage, value: rows.length, meta: fmtCurrency(rows.reduce((s, r) => s + (r.amount || 0), 0)), color: CHART_PALETTE[0] };
+    return { label: stage, value: rows.length, meta: fmtCurrency(rows.reduce((s, r) => s + (r.amount || 0), 0)), color: seriesColor(0) };
   }), [metrics.open]);
 
   const healthData = useMemo(() => ['Green','Amber','Red'].map((health, i) => {
@@ -160,7 +160,7 @@ export default function Presentation() {
   const productData = useMemo(() => [...new Set(data.flatMap(r => splitProducts(r.product)))].map((product, i) => {
     const rows = data.filter(r => splitProducts(r.product).includes(product));
     return { label: product, value: rows.reduce((s, r) => s + (r.amount || 0), 0),
-      meta: `${rows.length} opportunities`, color: CHART_PALETTE[i % CHART_PALETTE.length] };
+      meta: `${rows.length} opportunities`, color: seriesColor(i) };
   }), [data]);
 
   const agingData = useMemo(() => [[0,30,'0–30 days'],[30,60,'30–60 days'],[60,90,'60–90 days'],[90,180,'90–180 days'],[180,Infinity,'180+ days']].map(([min,max,label]) => {
@@ -174,7 +174,7 @@ export default function Presentation() {
   const cycleByOrg = useMemo(() => [...new Set(metrics.closed.map(r => r.orgType).filter(Boolean))].map((org, i) => {
     const cycles = metrics.closed.filter(r => r.orgType === org).map(r => r.cycleDays).filter(Number.isFinite).sort((a,b) => a-b);
     return { label: org, value: Math.min(100, cycles.length ? cycles[Math.floor(cycles.length/2)] : 0),
-      meta: `${cycles.length} closed · median days`, color: CHART_PALETTE[i % CHART_PALETTE.length] };
+      meta: `${cycles.length} closed · median days`, color: seriesColor(i) };
   }), [metrics.closed]);
 
   const accountData = useMemo(() => {
@@ -188,8 +188,8 @@ export default function Presentation() {
   const openOpportunityData = useMemo(() => metrics.open.map(r => ({ label: r.name || r.id, value: r.amount || 0, meta: `${r.stage} · ${r.owner}`, color: STATUS_COLORS.info })).sort((a,b) => b.value-a.value), [metrics.open]);
   const atRiskData = useMemo(() => metrics.open.filter(r => ['red','amber'].includes(String(r.dealHealth).toLowerCase())).map(r => ({ label:r.name || r.id,value:r.amount || 0,meta:`${r.dealHealth} · ${r.daysStuck || 0} days`,color:String(r.dealHealth).toLowerCase()==='red'?STATUS_COLORS.bad:STATUS_COLORS.warn })).sort((a,b)=>b.value-a.value), [metrics.open]);
   const stalledPresentationData = useMemo(() => metrics.open.filter(r => r.isStalled).map(r => ({ label:r.name || r.id,value:r.daysStuck || 0,meta:`${fmtCurrency(r.amount)} · limit ${r.staleThreshold || 0}d`,color:STATUS_COLORS.bad })).sort((a,b)=>b.value-a.value), [metrics.open]);
-  const businessMixData = useMemo(() => [...new Set(data.map(r=>r.type).filter(Boolean))].map((type,i) => { const rows=data.filter(r=>r.type===type); return {label:type,value:rows.reduce((s,r)=>s+(r.amount||0),0),meta:`${rows.length} opportunities`,color:CHART_PALETTE[i%CHART_PALETTE.length]}; }), [data]);
-  const podPresentationData = useMemo(() => [...new Set(data.map(r=>r.pod).filter(Boolean))].map((pod,i) => { const rows=data.filter(r=>r.pod===pod); const closed=rows.filter(r=>r.isClosed); const won=closed.filter(r=>r.isWon); return {label:pod,value:won.reduce((s,r)=>s+(r.arr||0),0),meta:`${closed.length} closed · ${won.length} won · ${closed.length-won.length} lost`,color:CHART_PALETTE[i%CHART_PALETTE.length]}; }), [data]);
+  const businessMixData = useMemo(() => [...new Set(data.map(r=>r.type).filter(Boolean))].map((type,i) => { const rows=data.filter(r=>r.type===type); return {label:type,value:rows.reduce((s,r)=>s+(r.amount||0),0),meta:`${rows.length} opportunities`,color:seriesColor(i)}; }), [data]);
+  const podPresentationData = useMemo(() => [...new Set(data.map(r=>r.pod).filter(Boolean))].map((pod,i) => { const rows=data.filter(r=>r.pod===pod); const closed=rows.filter(r=>r.isClosed); const won=closed.filter(r=>r.isWon); return {label:pod,value:won.reduce((s,r)=>s+(r.arr||0),0),meta:`${closed.length} closed · ${won.length} won · ${closed.length-won.length} lost`,color:seriesColor(i)}; }), [data]);
 
   const viewKpis = useMemo(() => {
     const sum = (rows, field) => rows.reduce((total, row) => total + (row[field] || 0), 0);

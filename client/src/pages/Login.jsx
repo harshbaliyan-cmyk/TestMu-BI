@@ -62,10 +62,16 @@ export default function Login() {
       <div className="login-card">
         <img className="login-logo" src="/testmu-bi-logo-v2.png" alt="TestMu BI" />
         <h2>TestMu BI</h2>
-        <div className="login-mode-tabs">
-          <button type="button" className={mode === 'login' ? 'on' : ''} onClick={() => { setMode('login'); setError(''); }}>Sign in</button>
-          <button type="button" className={mode === 'signup' ? 'on' : ''} onClick={() => { setMode('signup'); setError(''); }}>Create account</button>
-        </div>
+        {/* The signup tab appears only where the server will actually accept a
+            signup. Accounts are normally provisioned by an administrator, so
+            offering "Create account" would be inviting people into a 403.
+            Hiding it is presentation only — the server refuses either way. */}
+        {config?.selfSignupEnabled && (
+          <div className="login-mode-tabs">
+            <button type="button" className={mode === 'login' ? 'on' : ''} onClick={() => { setMode('login'); setError(''); }}>Sign in</button>
+            <button type="button" className={mode === 'signup' ? 'on' : ''} onClick={() => { setMode('signup'); setError(''); }}>Create account</button>
+          </div>
+        )}
         <p>{mode === 'login' ? 'Sign in to access your dashboards and saved views.' : 'Create an account before signing in.'}</p>
         <form className="login-form" onSubmit={submit}>
           {mode === 'signup' && <input type="text" autoComplete="name" placeholder="Full name" value={form.name}

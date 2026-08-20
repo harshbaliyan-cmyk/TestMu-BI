@@ -201,3 +201,20 @@ export async function listSyncRuns(userId,sourceId=null) {
     s.rows_read AS "rowsRead",s.error_message AS error FROM sync_runs s JOIN data_sources d ON d.id=s.data_source_id
     WHERE d.owner_user_id=$1 ${condition} ORDER BY s.started_at DESC LIMIT 100`,params); return rows;
 }
+
+// The source column a canonical field currently resolves to, for the enabled
+// binding on a dashboard. Used to catch a mapping that points at the wrong
+// period: quota columns for every quarter sit next to each other in the picker
+// and differ by two characters, so "Q3-2025 Quota" is one mis-click away from
+// "Q3-2026 Quota" and produces a plausible-looking board either way.
+export async function getMappedSourceColumn(userId, templateKey, field) {
+  const {rows} = await query(`SELECT f.mapping ->> $3 AS column_name
+    FROM dashboard_source_bindings b
+    JOIN dashboards d      ON d.id = b.dashboard_id
+    JOIN data_sources ds   ON ds.id = b.data_source_id
+    JOIN field_mappings f  ON f.id = b.field_mapping_id
+    WHERE d.template_key = $2 AND ds.owner_user_id = $1
+      AND ds.deleted_at IS NULL AND b.enabled = true
+    ORDER BY b.precedence NULLS LAST, b.updated_at DESC LIMIT 1`, [userId, templateKey, field]);
+  return rows[0]?.column_name || null;
+}

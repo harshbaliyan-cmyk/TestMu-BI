@@ -1,29 +1,71 @@
 :root {
-  --ink: #0B1220;
-  --ink-2: #16233B;
-  --line: #E3E8EF;
-  --line-2: #F1F4F8;
-  --bg: #F6F8FB;
-  --card: #FFFFFF;
-  --txt: #0F172A;
-  --txt-2: #5A6B85;
-  --txt-3: #93A2B7;
-  --teal: #0E9384;
-  --blue: #2563EB;
-  --amber: #D97706;
-  --red: #DC2626;
-  --green: #059669;
-  --violet: #7C3AED;
-  --pink: #DB2777;
-  --slate: #64748B;
-  --r: 10px;
+  /* ==========================================================================
+     APPLE DESIGN LANGUAGE - token layer
+     Source: DESIGN.md (Apple-design-analysis) at the project root.
+     Translated to dashboard density: Apple's colour, type and shape grammar
+     at a working information density, not the 80px-per-tile marketing rhythm.
+
+     Three rules from the source system are load-bearing here:
+       1. ONE interactive accent (Action Blue). --teal is folded into it.
+       2. NO decorative gradients. Surface change is the divider.
+       3. NO shadows on chrome. Hairlines carry separation. The single
+          drop-shadow is reserved for imagery resting on a surface.
+     ========================================================================== */
+
+  /* Action Blue - the only interactive colour in the system */
+  --blue:       #0066cc;
+  --blue-focus: #0071e3;
+  --teal:       #0066cc;   /* folded into Action Blue: no second accent */
+
+  /* Surfaces */
+  --bg:      #F5F5F7;      /* canvas-parchment - the working canvas */
+  --card:    #FFFFFF;      /* canvas */
+  --pearl:   #FAFAFC;      /* surface-pearl - secondary button fill */
+
+  /* Ink */
+  --txt:    #1D1D1F;       /* ink - headlines and body */
+  --txt-2:  #333333;       /* ink-muted-80 */
+  --txt-3:  #7A7A7A;       /* ink-muted-48 - captions, disabled */
+
+  /* Hairlines - the only separator */
+  --line:   #E0E0E0;       /* hairline */
+  --line-2: #F0F0F0;       /* divider-soft */
+
+  /* Dark tiles, used as accent surfaces inside a light page */
+  --ink:    #1D1D1F;
+  --ink-2:  #272729;       /* surface-tile-1 */
+
+  /* Semantic. Derived from the Action Blue register (saturated, dark, no
+     neon) because the source system defines no status ramp. Reserved for
+     state only - never used as a chrome accent. */
+  --green:  #00875A;
+  --red:    #CC0033;
+  --amber:  #B25000;
+  --violet: #5E5CE6;
+  --pink:   #BF3B7A;
+  --slate:  #7A7A7A;
+
+  /* Shape - Apple's radius grammar, nothing in between */
+  --r:      18px;          /* rounded.lg   - utility cards */
+  --r-sm:   8px;           /* rounded.sm   - compact utility, inputs */
+  --r-md:   11px;          /* rounded.md   - pearl capsules */
+  --r-pill: 9999px;        /* rounded.pill - every CTA */
+
+  /* The one shadow in the system. Imagery only, never chrome. */
+  --shadow-product: 3px 5px 30px 0 rgba(0,0,0,.22);
+
   --gap: 16px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+  font-family: "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont,
+    "Segoe UI Variable", "Segoe UI", system-ui, Roboto, Helvetica, Arial, sans-serif;
+  /* Body runs at the source system's reading pace: 17px/1.47 with -0.374px
+     tracking on prose surfaces. Dashboard chrome steps down to 15px so the
+     working density survives - the ratios carry the voice, not the raw size. */
+  letter-spacing: -0.374px;
   background: var(--bg);
   color: var(--txt);
   font-size: 14px;
@@ -50,7 +92,7 @@ body {
   gap: 18px;
   padding: 30px;
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: 18px;
   background: var(--card);
   box-shadow: 0 24px 70px rgba(15,23,42,.16);
 }
@@ -63,13 +105,13 @@ body {
   background: rgba(220,38,38,.1);
   color: var(--red);
   font-size: 24px;
-  font-weight: 800;
+  font-weight: 700;
 }
 .app-error-eyebrow {
   margin-bottom: 5px;
   color: var(--blue);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: .09em;
 }
 .app-error-card h1 { font-size: clamp(20px, 3vw, 28px); line-height: 1.2; }
@@ -139,7 +181,7 @@ header.top {
   margin-bottom: 14px;
 }
 .top-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; flex-wrap: wrap; }
-h1 { font-size: 19px; font-weight: 650; letter-spacing: -0.2px; }
+h1 { font-size: 19px; font-weight: 600; letter-spacing: -0.2px; }
 .sub { font-size: 12.5px; color: #9DB0CC; margin-top: 3px; }
 .asof { font-size: 12px; color: #9DB0CC; text-align: right; white-space: nowrap; }
 .asof b { color: #fff; font-weight: 600; }
@@ -148,7 +190,7 @@ h1 { font-size: 19px; font-weight: 650; letter-spacing: -0.2px; }
 .fg { display: flex; flex-direction: column; gap: 4px; }
 .fg label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.6px; color: #8FA3C0; font-weight: 600; }
 .fg select {
-  padding: 6px 9px; border: 1px solid rgba(255,255,255,0.18); border-radius: 6px;
+  padding: 6px 9px; border: 1px solid rgba(255,255,255,0.18); border-radius: 8px;
   background: rgba(255,255,255,0.09); color: #fff; font-size: 12.5px; min-width: 126px;
   font-family: inherit; cursor: pointer;
 }
@@ -176,7 +218,7 @@ h1 { font-size: 19px; font-weight: 650; letter-spacing: -0.2px; }
   background: #fff; color: var(--txt); box-shadow: 0 10px 24px rgba(15,23,42,.2);
 }
 .ms-search {
-  margin: 8px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 4px;
+  margin: 8px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 5px;
   outline: none; font: inherit; font-size: 12px;
 }
 .ms-search:focus { border-color: var(--blue); }
@@ -191,8 +233,8 @@ h1 { font-size: 19px; font-weight: 650; letter-spacing: -0.2px; }
 .ms-all-option { border-bottom: 1px solid var(--line); color: var(--txt); }
 .ms-empty { padding: 12px; color: var(--txt-3); font-size: 12px; }
 .btn-reset {
-  padding: 7px 13px; border: 1px solid rgba(255,255,255,0.25); border-radius: 6px;
-  background: transparent; color: #fff; font-size: 12px; cursor: pointer; font-family: inherit; font-weight: 500;
+  padding: 7px 13px; border: 1px solid rgba(255,255,255,0.25); border-radius: 8px;
+  background: transparent; color: #fff; font-size: 12px; cursor: pointer; font-family: inherit; font-weight: 600;
 }
 .btn-reset:hover { background: rgba(255,255,255,0.12); }
 .scope { font-size: 11.5px; color: #8FA3C0; margin-left: auto; padding-bottom: 7px; }
@@ -221,7 +263,7 @@ h1 { font-size: 19px; font-weight: 650; letter-spacing: -0.2px; }
   position: fixed; right: 24px; bottom: 94px; z-index: 899;
   width: min(350px, calc(100vw - 32px)); max-height: min(680px, calc(100vh - 120px));
   display: flex; flex-direction: column; overflow: hidden;
-  border: 1px solid var(--line); border-radius: 12px; background: var(--ink); color: #fff;
+  border: 1px solid var(--line); border-radius: 11px; background: var(--ink); color: #fff;
   box-shadow: 0 16px 44px rgba(15,23,42,.3);
 }
 .floating-filter-head {
@@ -239,7 +281,7 @@ h1 { font-size: 19px; font-weight: 650; letter-spacing: -0.2px; }
 .floating-filter-controls .fg > label { margin-bottom: 0; }
 .floating-filter-reset {
   margin: 0 15px 15px; padding: 9px 12px; border: 1px solid rgba(255,255,255,.22);
-  border-radius: 6px; background: rgba(255,255,255,.08); color: #fff;
+  border-radius: 8px; background: rgba(255,255,255,.08); color: #fff;
   font: inherit; font-size: 12px; cursor: pointer;
 }
 .floating-filter-reset:hover { background: rgba(255,255,255,.14); }
@@ -252,15 +294,15 @@ h1 { font-size: 19px; font-weight: 650; letter-spacing: -0.2px; }
 nav.tabs { display: flex; gap: 3px; margin-bottom: 14px; flex-wrap: wrap;
   background: var(--card); padding: 5px; border-radius: var(--r); border: 1px solid var(--line); }
 nav.tabs button {
-  padding: 9px 14px; border: 0; background: transparent; border-radius: 7px; cursor: pointer;
-  font-family: inherit; font-size: 13px; font-weight: 550; color: var(--txt-2); white-space: nowrap;
+  padding: 9px 14px; border: 0; background: transparent; border-radius: 8px; cursor: pointer;
+  font-family: inherit; font-size: 13px; font-weight: 600; color: var(--txt-2); white-space: nowrap;
   display: flex; align-items: center; gap: 7px;
 }
 nav.tabs button:hover { background: var(--line-2); color: var(--txt); }
 nav.tabs button.on { background: var(--ink); color: #fff; }
 nav.tabs .num {
   font-size: 10px; font-weight: 700; background: rgba(255,255,255,0.2);
-  padding: 1px 5px; border-radius: 9px;
+  padding: 1px 5px; border-radius: 8px;
 }
 nav.tabs button:not(.on) .num { background: var(--line); color: var(--txt-3); }
 
@@ -269,13 +311,13 @@ nav.tabs button:not(.on) .num { background: var(--line); color: var(--txt-3); }
   background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--teal);
   border-radius: var(--r); padding: 13px 17px; margin-bottom: var(--gap);
 }
-.intro h2 { font-size: 14.5px; font-weight: 650; margin-bottom: 3px; }
+.intro h2 { font-size: 14.5px; font-weight: 600; margin-bottom: 3px; }
 .intro p { font-size: 12.5px; color: var(--txt-2); }
 
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: var(--gap); margin-bottom: var(--gap); }
 .kpi { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; }
-.kpi .lb { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--txt-3); font-weight: 650; }
-.kpi .vl { font-size: 25px; font-weight: 680; letter-spacing: -0.5px; margin: 5px 0 2px; }
+.kpi .lb { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--txt-3); font-weight: 600; }
+.kpi .vl { font-size: 25px; font-weight: 600; letter-spacing: -0.5px; margin: 5px 0 2px; }
 .kpi .ft { font-size: 11.5px; color: var(--txt-2); }
 .kpi.acc-teal { border-top: 3px solid var(--teal); }
 .kpi.acc-blue { border-top: 3px solid var(--blue); }
@@ -288,12 +330,12 @@ nav.tabs button:not(.on) .num { background: var(--line); color: var(--txt-3); }
 .g21 { display: grid; grid-template-columns: 2fr 1fr; gap: var(--gap); margin-bottom: var(--gap); }
 .pulse-open-row { grid-template-columns: minmax(320px, .82fr) minmax(0, 1.18fr); }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 16px 18px; }
-.card h3 { font-size: 13px; font-weight: 650; margin-bottom: 2px; }
+.card h3 { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
 .card .hint { font-size: 11.5px; color: var(--txt-3); margin-bottom: 12px; }
-.sort-button { padding: 6px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--line-2); color: var(--txt-2); font: inherit; font-size: 10.5px; cursor: pointer; white-space: nowrap; }
+.sort-button { padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--line-2); color: var(--txt-2); font: inherit; font-size: 10.5px; cursor: pointer; white-space: nowrap; }
 .sort-button:hover { color: var(--teal); border-color: var(--teal); }
 .chart-sort-controls:empty { display: none; }
-.table-top-select { padding: 6px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--line-2); color: var(--txt); font: inherit; font-size: 10.5px; cursor: pointer; }
+.table-top-select { padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--line-2); color: var(--txt); font: inherit; font-size: 10.5px; cursor: pointer; }
 .cw { position: relative; height: 270px; }
 
 /* Tables */
@@ -301,7 +343,7 @@ table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 th {
   text-align: left; padding: 8px 9px; border-bottom: 1.5px solid var(--line);
   color: var(--txt-3); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px;
-  font-weight: 650; white-space: nowrap; cursor: pointer; user-select: none;
+  font-weight: 600; white-space: nowrap; cursor: pointer; user-select: none;
 }
 th:hover { color: var(--txt); }
 th.n, td.n { text-align: right; }
@@ -310,7 +352,7 @@ tbody tr:hover { background: var(--line-2); }
 .scroll { max-height: 430px; overflow-y: auto; }
 .mono { font-variant-numeric: tabular-nums; }
 
-.pill { display: inline-block; padding: 1.5px 7px; border-radius: 20px; font-size: 10.5px; font-weight: 650; }
+.pill { display: inline-block; padding: 1.5px 7px; border-radius: 18px; font-size: 10.5px; font-weight: 600; }
 .p-won { background: #DCFCE7; color: #166534; }
 .p-lost { background: #FEE2E2; color: #991B1B; }
 .p-open { background: #DBEAFE; color: #1E40AF; }
@@ -321,48 +363,127 @@ tbody tr:hover { background: var(--line-2); }
 .fname { width: 132px; font-size: 11px; font-weight: 600; text-align: right; color: var(--txt-2); }
 .ftrack { flex: 1; background: var(--line-2); border-radius: 5px; height: 26px; position: relative; overflow: hidden; }
 .ffill { height: 100%; border-radius: 5px; display: flex; align-items: center; padding: 0 10px;
-  color: #fff; font-size: 11.5px; font-weight: 650; }
+  color: #fff; font-size: 11.5px; font-weight: 600; }
 .fmeta { width: 150px; font-size: 11px; color: var(--txt-2); text-align: right; }
 
-/* Login */
-.login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-.login-card {
-  max-width: 380px; width: 100%; padding: 32px;
-  border: 1px solid var(--line); border-radius: 12px;
-  background: var(--card);
+/* ==========================================================================
+   Login - full Apple gallery treatment.
+   One of two surfaces (with the presentation shells) that gets the low-density
+   marketing rhythm rather than the working dashboard density.
+   ========================================================================== */
+.login-wrap {
+  min-height: 100dvh;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  background: var(--bg);
 }
-.login-card h2 { margin: 0 0 6px; font-size: 20px; font-weight: 500; }
-.login-card p { margin: 0 0 24px; color: var(--txt-2); font-size: 14px; }
-.login-mode-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin: 12px 0 16px; border: 1px solid var(--line); border-radius: 9px; background: rgba(8,18,44,.42); }
-.login-mode-tabs button { border: 0; border-radius: 6px; padding: 9px 10px; color: var(--txt-2); background: transparent; cursor: pointer; font-weight: 700; }
-.login-mode-tabs button.on { color: #fff; background: linear-gradient(135deg, #087BFF, #00BFCB); }
-.login-form { display: grid; gap: 10px; margin-bottom: 14px; }
-.login-form input { width: 100%; box-sizing: border-box; padding: 11px 12px; color: var(--txt); background: var(--input-bg, rgba(8,18,44,.72)); border: 1px solid var(--line); border-radius: 7px; outline: none; }
-.login-form input:focus { border-color: var(--teal); box-shadow: 0 0 0 2px rgba(0,216,216,.12); }
-.login-divider { display: flex; align-items: center; gap: 10px; margin: 12px 0; color: var(--txt-3); font-size: 11px; }
+.login-card {
+  max-width: 420px; width: 100%;
+  padding: 48px 40px;                    /* spacing.xxl / spacing.xl */
+  border: 1px solid var(--line);         /* hairline, not a shadow */
+  border-radius: var(--r);               /* rounded.lg 18px */
+  background: var(--card);
+  text-align: left;
+}
+.login-logo { display: block; width: 116px; height: auto; margin: 0 0 32px; }
+/* NOTE: the supplied mark carries a white wordmark, so it loses its text on the
+   light canvas. Left as-is: brand assets are not altered without approval. */
+
+.login-card h2 {
+  margin: 0 0 8px;
+  font-size: 40px; font-weight: 600;     /* typography.display-lg */
+  line-height: 1.1; letter-spacing: -0.28px;
+  color: var(--txt);
+}
+.login-card p {
+  margin: 0 0 32px;
+  font-size: 17px; font-weight: 400;     /* typography.body - 17px, not 16 */
+  line-height: 1.47; letter-spacing: -0.374px;
+  color: var(--txt-2);
+}
+
+/* Segmented control - configurator-chip grammar: pill track, pill thumb */
+.login-mode-tabs {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+  padding: 4px; margin: 0 0 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--pearl);
+}
+.login-mode-tabs button {
+  border: 0; border-radius: var(--r-pill);
+  padding: 10px 12px;
+  font-size: 14px; font-weight: 400; letter-spacing: -0.224px;
+  color: var(--txt-2); background: transparent; cursor: pointer;
+  transition: color .2s cubic-bezier(.16,1,.3,1), background .2s cubic-bezier(.16,1,.3,1);
+}
+.login-mode-tabs button:hover { color: var(--txt); }
+.login-mode-tabs button.on { color: #fff; background: var(--blue); font-weight: 600; }
+.login-mode-tabs button:active { transform: scale(.95); }
+
+.login-form { display: grid; gap: 12px; margin-bottom: 20px; }
+.login-form input {
+  width: 100%; box-sizing: border-box;
+  height: 44px; padding: 12px 20px;      /* component.search-input */
+  font-size: 17px; letter-spacing: -0.374px;
+  color: var(--txt); background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);          /* the signature pill */
+  outline: none;
+  transition: border-color .2s cubic-bezier(.16,1,.3,1);
+}
+.login-form input::placeholder { color: var(--txt-3); }
+.login-form input:focus {
+  border-color: var(--blue);
+  outline: 2px solid var(--blue-focus);  /* Apple's focus grammar */
+  outline-offset: 1px;
+}
+.login-form .btn-primary {
+  width: 100%; height: 44px; margin-top: 4px;
+  border: 0; border-radius: var(--r-pill);
+  background: var(--blue); color: #fff;
+  font-size: 17px; font-weight: 400; letter-spacing: -0.374px;
+  cursor: pointer;
+  transition: transform .2s cubic-bezier(.16,1,.3,1);
+}
+.login-form .btn-primary:hover:not(:disabled) { background: var(--blue-focus); }
+.login-form .btn-primary:active:not(:disabled) { transform: scale(.95); }
+.login-form .btn-primary:disabled { background: var(--line); color: var(--txt-3); cursor: default; }
+
+.login-divider {
+  display: flex; align-items: center; gap: 12px; margin: 20px 0;
+  color: var(--txt-3); font-size: 14px; letter-spacing: -0.224px;
+}
 .login-divider::before, .login-divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.login-theme { position: fixed; top: 24px; right: 24px; z-index: 5; }
+
 .field { margin-bottom: 16px; }
-.field label { display: block; font-size: 12px; color: var(--txt-2); margin-bottom: 6px; }
+.field label { display: block; font-size: 14px; color: var(--txt-2); margin-bottom: 8px; letter-spacing: -0.224px; }
 .field input {
-  width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
-  background: var(--bg); color: var(--txt); font-size: 15px; outline: none;
+  width: 100%; height: 44px; padding: 12px 20px;
+  border: 1px solid var(--line); border-radius: var(--r-pill);
+  background: var(--card); color: var(--txt); font-size: 17px; outline: none;
 }
 .btn {
-  width: 100%; padding: 11px; border: none; border-radius: 10px;
-  background: var(--ink); color: #fff; font-size: 15px; font-weight: 500; cursor: pointer;
+  width: 100%; padding: 11px 22px; border: none;
+  border-radius: var(--r-pill);
+  background: var(--blue); color: #fff;
+  font-size: 17px; font-weight: 400; letter-spacing: -0.374px; cursor: pointer;
+  transition: transform .2s cubic-bezier(.16,1,.3,1);
 }
-.btn:hover { opacity: 0.9; }
+.btn:hover { background: var(--blue-focus); }
+.btn:active { transform: scale(.95); }
 .btn-secondary {
-  background: transparent; color: var(--txt); border: 1px solid var(--line);
-  width: auto; padding: 8px 16px; font-size: 13px;
+  background: var(--pearl); color: var(--txt-2); border: 1px solid var(--line);
+  width: auto; padding: 8px 14px; font-size: 14px; border-radius: var(--r-md);
 }
 
 /* Gallery */
 .gallery-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
-.gallery-header h2 { font-size: 20px; font-weight: 500; margin: 0; }
+.gallery-header h2 { font-size: 20px; font-weight: 600; margin: 0; }
 .template-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
 .template-card {
-  border: 1px solid var(--line); border-radius: 12px;
+  border: 1px solid var(--line); border-radius: 11px;
   background: var(--card); overflow: hidden; cursor: pointer;
   transition: box-shadow 0.15s, transform 0.15s;
 }
@@ -373,15 +494,15 @@ tbody tr:hover { background: var(--line-2); }
 }
 .mini-kpi { display: flex; align-items: center; gap: 8px; }
 .mini-dot { width: 8px; height: 8px; border-radius: 50%; }
-.mini-bar { flex: 1; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
-.mini-fill { height: 100%; border-radius: 3px; }
+.mini-bar { flex: 1; height: 6px; background: var(--line); border-radius: 5px; overflow: hidden; }
+.mini-fill { height: 100%; border-radius: 5px; }
 .template-info { padding: 16px; }
 .template-info h3 { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
 .template-info p { font-size: 12.5px; color: var(--txt-2); margin: 0 0 12px; line-height: 1.4; }
 .tags { display: flex; gap: 6px; flex-wrap: wrap; }
 .tag {
   font-size: 11px; font-weight: 600; padding: 3px 8px;
-  border-radius: 6px; background: var(--line-2); color: var(--txt-2);
+  border-radius: 8px; background: var(--line-2); color: var(--txt-2);
 }
 
 /* App shell */
@@ -390,10 +511,10 @@ tbody tr:hover { background: var(--line-2); }
   background: var(--card); border-bottom: 1px solid var(--line);
   padding: 0 18px; height: 56px; display: flex; align-items: center; justify-content: space-between;
 }
-.top-nav .brand { font-weight: 650; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+.top-nav .brand { font-weight: 600; font-size: 15px; display: flex; align-items: center; gap: 8px; }
 .top-nav .brand .logo {
   width: 28px; height: 28px; background: var(--ink); color: #fff;
-  border-radius: 7px; display: grid; place-items: center; font-size: 13px; font-weight: 700;
+  border-radius: 8px; display: grid; place-items: center; font-size: 13px; font-weight: 700;
 }
 .user-pill {
   display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--txt-2);
@@ -411,28 +532,28 @@ tbody tr:hover { background: var(--line-2); }
 .heatmap { display: flex; flex-direction: column; gap: 2px; }
 .heatmap-row { display: flex; align-items: center; gap: 2px; }
 .heatmap-label { width: 80px; font-size: 11px; color: var(--txt-2); text-align: right; padding-right: 8px; }
-.heatmap-cell { flex: 1; height: 36px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #fff; min-width: 60px; }
+.heatmap-cell { flex: 1; height: 36px; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #fff; min-width: 60px; }
 .heatmap-col-header { flex: 1; text-align: center; font-size: 10px; color: var(--txt-3); font-weight: 600; text-transform: uppercase; min-width: 60px; }
 .heatmap-legend { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 11px; color: var(--txt-2); }
-.heatmap-gradient { width: 120px; height: 8px; border-radius: 4px; background: linear-gradient(to right, #DC2626, #F59E0B, #10B981); }
+.heatmap-gradient { width: 120px; height: 8px; border-radius: 5px; background: linear-gradient(to right, #DC2626, #F59E0B, #10B981); }
 
 /* Insight cards */
 .insight-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--gap); margin-bottom: var(--gap); }
 .insight { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; border-left: 3px solid var(--red); }
-.insight h4 { font-size: 12px; font-weight: 650; color: var(--txt); margin-bottom: 6px; }
+.insight h4 { font-size: 12px; font-weight: 600; color: var(--txt); margin-bottom: 6px; }
 .insight p { font-size: 12px; color: var(--txt-2); line-height: 1.5; margin-bottom: 8px; }
-.insight .action { background: var(--line-2); border-radius: 6px; padding: 10px 12px; font-size: 11.5px; color: var(--txt-2); line-height: 1.5; }
+.insight .action { background: var(--line-2); border-radius: 8px; padding: 10px 12px; font-size: 11.5px; color: var(--txt-2); line-height: 1.5; }
 .insight.warn { border-left-color: var(--amber); }
 .insight.info { border-left-color: var(--blue); }
 .insight.ok { border-left-color: var(--teal); }
 
 /* Progress bars in tables */
 .td-bar { display: flex; align-items: center; gap: 8px; }
-.td-bar-track { width: 60px; height: 6px; background: var(--line-2); border-radius: 3px; overflow: hidden; }
-.td-bar-fill { height: 100%; border-radius: 3px; }
+.td-bar-track { width: 60px; height: 6px; background: var(--line-2); border-radius: 5px; overflow: hidden; }
+.td-bar-fill { height: 100%; border-radius: 5px; }
 
 /* Pills */
-.pill-sm { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; }
+.pill-sm { display: inline-block; padding: 1px 6px; border-radius: 5px; font-size: 10px; font-weight: 700; }
 .pg { background: #DCFCE7; color: #166534; }
 .py { background: #FEF3C7; color: #92400E; }
 .pr { background: #FEE2E2; color: #991B1B; }
@@ -440,7 +561,7 @@ tbody tr:hover { background: var(--line-2); }
 
 /* Section headers */
 .sec-head { background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--teal); border-radius: var(--r); padding: 13px 17px; margin-bottom: var(--gap); }
-.sec-head h2 { font-size: 14.5px; font-weight: 650; margin-bottom: 3px; }
+.sec-head h2 { font-size: 14.5px; font-weight: 600; margin-bottom: 3px; }
 .sec-head p { font-size: 12.5px; color: var(--txt-2); }
 
 /* Bubble chart container */
@@ -496,7 +617,7 @@ tbody tr:hover { background: var(--line-2); }
 .comparison-badge {
   display: inline-flex; align-items: center; white-space: nowrap;
   padding: 2px 7px; border-radius: 999px; font-size: 10.5px; line-height: 1.35;
-  font-weight: 750; letter-spacing: .1px; cursor: help;
+  font-weight: 700; letter-spacing: .1px; cursor: help;
   border: 1px solid currentColor; background: color-mix(in srgb, currentColor 10%, transparent);
 }
 .comparison-up { color: #21D69B; }
@@ -568,7 +689,7 @@ tbody tr:hover { background: var(--line-2); }
   transition: width .3s cubic-bezier(.4, 0, .2, 1);
 }
 
-.barlist-val { font-size: 11.5px; font-weight: 650; white-space: nowrap; }
+.barlist-val { font-size: 11.5px; font-weight: 600; white-space: nowrap; }
 .barlist-val.in  { color: #fff; }
 .barlist-val.out { margin-left: 8px; color: var(--txt-2); }
 
@@ -602,7 +723,7 @@ tbody tr:hover { background: var(--line-2); }
 }
 
 .heatmap-cell {
-  border-radius: 7px;
+  border-radius: 8px;
   padding: 14px 8px;
   display: flex;
   flex-direction: column;
@@ -614,7 +735,7 @@ tbody tr:hover { background: var(--line-2); }
 }
 .heatmap-cell:hover { transform: scale(1.03); }
 
-.heatmap-val   { font-size: 17px; font-weight: 750; color: #fff; line-height: 1; }
+.heatmap-val   { font-size: 17px; font-weight: 700; color: #fff; line-height: 1; }
 .heatmap-count { font-size: 10.5px; color: rgba(255,255,255,.82); }
 .heatmap-empty { font-size: 10.5px; color: var(--txt-3); font-style: italic; }
 
@@ -654,7 +775,7 @@ tbody tr:hover { background: var(--line-2); }
   justify-content: center;
   pointer-events: none;
 }
-.donut-total { font-size: 21px; font-weight: 750; letter-spacing: -.5px; }
+.donut-total { font-size: 21px; font-weight: 700; letter-spacing: -.5px; }
 .donut-total-label {
   font-size: 10px;
   text-transform: uppercase;
@@ -671,9 +792,9 @@ tbody tr:hover { background: var(--line-2); }
   gap: 9px;
   font-size: 12px;
 }
-.donut-legend-row i { width: 10px; height: 10px; border-radius: 3px; }
+.donut-legend-row i { width: 10px; height: 10px; border-radius: 5px; }
 .donut-legend-label { color: var(--txt-2); }
-.donut-legend-val   { font-weight: 650; font-variant-numeric: tabular-nums; }
+.donut-legend-val   { font-weight: 600; font-variant-numeric: tabular-nums; }
 .donut-legend-pct   { color: var(--txt-3); font-size: 11px; min-width: 30px; text-align: right; }
 
 /* ---- Mini bars in table cells ---- */
@@ -681,11 +802,11 @@ tbody tr:hover { background: var(--line-2); }
 .minibar-track {
   width: 54px; height: 5px;
   background: var(--line-2);
-  border-radius: 3px;
+  border-radius: 5px;
   overflow: hidden;
   flex-shrink: 0;
 }
-.minibar-fill { height: 100%; border-radius: 3px; }
+.minibar-fill { height: 100%; border-radius: 5px; }
 .minibar-label { font-size: 11.5px; font-variant-numeric: tabular-nums; }
 
 /* ---- Pills ---- */
@@ -694,7 +815,7 @@ tbody tr:hover { background: var(--line-2); }
   padding: 2px 8px;
   border-radius: 999px;
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 600;
   white-space: nowrap;
 }
 .pill-good    { background: #DCFCE7; color: #166534; }
@@ -704,7 +825,7 @@ tbody tr:hover { background: var(--line-2); }
    still reads as a pill chip, not a native button wearing pill padding. */
 .pill-link {
   border: 0; background: var(--line-2); color: var(--txt-2);
-  font: inherit; font-size: 11px; font-weight: 650; cursor: pointer;
+  font: inherit; font-size: 11px; font-weight: 600; cursor: pointer;
 }
 .pill-link:hover { background: color-mix(in srgb, var(--teal) 16%, var(--line-2)); color: var(--teal); }
 .pill-bad     { background: #FEE2E2; color: #991B1B; }
@@ -766,7 +887,7 @@ tr.sev-med  td:first-child { box-shadow: inset 3px 0 0 var(--amber); }
   font-size: 12.5px;
   color: var(--txt-3);
   background: var(--line-2);
-  border-radius: 7px;
+  border-radius: 8px;
 }
 
 /* ---- Card footnote + page footnote ---- */
@@ -796,45 +917,45 @@ tr.sev-med  td:first-child { box-shadow: inset 3px 0 0 var(--amber); }
 .chart-scroll-inner { position: relative; }
 
 .chart-scroll::-webkit-scrollbar { height: 8px; }
-.chart-scroll::-webkit-scrollbar-track { background: var(--line-2); border-radius: 4px; }
-.chart-scroll::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+.chart-scroll::-webkit-scrollbar-track { background: var(--line-2); border-radius: 5px; }
+.chart-scroll::-webkit-scrollbar-thumb { background: var(--line); border-radius: 5px; }
 
 /* ============================================================
    TestMu BI theme — shared across every page
    ============================================================ */
 :root {
-  --ink: #070D22;
-  --ink-2: #10183A;
-  --line: #26385D;
-  --line-2: #172443;
-  --bg: #060B1D;
-  --card: #101A35;
-  --txt: #F4F8FF;
-  --txt-2: #A9BEDB;
-  --txt-3: #7890B4;
-  --teal: #00D8D8;
-  --blue: #087BFF;
-  --amber: #FFB44A;
-  --red: #FF4778;
-  --green: #21D69B;
-  --violet: #8257FF;
-  --pink: #FF2F89;
-  --slate: #7890B4;
+  /* Dark mode = Apple's near-black product tiles, not a neon inversion.
+     Action Blue is swapped for Sky Link Blue per the source system's rule:
+     #0066cc disappears against a dark tile. */
+  --blue:       #2997FF;   /* primary-on-dark */
+  --blue-focus: #2997FF;
+  --teal:       #2997FF;
+
+  --bg:      #000000;      /* surface-black - true void */
+  --card:    #1D1D1F;
+  --pearl:   #272729;      /* surface-tile-1 */
+
+  --txt:    #FFFFFF;       /* body-on-dark */
+  --txt-2:  #CCCCCC;       /* body-muted */
+  --txt-3:  #8E8E93;       /* derived tertiary */
+
+  --line:   #38383A;       /* derived hairline for dark */
+  --line-2: #272729;       /* surface-tile-1 as soft divider */
+
+  --ink:    #000000;
+  --ink-2:  #272729;
+
+  --green:  #30D158;
+  --red:    #FF453A;
+  --amber:  #FF9F0A;
+  --violet: #5E5CE6;
+  --pink:   #FF375F;
+  --slate:  #8E8E93;
 }
 body {
-  background:
-    radial-gradient(circle at 88% 2%, rgba(0,216,216,.13), transparent 25rem),
-    radial-gradient(circle at 5% 90%, rgba(8,123,255,.11), transparent 28rem),
-    linear-gradient(rgba(64,110,170,.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(64,110,170,.035) 1px, transparent 1px),
-    var(--bg);
-  background-size: auto, auto, 48px 48px, 48px 48px, auto;
-  animation: app-background-drift 22s ease-in-out infinite alternate;
-}
-@keyframes app-background-drift {
-  0% { background-position: 0 0, 0 0, 0 0, 0 0, 0 0; }
-  50% { background-position: -5vw 5vh, 6vw -4vh, 12px 18px, 12px 18px, 0 0; }
-  100% { background-position: -10vw 10vh, 12vw -8vh, 24px 36px, 24px 36px, 0 0; }
+  /* Flat canvas. The source system uses surface change as the divider and
+     carries atmosphere in photography, never in a CSS gradient. */
+  background: var(--bg);
 }
 .wrap { max-width: 1600px; }
 .top-nav {
@@ -843,51 +964,51 @@ body {
 }
 .top-nav .brand { color: #fff; font-size: 16px; letter-spacing: .2px; }
 .brand-logo { width: 42px; height: 42px; object-fit: contain; }
-.login-logo { width: 150px; height: 110px; object-fit: contain; display: block; margin: 0 auto 8px; }
+.login-logo { width: 132px; height: auto; object-fit: contain; display: block; margin: 0 0 32px; }
 header.top {
   background: linear-gradient(135deg, #0B1533 0%, #111B43 58%, #082A46 100%);
   border: 1px solid #263D68; box-shadow: 0 12px 35px rgba(0,0,0,.22);
 }
 .card, .kpi, .template-card, .login-card, .sec-head {
-  background: linear-gradient(145deg, rgba(17,28,58,.91), rgba(11,20,45,.88));
-  border-color: var(--line); box-shadow: 0 12px 28px rgba(0,0,0,.16);
-  backdrop-filter: blur(16px) saturate(1.15);
+  background: var(--card);
+  border-color: var(--line);
+  box-shadow: none;
 }
-.card:hover, .kpi:hover { border-color: #36517E; }
+.card:hover, .kpi:hover { border-color: var(--txt-3); }
 .kpi { position: relative; overflow: hidden; border-top-width: 1px !important; }
 .kpi::before {
   content: ''; position: absolute; left: 0; top: 0; width: 100%; height: 3px;
-  background: linear-gradient(90deg, var(--blue), var(--teal));
+  background: var(--blue);
 }
 .kpi.acc-red::before { background: linear-gradient(90deg, #FF4778, #FF7A59); }
 .kpi.acc-amber::before { background: linear-gradient(90deg, #FFB44A, #FFE45C); }
 .kpi.acc-green::before, .kpi.acc-teal::before { background: linear-gradient(90deg, #00BFA6, #00E5E5); }
 .kpi.acc-violet::before { background: linear-gradient(90deg, #8257FF, #C94BFF); }
-.kpi .vl { color: #fff; text-shadow: 0 0 24px rgba(0,216,216,.08); }
+.kpi .vl { color: #fff;  }
 .template-preview { background: linear-gradient(135deg, #101C3B, #092B49); }
-.template-card:hover { box-shadow: 0 16px 38px rgba(0,123,255,.16); border-color: #087BFF; }
+.template-card:hover {  border-color: var(--blue); }
 .template-card { position: relative; overflow: hidden; }
 .template-card::before {
   content: ''; position: absolute; left: 0; top: 0; width: 100%; height: 3px; z-index: 2;
-  background: linear-gradient(90deg, #00D8D8, #087BFF);
+  background: var(--blue);
 }
 .template-card:nth-child(3n+2)::before { background: linear-gradient(90deg, #8257FF, #C94BFF); }
 .template-card:nth-child(3n+3)::before { background: linear-gradient(90deg, #FF2F89, #FF7AB6); }
 .template-preview { position: relative; }
 .template-preview::after {
   content: ''; position: absolute; inset: 0;
-  background: radial-gradient(circle at 85% 12%, rgba(0,216,216,.16), transparent 60%);
+  
   pointer-events: none;
 }
-.mini-fill { box-shadow: 0 0 10px currentColor; }
-.mini-kpi:nth-child(1) .mini-fill { color: #00D8D8; }
-.mini-kpi:nth-child(2) .mini-fill { color: #087BFF; }
+.mini-fill {  }
+.mini-kpi:nth-child(1) .mini-fill { color: var(--blue); }
+.mini-kpi:nth-child(2) .mini-fill { color: var(--blue); }
 .mini-kpi:nth-child(3) .mini-fill { color: #FFB44A; }
 .tag, .pill-neutral { background: #172B50; color: #9FC5FF; }
 nav.tabs { background: #0B1430; border-color: var(--line); }
 nav.tabs button:hover { background: #172443; color: #fff; }
-nav.tabs button.on { background: linear-gradient(135deg, #087BFF, #00BFCF); box-shadow: 0 5px 18px rgba(0,153,255,.24); }
-.btn-primary, .btn { background: linear-gradient(135deg, #087BFF, #00BFCF); color: #fff; border: 0; }
+nav.tabs button.on { background: var(--blue);  }
+.btn-primary, .btn { background: var(--blue); color: #fff; border: 0; }
 .btn-secondary { color: var(--txt); border-color: var(--line); background: #111D3B; }
 .btn-secondary:hover { border-color: var(--teal); }
 table th { color: #7890B4; border-color: var(--line); }
@@ -896,7 +1017,7 @@ tbody tr:hover { background: rgba(8,123,255,.08); }
 .card table thead th { background: #101A35; }
 .ftrack, .minibar-track, .td-bar-track { background: #1B2A4A; }
 .intro p, .card .hint { color: #8299BA; }
-.floating-filter-button { background: linear-gradient(145deg, #087BFF, #00D8D8); box-shadow: 0 10px 30px rgba(0,153,255,.35); }
+.floating-filter-button { background: var(--blue);  }
 .floating-filter-panel { background: #0A1330; border-color: #2A4270; }
 .ms-menu { background: #101A35; color: var(--txt); border-color: #34507E; }
 .ms-search { background: #09132D; color: #fff; border-color: #2A416D; }
@@ -914,19 +1035,19 @@ input, select, textarea { color-scheme: dark; }
 .card { position: relative; }
 .card::after {
   content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
-  background: linear-gradient(135deg, rgba(8,123,255,.08), transparent 28%, transparent 72%, rgba(0,216,216,.05));
+  
 }
 .card > * { position: relative; z-index: 1; }
 .cw canvas, .chart-scroll canvas, .combo-wrap canvas, .bubble-wrap canvas {
   filter: saturate(1.12) contrast(1.03);
 }
-.donut-svg svg { filter: drop-shadow(0 0 8px rgba(0,216,216,.22)); overflow: visible; }
+.donut-svg svg {  overflow: visible; }
 .donut-center {
   background: radial-gradient(circle, rgba(8,123,255,.12), transparent 68%);
   border-radius: 50%;
 }
-.donut-total { color: #fff; text-shadow: 0 0 14px rgba(0,216,216,.45); }
-.donut-legend-row i { box-shadow: 0 0 8px currentColor; }
+.donut-total { color: #fff;  }
+.donut-legend-row i {  }
 .card-head h3 { color: #F8FBFF; letter-spacing: .1px; }
 
 /* Modern metric charts */
@@ -951,28 +1072,28 @@ input, select, textarea { color-scheme: dark; }
 .concentric-center b { font-size: 23px; }.concentric-center span { color: var(--txt-3); font-size: 10px; }
 .concentric-legend { display: grid; gap: 12px; min-width: 205px; }
 .concentric-legend > div { display: grid; grid-template-columns: 10px 1fr auto; gap: 5px 8px; align-items: center; }
-.concentric-legend i { width: 9px; height: 9px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
+.concentric-legend i { width: 9px; height: 9px; border-radius: 50%;  }
 .concentric-legend span { color: var(--txt-2); font-size: 11px; }.concentric-legend b { font-size: 12px; }
 .concentric-legend small { grid-column: 2 / 4; color: var(--txt-3); font-size: 10px; }
 .neon-columns { min-height: 245px; display: flex; align-items: flex-end; justify-content: center; gap: clamp(14px, 4vw, 45px); padding: 25px 18px 12px; }
 .neon-column-item { height: 210px; min-width: 74px; display: grid; grid-template-rows: 24px 1fr 23px 18px; justify-items: center; text-align: center; }
 .neon-column-item > b { font-size: 12px; color: #fff; }.neon-column-item > span { font-size: 11px; color: var(--txt-2); }
 .neon-column-item > small { font-size: 9.5px; color: var(--txt-3); white-space: nowrap; }
-.neon-column-track { width: 42px; height: 100%; display: flex; align-items: flex-end; border-radius: 8px 8px 3px 3px; background: #172443; overflow: hidden; }
-.neon-column-track > div { width: 100%; border-radius: 8px 8px 2px 2px; background: linear-gradient(180deg, color-mix(in srgb, var(--column-color) 65%, white), var(--column-color)); box-shadow: 0 0 16px var(--column-color); }
+.neon-column-track { width: 42px; height: 100%; display: flex; align-items: flex-end; border-radius: 8px 8px 5px 5px; background: #172443; overflow: hidden; }
+.neon-column-track > div { width: 100%; border-radius: 8px 8px 5px 5px; background: linear-gradient(180deg, color-mix(in srgb, var(--column-color) 65%, white), var(--column-color));  }
 .lollipop-list { min-height: 235px; display: grid; align-content: center; gap: 19px; padding: 18px 12px; }
 .lollipop-row { display: grid; grid-template-columns: minmax(90px, 130px) 1fr 50px 62px; gap: 11px; align-items: center; }
 .lollipop-row > span { text-align: right; color: var(--txt-2); font-size: 11px; }.lollipop-row > b { font-size: 12px; }
 .lollipop-row > small { color: var(--txt-3); font-size: 10px; }
 .lollipop-track { height: 2px; background: #26385D; }
-.lollipop-track i { position: relative; display: block; height: 2px; background: var(--dot-color); box-shadow: 0 0 9px var(--dot-color); }
-.lollipop-track i::after { content: ''; position: absolute; right: -6px; top: -5px; width: 12px; height: 12px; border: 2px solid #DDFBFF; border-radius: 50%; background: var(--dot-color); box-shadow: 0 0 12px var(--dot-color); }
+.lollipop-track i { position: relative; display: block; height: 2px; background: var(--dot-color);  }
+.lollipop-track i::after { content: ''; position: absolute; right: -6px; top: -5px; width: 12px; height: 12px; border: 2px solid var(--blue); border-radius: 50%; background: var(--dot-color);  }
 @media (max-width: 700px) { .lollipop-row { grid-template-columns: 86px 1fr 44px; }.lollipop-row small { display: none; }.neon-columns { overflow-x: auto; justify-content: flex-start; } }
 .interactive-mark { cursor: help; transition: transform .16s ease, filter .16s ease, background-color .16s ease; outline: none; }
 .interactive-mark:hover, .interactive-mark:focus-visible { transform: translateY(-2px); filter: brightness(1.16) saturate(1.12); }
-.interactive-mark:focus-visible { box-shadow: 0 0 0 2px #00D8D8; border-radius: 6px; }
-.barlist-row.interactive-mark:hover { background: rgba(8,123,255,.08); border-radius: 6px; }
-.heatmap-cell.interactive-mark:hover { box-shadow: inset 0 0 0 2px #DDFBFF, 0 0 15px rgba(0,216,216,.25); }
+.interactive-mark:focus-visible { box-shadow: 0 0 0 2px var(--blue); border-radius: 8px; }
+.barlist-row.interactive-mark:hover { background: rgba(8,123,255,.08); border-radius: 8px; }
+.heatmap-cell.interactive-mark:hover { box-shadow: inset 0 0 0 2px var(--blue), 0 0 15px rgba(0,102,204,.25); }
 .cw canvas, .chart-scroll canvas, .combo-wrap canvas, .bubble-wrap canvas { cursor: crosshair; }
 
 .theme-toggle {
@@ -1011,13 +1132,13 @@ html[data-theme="light"] .top-nav { background: rgba(255,255,255,.94); box-shado
 html[data-theme="light"] .top-nav .brand, html[data-theme="light"] .top-nav .brand span { color: #0F172A; }
 html[data-theme="light"] header.top { color: #0F172A; background: linear-gradient(135deg, #FFFFFF, #EDF7FF); border-color: #D4E4F2; box-shadow: 0 10px 28px rgba(31,55,86,.09); }
 html[data-theme="light"] .sub, html[data-theme="light"] .asof, html[data-theme="light"] .fg label { color: #64748B; }
-html[data-theme="light"] .asof b, html[data-theme="light"] .scope b { color: #087BFF; }
+html[data-theme="light"] .asof b, html[data-theme="light"] .scope b { color: var(--blue); }
 html[data-theme="light"] .card, html[data-theme="light"] .kpi,
 html[data-theme="light"] .template-card, html[data-theme="light"] .login-card,
-html[data-theme="light"] .sec-head { background: rgba(255,255,255,.88); border-color: #D6E0ED; box-shadow: 0 9px 25px rgba(31,55,86,.07); backdrop-filter: blur(16px) saturate(1.08); }
+html[data-theme="light"] .sec-head { background: var(--card); border-color: var(--line); box-shadow: none; }
 html[data-theme="light"] .void-orbit-stage { opacity: .27; filter: saturate(.9); }
 html[data-theme="light"] .void-particles > i { opacity: .32; }
-html[data-theme="light"] .card::after { background: linear-gradient(135deg, rgba(8,123,255,.035), transparent 35%, rgba(0,216,216,.025)); }
+html[data-theme="light"] .card::after {  }
 html[data-theme="light"] .kpi .vl, html[data-theme="light"] .card-head h3 { color: #0F172A; text-shadow: none; }
 html[data-theme="light"] nav.tabs { background: #FFFFFF; }
 html[data-theme="light"] nav.tabs button.on { color: #fff; }
@@ -1055,17 +1176,17 @@ html[data-theme="light"] input, html[data-theme="light"] select, html[data-theme
 /* TV presentation layer */
 .dashboard-actions { display: flex; align-items: center; gap: 14px; }
 .present-button {
-  padding: 8px 14px; border: 1px solid rgba(255,255,255,.22); border-radius: 7px;
-  color: #fff; background: linear-gradient(135deg, #087BFF, #00BFCF); font: inherit;
+  padding: 8px 14px; border: 1px solid rgba(255,255,255,.22); border-radius: 8px;
+  color: #fff; background: var(--blue); font: inherit;
   font-size: 12px; font-weight: 700; cursor: pointer; box-shadow: 0 7px 20px rgba(0,153,255,.2);
 }
 .present-launcher { position: relative; }
 .present-menu {
   position: absolute; right: 0; top: calc(100% + 7px); z-index: 1100; width: 260px;
-  padding: 6px; border: 1px solid var(--line); border-radius: 9px; background: var(--card);
+  padding: 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--card);
   box-shadow: 0 14px 35px rgba(0,0,0,.22);
 }
-.present-menu button { width: 100%; padding: 10px 11px; display: grid; gap: 2px; text-align: left; border: 0; border-radius: 6px; background: transparent; color: var(--txt); cursor: pointer; }
+.present-menu button { width: 100%; padding: 10px 11px; display: grid; gap: 2px; text-align: left; border: 0; border-radius: 8px; background: transparent; color: var(--txt); cursor: pointer; }
 .present-menu button:hover { background: var(--line-2); }.present-menu b { font-size: 12px; }.present-menu span { color: var(--txt-3); font-size: 10.5px; }
 html[data-theme="light"] .present-button { color: #fff; }
 .presentation-loading { min-height: 100vh; display: grid; place-items: center; background: transparent; color: var(--txt-2); font-size: 20px; }
@@ -1078,17 +1199,17 @@ html[data-theme="light"] .present-button { color: #fff; }
 .presentation-brand > div, .presentation-clock { display: grid; }.presentation-brand b { font-size: 17px; }.presentation-brand span { color: var(--txt-2); font-size: 12px; }
 .presentation-clock { text-align: right; }.presentation-clock b { font-size: 18px; }.presentation-clock span { color: var(--txt-3); font-size: 11px; }
 .presentation-view-label { position: absolute; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; white-space: nowrap; }
-.presentation-view-label span { padding: 4px 8px; border: 1px solid color-mix(in srgb, var(--teal) 55%, var(--line)); border-radius: 999px; color: var(--teal); background: color-mix(in srgb, var(--teal) 10%, transparent); font-size: 9px; font-weight: 750; letter-spacing: .7px; }
+.presentation-view-label span { padding: 4px 8px; border: 1px solid color-mix(in srgb, var(--teal) 55%, var(--line)); border-radius: 999px; color: var(--teal); background: color-mix(in srgb, var(--teal) 10%, transparent); font-size: 9px; font-weight: 700; letter-spacing: .7px; }
 .presentation-view-label b { font-size: 16px; letter-spacing: -.2px; }
 .presentation-slide { min-height: 0; overflow: hidden; padding: 22px 26px; }
 .presentation-kpi-strip { padding: 12px 26px 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
-.presentation-kpi-strip .present-kpi { padding: 13px 18px; gap: 3px; border-radius: 9px; }
+.presentation-kpi-strip .present-kpi { padding: 13px 18px; gap: 3px; border-radius: 8px; }
 .presentation-kpi-strip .present-kpi > span { font-size: 9px; letter-spacing: .7px; }
 .presentation-kpi-strip .present-kpi > b { font-size: clamp(21px, 2.2vw, 34px); letter-spacing: -.8px; }
 .presentation-kpi-strip .present-kpi > small { font-size: 9.5px; }
 .presentation-grid { height: 100%; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 18px; }
 .present-card, .present-kpi {
-  min-height: 0; border: 1px solid var(--line); border-radius: 13px;
+  min-height: 0; border: 1px solid var(--line); border-radius: 11px;
   background: linear-gradient(145deg, color-mix(in srgb, var(--card) 96%, var(--blue)), var(--card));
   box-shadow: 0 15px 38px rgba(0,0,0,.13); overflow: hidden;
 }
@@ -1179,8 +1300,8 @@ html[data-theme="light"] .present-button { color: #fff; }
 .presentation-slide .neon-columns { min-height: 0; height: calc(100% - 48px); padding-top: 8px; }
 .presentation-slide .donut-wrap { height: calc(100% - 48px); }
 .present-kpi { position: relative; padding: clamp(24px, 4vw, 58px); display: grid; align-content: center; gap: 10px; }
-.present-kpi::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 5px; background: #00D8D8; box-shadow: 0 0 18px #00D8D8; }
-.present-kpi.present-blue::before { background: #087BFF; box-shadow: 0 0 18px #087BFF; }.present-kpi.present-green::before { background: #21D69B; box-shadow: 0 0 18px #21D69B; }.present-kpi.present-amber::before { background: #FFB44A; box-shadow: 0 0 18px #FFB44A; }
+.present-kpi::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 5px; background: var(--blue); }
+.present-kpi.present-blue::before { background: var(--blue); }.present-kpi.present-green::before { background: #21D69B; }.present-kpi.present-amber::before { background: #FFB44A; }
 .present-kpi > span { color: var(--txt-2); font-size: clamp(13px, 1.2vw, 20px); text-transform: uppercase; letter-spacing: 1px; }
 .present-kpi > b { font-size: clamp(38px, 5vw, 78px); line-height: 1; letter-spacing: -2px; }.present-kpi > small { color: var(--txt-3); font-size: clamp(12px, 1vw, 17px); }
 .presentation-table { font-size: clamp(12px, 1.05vw, 17px); }.presentation-table th, .presentation-table td { padding: 12px 14px; }
@@ -1189,7 +1310,7 @@ html[data-theme="light"] .present-button { color: #fff; }
   background: color-mix(in srgb, var(--card) 96%, transparent); border-top: 1px solid var(--line); z-index: 5;
 }
 .presentation-controls button, .presentation-controls select {
-  padding: 7px 11px; border: 1px solid var(--line); border-radius: 6px; background: var(--line-2); color: var(--txt); font: inherit; font-size: 11px; cursor: pointer;
+  padding: 7px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--line-2); color: var(--txt); font: inherit; font-size: 11px; cursor: pointer;
 }
 .presentation-controls button:hover { border-color: var(--teal); }.presentation-controls > span { color: var(--txt-2); font-size: 11px; min-width: 38px; text-align: center; }
 .presentation-controls label { margin-left: 10px; color: var(--txt-3); font-size: 11px; display: flex; align-items: center; gap: 7px; }
@@ -1207,8 +1328,8 @@ html[data-theme="light"] .present-button { color: #fff; }
 /* BarList: cap height and scroll once the list is long */
 .barlist { max-height: 340px; overflow-y: auto; padding-right: 4px; }
 .barlist::-webkit-scrollbar { width: 8px; }
-.barlist::-webkit-scrollbar-track { background: var(--line-2); border-radius: 4px; }
-.barlist::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+.barlist::-webkit-scrollbar-track { background: var(--line-2); border-radius: 5px; }
+.barlist::-webkit-scrollbar-thumb { background: var(--line); border-radius: 5px; }
 /* Grid and flex items default to min-width:auto, which means "as wide as my
    content". That lets an oversized canvas stretch the card instead of
    scrolling inside it. Zero lets the track width win. */
@@ -1224,8 +1345,8 @@ html[data-theme="light"] .present-button { color: #fff; }
   to   { opacity: 1; transform: translateY(0) scale(1) rotateX(0); }
 }
 @keyframes glowPulse {
-  0%, 100% { box-shadow: 0 0 0 rgba(0,216,216,0); }
-  50% { box-shadow: 0 0 34px rgba(0,153,255,.16); }
+  0%, 100% { opacity: 1; }
+  50% { opacity: .72; }
 }
 
 /* Perspective context for anything that tilts on hover */
@@ -1283,16 +1404,9 @@ nav.tabs { animation-delay: .08s }
 
 /* Login: hero halo + glowing entrance */
 .login-wrap { position: relative; overflow: hidden; isolation: isolate; }
-.login-wrap::before {
-  content: ''; position: absolute; left: 50%; top: 50%; width: min(1100px, 140vw); aspect-ratio: 1;
-  transform: translate(-50%, -50%); border-radius: 50%; z-index: -1;
-  background: conic-gradient(from 0deg, rgba(0,216,216,.16), rgba(130,87,255,.13), rgba(255,47,137,.13), rgba(0,216,216,.16));
-  filter: blur(90px); animation: spin 26s linear infinite;
-}
-.login-card {
-  animation: cardIn .8s cubic-bezier(.16,.8,.3,1) both, glowPulse 4.5s ease-in-out .8s infinite;
-  border-color: color-mix(in srgb, var(--teal) 24%, var(--line));
-}
+/* The decorative conic halo was removed: the source system carries atmosphere
+   in photography, never in a CSS gradient. */
+.login-card { animation: cardIn .8s cubic-bezier(.16,.8,.3,1) both; }
 .login-logo { animation: fadeUp .7s ease .1s both; }
 .login-card h2 { animation: fadeUp .7s ease .2s both; }
 .login-card p { animation: fadeUp .7s ease .3s both; }
@@ -1323,22 +1437,22 @@ nav.tabs { animation-delay: .08s }
 .source-workflow { display: grid; gap: 12px; }
 .workflow-steps {
   display: grid; grid-template-columns: repeat(4, minmax(110px, 1fr)); gap: 6px;
-  padding: 6px; border: 1px solid var(--line); border-radius: 10px;
+  padding: 6px; border: 1px solid var(--line); border-radius: 11px;
   background: color-mix(in srgb, var(--card) 92%, transparent);
 }
 .workflow-steps span {
-  padding: 8px 12px; border-radius: 7px; color: var(--txt-3); font-size: 12px; font-weight: 650;
+  padding: 8px 12px; border-radius: 8px; color: var(--txt-3); font-size: 12px; font-weight: 600;
 }
 .workflow-steps .done { color: var(--teal); }
-.workflow-steps .active { background: linear-gradient(135deg, #087BFF, #00BFCF); color: #fff; }
+.workflow-steps .active { background: var(--blue); color: #fff; }
 .source-workflow-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; flex-wrap: wrap; }
 .source-workflow-head h3 { margin: 2px 0 3px; font-size: 19px; }
 .source-workflow-head p { margin: 0; color: var(--txt-3); font-size: 12px; }
-.eyebrow { color: var(--teal); font-size: 10.5px; font-weight: 750; letter-spacing: .9px; text-transform: uppercase; }
+.eyebrow { color: var(--teal); font-size: 10.5px; font-weight: 700; letter-spacing: .9px; text-transform: uppercase; }
 .source-workflow-actions, .source-preview-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .source-preview-table {
   margin-top: 16px; max-height: min(58vh, 560px); overflow: auto;
-  border: 1px solid var(--line); border-radius: 9px; background: var(--card);
+  border: 1px solid var(--line); border-radius: 8px; background: var(--card);
 }
 .source-preview-table table { min-width: max-content; width: 100%; border-collapse: collapse; font-size: 12px; }
 .source-preview-table th { position: sticky; top: 0; z-index: 2; min-width: 150px; padding: 9px 11px; }
@@ -1353,7 +1467,7 @@ nav.tabs { animation-delay: .08s }
 .dashboard-picker-trigger {
   width: 100%; min-height: 58px; margin-top: 5px; padding: 10px 14px;
   display: flex; align-items: center; justify-content: space-between; gap: 14px; text-align: left;
-  border: 1px solid var(--line); border-radius: 9px; background: var(--card); color: var(--txt); cursor: pointer;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--txt); cursor: pointer;
 }
 .dashboard-picker-trigger:hover, .dashboard-picker.open .dashboard-picker-trigger { border-color: var(--teal); }
 .dashboard-picker-trigger > span:first-child { display: grid; gap: 3px; min-width: 0; }
@@ -1361,25 +1475,25 @@ nav.tabs { animation-delay: .08s }
 .dashboard-picker-trigger small { color: var(--txt-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dashboard-picker-caret { color: var(--teal); flex: 0 0 auto; }
 .dashboard-picker-options {
-  margin-top: 7px; padding: 12px; border: 1px solid var(--line); border-radius: 9px;
+  margin-top: 7px; padding: 12px; border: 1px solid var(--line); border-radius: 8px;
   background: #101A35; color: #F8FBFF; box-shadow: 0 14px 30px rgba(0,0,0,.22);
 }
 .dashboard-picker-options-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 9px; }
 .dashboard-picker-options-head button, .dashboard-picker-done {
-  border: 0; background: transparent; color: #55E7E7; cursor: pointer; font: inherit; font-size: 12px; font-weight: 650;
+  border: 0; background: transparent; color: #55E7E7; cursor: pointer; font: inherit; font-size: 12px; font-weight: 600;
 }
 .dashboard-picker-grid { display: grid; grid-template-columns: repeat(2, minmax(210px, 1fr)); gap: 8px; }
 .dashboard-picker-grid label {
   min-height: 58px; padding: 9px 11px; display: flex; align-items: center; gap: 10px;
   border: 1px solid #2B416C; border-radius: 8px; background: #0B1530; cursor: pointer;
 }
-.dashboard-picker-grid label:hover, .dashboard-picker-grid label.selected { border-color: #00D8D8; background: #102548; }
+.dashboard-picker-grid label:hover, .dashboard-picker-grid label.selected { border-color: var(--blue); background: #102548; }
 .dashboard-picker-grid input { width: 17px; height: 17px; accent-color: var(--teal); flex: 0 0 auto; }
 .dashboard-picker-grid label span { display: grid; gap: 2px; }
 .dashboard-picker-grid small { color: #8FA7C7; font-size: 11px; }
-.dashboard-picker-done { display: block; margin: 10px 0 0 auto; padding: 6px 10px; border: 1px solid #2B416C; border-radius: 6px; }
+.dashboard-picker-done { display: block; margin: 10px 0 0 auto; padding: 6px 10px; border: 1px solid #2B416C; border-radius: 8px; }
 .mapping-group { margin-top: 20px; }
-.mapping-field-list { margin-top: 8px; overflow: visible; border: 1px solid var(--line); border-radius: 9px; }
+.mapping-field-list { margin-top: 8px; overflow: visible; border: 1px solid var(--line); border-radius: 8px; }
 .mapping-field-row { min-height: 62px; }
 .mapping-footer {
   position: sticky; bottom: 0; z-index: 30; margin: 22px -16px -16px; padding: 13px 16px;
@@ -1393,7 +1507,7 @@ nav.tabs { animation-delay: .08s }
 }
 .win-board-empty-icon {
   width: 52px; height: 52px; display: grid; place-items: center; flex: 0 0 auto;
-  border-radius: 50%; background: rgba(0,216,216,.12); color: var(--teal); font-size: 28px;
+  border-radius: 50%; background: rgba(0,102,204,.12); color: var(--teal); font-size: 28px;
 }
 .win-board-empty h3 { margin: 0 0 5px; font-size: 18px; }
 .win-board-empty p { max-width: 680px; margin: 0; color: var(--txt-2); font-size: 13px; line-height: 1.5; }
@@ -1404,7 +1518,7 @@ html[data-theme="light"] .dashboard-picker-grid label:hover,
 html[data-theme="light"] .dashboard-picker-grid label.selected { background: #EAF8FB; border-color: #00AFC1; }
 html[data-theme="light"] .dashboard-picker-grid small { color: #64748B; }
 html[data-theme="light"] .dashboard-picker-options-head button,
-html[data-theme="light"] .dashboard-picker-done { color: #087BFF; border-color: #CBD5E1; }
+html[data-theme="light"] .dashboard-picker-done { color: var(--blue); border-color: #CBD5E1; }
 @media (max-width: 760px) {
   .workflow-steps { grid-template-columns: repeat(2, 1fr); }
   .mapping-controls { grid-template-columns: 1fr; }
@@ -1431,46 +1545,61 @@ html[data-theme="light"] .dashboard-picker-done { color: #087BFF; border-color: 
    A restrained, high-contrast system shared by every app page.
    ============================================================ */
 :root {
-  --ink: #090B10;
-  --ink-2: #12151D;
-  --line: #2A303B;
-  --line-2: #171B23;
-  --bg: #000000;
-  --card: #0B0F16;
-  --txt: #F3F6FA;
-  --txt-2: #B4BECC;
-  --txt-3: #8492A6;
-  --teal: #06B6D4;
-  --blue: #3B82F6;
-  --amber: #F59E0B;
-  --red: #F43F5E;
-  --green: #22C55E;
-  --violet: #8B5CF6;
-  --pink: #EC4899;
-  --slate: #8492A6;
-  --chart-track: #1A1F29;
-  --r: 14px;
+  /* ---- EFFECTIVE DARK THEME (Apple near-black tiles) ----
+     This block is last in the cascade and therefore the one that wins.
+     Sky Link Blue replaces Action Blue here per the source system: #0066cc
+     disappears against a dark tile. */
+  --ink:    #000000;
+  --ink-2:  #272729;       /* surface-tile-1 */
+  --line:   #38383A;       /* derived hairline for dark */
+  --line-2: #272729;
+  --bg:     #000000;       /* surface-black */
+  --card:   #1D1D1F;
+  --pearl:  #272729;
+  --txt:    #FFFFFF;       /* body-on-dark */
+  --txt-2:  #CCCCCC;       /* body-muted */
+  --txt-3:  #8E8E93;
+  --blue:       #2997FF;   /* primary-on-dark */
+  --blue-focus: #2997FF;
+  --teal:       #2997FF;   /* folded in: no second accent */
+  --amber:  #FF9F0A;
+  --red:    #FF453A;
+  --green:  #30D158;
+  --violet: #5E5CE6;
+  --pink:   #FF375F;
+  --slate:  #8E8E93;
+  --chart-track: #272729;
+  --shadow-product: 3px 5px 30px 0 rgba(0,0,0,.42);
+  --r:      18px;          /* rounded.lg */
+  --r-sm:   8px;           /* rounded.sm */
+  --r-md:   11px;          /* rounded.md */
+  --r-pill: 9999px;        /* rounded.pill */
   --gap: 18px;
 }
 
 html[data-theme="light"] {
-  --ink: #172132;
-  --ink-2: #263750;
-  --line: #DBE1E9;
-  --line-2: #F0F3F7;
-  --bg: #F5F7FA;
-  --card: #FFFFFF;
-  --txt: #172132;
-  --txt-2: #566376;
-  --txt-3: #7B889A;
-  --teal: #0891B2;
-  --blue: #2563EB;
-  --amber: #D97706;
-  --red: #E11D48;
-  --green: #16A34A;
-  --violet: #7C3AED;
-  --pink: #DB2777;
-  --chart-track: #E9EDF2;
+  /* ---- EFFECTIVE LIGHT THEME (Apple gallery) ---- */
+  --ink:    #1D1D1F;
+  --ink-2:  #272729;
+  --line:   #E0E0E0;       /* hairline */
+  --line-2: #F0F0F0;       /* divider-soft */
+  --bg:     #F5F5F7;       /* canvas-parchment */
+  --card:   #FFFFFF;       /* canvas */
+  --pearl:  #FAFAFC;       /* surface-pearl */
+  --txt:    #1D1D1F;       /* ink */
+  --txt-2:  #333333;       /* ink-muted-80 */
+  --txt-3:  #7A7A7A;       /* ink-muted-48 */
+  --blue:       #0066CC;   /* Action Blue - the single accent */
+  --blue-focus: #0071E3;
+  --teal:       #0066CC;
+  --amber:  #B25000;
+  --red:    #CC0033;
+  --green:  #00875A;
+  --violet: #5E5CE6;
+  --pink:   #BF3B7A;
+  --slate:  #7A7A7A;
+  --chart-track: #F0F0F0;
+  --shadow-product: 3px 5px 30px 0 rgba(0,0,0,.22);
 }
 
 body,
@@ -1558,20 +1687,20 @@ html:not([data-theme="light"]) .deck-backdrop::before { display: none; }
   border: 1px solid var(--line); border-top: 0; border-radius: 0 0 16px 16px;
   box-shadow: 0 8px 22px rgba(0,0,0,.12); backdrop-filter: none;
 }
-.top-nav .brand { color: var(--txt); font-size: 17px; font-weight: 720; letter-spacing: -.2px; }
+.top-nav .brand { color: var(--txt); font-size: 17px; font-weight: 700; letter-spacing: -.2px; }
 .brand-logo { width: 42px; height: 42px; }
 .user-pill { gap: 12px; }
 
 header.top {
   position: relative; overflow: hidden; padding: 24px 26px; margin-bottom: 18px;
   color: var(--txt); background: var(--card); border: 1px solid var(--line);
-  border-radius: 16px; box-shadow: 0 10px 28px rgba(0,0,0,.1);
+  border-radius: var(--r); box-shadow: none;
 }
 header.top::after {
   content: ''; position: absolute; inset: 0 0 auto; height: 4px;
   background: linear-gradient(90deg, var(--blue), var(--teal) 68%, transparent);
 }
-h1 { font-size: clamp(22px, 2vw, 28px); font-weight: 750; letter-spacing: -.55px; }
+h1 { font-size: clamp(22px, 2vw, 28px); font-weight: 700; letter-spacing: -.55px; }
 .sub { color: var(--txt-2); font-size: 13.5px; margin-top: 4px; }
 .asof { color: var(--txt-3); }
 .asof b, .scope b { color: var(--blue); }
@@ -1583,8 +1712,8 @@ button, input, select, textarea { font-family: inherit; }
 .date-range-trigger, .floating-filter-reset,
 .card-controls button, .card-controls select,
 .barlist-controls button, .barlist-controls select {
-  min-height: 42px; padding: 0 16px; border-radius: 9px;
-  font-size: 13px; font-weight: 650; line-height: 1; cursor: pointer;
+  min-height: 42px; padding: 0 16px; border-radius: 8px;
+  font-size: 13px; font-weight: 600; line-height: 1; cursor: pointer;
 }
 .btn-primary, .btn, .present-button {
   background: var(--blue); border: 1px solid var(--blue); color: #FFFFFF;
@@ -1602,7 +1731,7 @@ button, input, select, textarea { font-family: inherit; }
   background: color-mix(in srgb, var(--blue) 7%, var(--card));
 }
 .theme-toggle { padding: 0 14px; background: var(--line-2); }
-.present-menu { width: 300px; padding: 8px; border-radius: 12px; }
+.present-menu { width: 300px; padding: 8px; border-radius: 11px; }
 .present-menu button { min-height: 50px; padding: 11px 13px; border-radius: 8px; }
 .present-menu b { font-size: 13px; }
 .present-menu span { font-size: 11.5px; }
@@ -1611,17 +1740,17 @@ button, input, select, textarea { font-family: inherit; }
 
 .filters { gap: 12px; margin-top: 20px; }
 .fg { gap: 6px; }
-.fg label { color: var(--txt-3); font-size: 10.5px; font-weight: 720; }
-.fg input, .fg select { min-height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--card); color: var(--txt); }
+.fg label { color: var(--txt-3); font-size: 10.5px; font-weight: 700; }
+.fg input, .fg select { min-height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--txt); }
 .ms-field { min-width: 230px; }
 .ms-trigger {
   height: 42px; grid-template-columns: 88px minmax(0, 1fr) 28px;
-  border-color: var(--line); border-radius: 9px; background: var(--card); color: var(--txt); font-size: 13px;
+  border-color: var(--line); border-radius: 8px; background: var(--card); color: var(--txt); font-size: 13px;
 }
 .ms-trigger:hover, .ms-trigger.on { background: color-mix(in srgb, var(--blue) 6%, var(--card)); border-color: color-mix(in srgb, var(--blue) 55%, var(--line)); }
 .ms-field-label { padding: 0 11px; color: var(--txt-2); border-color: var(--line); }
 .ms-summary { padding: 0 11px; }
-.ms-menu { width: 320px; border-radius: 10px; background: var(--card); color: var(--txt); border-color: var(--line); box-shadow: 0 16px 38px rgba(0,0,0,.2); }
+.ms-menu { width: 320px; border-radius: 11px; background: var(--card); color: var(--txt); border-color: var(--line); box-shadow: 0 16px 38px rgba(0,0,0,.2); }
 .ms-search { min-height: 40px; margin: 10px; padding: 0 12px; border-radius: 8px; background: var(--bg); color: var(--txt); }
 .ms-option { min-height: 36px; padding: 7px 11px; font-size: 13px; }
 .ms-option:hover { background: color-mix(in srgb, var(--blue) 8%, var(--card)); color: var(--txt); }
@@ -1630,15 +1759,15 @@ button, input, select, textarea { font-family: inherit; }
 /* Content panels read like clean PowerPoint slides. */
 .card, .kpi, .template-card, .login-card, .sec-head,
 .present-card, .present-kpi, .intro {
-  background: color-mix(in srgb, var(--card) 98%, transparent);
-  border: 1px solid var(--line); border-radius: 16px;
-  box-shadow: 0 9px 24px rgba(0,0,0,.09); backdrop-filter: none;
+  background: var(--card);
+  border: 1px solid var(--line); border-radius: var(--r);
+  box-shadow: none; backdrop-filter: none;
 }
 .card { padding: 20px 22px; }
 .card::after { display: none; }
 .card:hover, .kpi:hover { border-color: color-mix(in srgb, var(--blue) 32%, var(--line)); }
 .card-head { gap: 16px; margin-bottom: 16px; }
-.card-head h3, .card h3 { color: var(--txt); font-size: 15px; font-weight: 730; letter-spacing: -.15px; }
+.card-head h3, .card h3 { color: var(--txt); font-size: 15px; font-weight: 700; letter-spacing: -.15px; }
 .card .hint { color: var(--txt-3); font-size: 12.5px; line-height: 1.45; }
 .kpis { gap: 16px; margin-bottom: 18px; }
 .kpi { min-height: 116px; padding: 18px 20px; border-top-width: 1px !important; }
@@ -1646,8 +1775,8 @@ button, input, select, textarea { font-family: inherit; }
 .kpi:nth-child(2)::before { background: var(--teal); }
 .kpi:nth-child(3)::before { background: var(--blue); }
 .kpi:nth-child(4)::before { background: var(--teal); }
-.kpi .lb, .kpi-label { color: var(--txt-3); font-size: 11px; font-weight: 730; letter-spacing: .65px; text-transform: uppercase; }
-.kpi .vl, .kpi-value { color: var(--txt); font-size: 28px; font-weight: 760; line-height: 1.15; letter-spacing: -.65px; text-shadow: none; margin: 7px 0 3px; }
+.kpi .lb, .kpi-label { color: var(--txt-3); font-size: 11px; font-weight: 700; letter-spacing: .65px; text-transform: uppercase; }
+.kpi .vl, .kpi-value { color: var(--txt); font-size: 28px; font-weight: 700; line-height: 1.15; letter-spacing: -.65px; text-shadow: none; margin: 7px 0 3px; }
 .kpi .ft, .kpi-foot { color: var(--txt-2); font-size: 12px; }
 .comparison-badge { padding: 3px 8px; font-size: 11px; }
 .comparison-up { color: var(--green); }
@@ -1667,20 +1796,20 @@ button, input, select, textarea { font-family: inherit; }
 .interactive-mark:focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--blue) 58%, transparent); }
 .heatmap-cell.interactive-mark:hover { box-shadow: inset 0 0 0 2px color-mix(in srgb, white 76%, transparent); }
 
-nav.tabs { gap: 6px; padding: 7px; margin-bottom: 18px; background: var(--card); border-radius: 14px; }
-nav.tabs button { min-height: 42px; padding: 0 15px; border-radius: 9px; font-size: 13px; }
+nav.tabs { gap: 6px; padding: 7px; margin-bottom: 18px; background: var(--card); border-radius: 18px; }
+nav.tabs button { min-height: 42px; padding: 0 15px; border-radius: 8px; font-size: 13px; }
 nav.tabs button.on { background: var(--ink-2); box-shadow: none; }
 
 /* Tables and mapping screens */
 th { padding: 11px 12px; font-size: 11px; }
 td { padding: 11px 12px; }
 tbody tr:hover { background: color-mix(in srgb, var(--blue) 6%, transparent); }
-.workflow-steps { padding: 8px; gap: 8px; border-radius: 14px; }
-.workflow-steps span { min-height: 42px; padding: 11px 14px; border-radius: 9px; }
+.workflow-steps { padding: 8px; gap: 8px; border-radius: 18px; }
+.workflow-steps span { min-height: 42px; padding: 11px 14px; border-radius: 8px; }
 .workflow-steps .active { background: var(--blue); }
 .dashboard-picker-trigger { min-height: 66px; padding: 12px 16px; border-radius: 11px; }
 .dashboard-picker-trigger b { font-size: 14px; }
-.dashboard-picker-options { border-radius: 12px; background: var(--card); color: var(--txt); }
+.dashboard-picker-options { border-radius: 11px; background: var(--card); color: var(--txt); }
 .dashboard-picker-grid label { min-height: 66px; border-color: var(--line); background: var(--line-2); }
 .dashboard-picker-grid label:hover, .dashboard-picker-grid label.selected { border-color: var(--blue); background: color-mix(in srgb, var(--blue) 8%, var(--card)); }
 
@@ -1717,8 +1846,8 @@ html[data-theme="light"] .kpi,
 html[data-theme="light"] .template-card,
 html[data-theme="light"] .login-card,
 html[data-theme="light"] .sec-head {
-  background: rgba(255,255,255,.98); border-color: var(--line);
-  box-shadow: 0 9px 24px rgba(28,43,65,.075); backdrop-filter: none;
+  background: var(--card); border-color: var(--line);
+  box-shadow: none; backdrop-filter: none;
 }
 html[data-theme="light"] .top-nav .brand,
 html[data-theme="light"] .top-nav .brand span,
@@ -1808,27 +1937,27 @@ html[data-theme="light"] .fg input { background: #FFFFFF; color: var(--txt); bor
 .rank-funnel-row.rank-1 .rank-funnel-segment {
   background: linear-gradient(180deg, rgba(255,255,255,.34), rgba(255,255,255,0) 40%, rgba(0,0,0,.24) 100%), linear-gradient(90deg, #1E7CFF, #6FADFF);
   color: #06172E;
-  box-shadow: 0 0 22px rgba(30,124,255,.55), inset 0 2px 0 rgba(255,255,255,.4), inset 0 -12px 16px rgba(0,0,0,.3), inset 0 0 0 1px rgba(255,255,255,.08);
+  
 }
 .rank-funnel-row.rank-2 .rank-funnel-segment {
   background: linear-gradient(180deg, rgba(255,255,255,.34), rgba(255,255,255,0) 40%, rgba(0,0,0,.24) 100%), linear-gradient(90deg, #D9530F, #FF8A4C);
   color: #2E1103;
-  box-shadow: 0 0 22px rgba(217,83,15,.55), inset 0 2px 0 rgba(255,255,255,.4), inset 0 -12px 16px rgba(0,0,0,.3), inset 0 0 0 1px rgba(255,255,255,.08);
+  
 }
 .rank-funnel-row.rank-3 .rank-funnel-segment {
   background: linear-gradient(180deg, rgba(255,255,255,.34), rgba(255,255,255,0) 40%, rgba(0,0,0,.24) 100%), linear-gradient(90deg, #00A06B, #3ECE9D);
   color: #04211A;
-  box-shadow: 0 0 22px rgba(0,160,107,.55), inset 0 2px 0 rgba(255,255,255,.4), inset 0 -12px 16px rgba(0,0,0,.3), inset 0 0 0 1px rgba(255,255,255,.08);
+  
 }
 .rank-funnel-row.rank-4 .rank-funnel-segment {
   background: linear-gradient(180deg, rgba(255,255,255,.34), rgba(255,255,255,0) 40%, rgba(0,0,0,.24) 100%), linear-gradient(90deg, #C67900, #FCA82E);
   color: #2E1D01;
-  box-shadow: 0 0 22px rgba(198,121,0,.55), inset 0 2px 0 rgba(255,255,255,.4), inset 0 -12px 16px rgba(0,0,0,.3), inset 0 0 0 1px rgba(255,255,255,.08);
+  
 }
 .rank-funnel-row.rank-5 .rank-funnel-segment {
   background: linear-gradient(180deg, rgba(255,255,255,.34), rgba(255,255,255,0) 40%, rgba(0,0,0,.24) 100%), linear-gradient(90deg, #E63D79, #FF7FAC);
   color: #2E0A18;
-  box-shadow: 0 0 22px rgba(230,61,121,.55), inset 0 2px 0 rgba(255,255,255,.4), inset 0 -12px 16px rgba(0,0,0,.3), inset 0 0 0 1px rgba(255,255,255,.08);
+  
 }
 .rank-funnel-row.rank-highlight:not(.rank-1) .rank-funnel-segment { color: #FFFFFF; }
 .rank-funnel-row:hover, .rank-funnel-row:focus-visible, .rank-funnel-row.active { z-index: 30; }
@@ -1840,7 +1969,7 @@ html[data-theme="light"] .fg input { background: #FFFFFF; color: var(--txt); bor
 .rank-funnel-badge {
   width: 22px; height: 22px; display: grid; place-items: center;
   border: 1px solid color-mix(in srgb, currentColor 42%, transparent); border-radius: 50%;
-  background: color-mix(in srgb, currentColor 10%, transparent); font-size: 10px; font-weight: 800;
+  background: color-mix(in srgb, currentColor 10%, transparent); font-size: 10px; font-weight: 700;
 }
 .rank-funnel-segment strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 700; }
 /* The funnel's own gradient background sits behind these badges, so the usual
@@ -1856,8 +1985,8 @@ html[data-theme="light"] .rank-funnel-segment .bar-comparison-delta {
 }
 .rank-funnel-values { display: grid; justify-items: end; line-height: 1.15; }
 .rank-funnel-values b { font-size: 13px; font-variant-numeric: tabular-nums; }
-.rank-funnel-values b small { font-size: 9px; font-weight: 720; text-transform: uppercase; letter-spacing: .3px; }
-.rank-funnel-values em { margin-top: 3px; font-size: 9.5px; font-weight: 620; font-style: normal; opacity: .82; white-space: nowrap; }
+.rank-funnel-values b small { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; }
+.rank-funnel-values em { margin-top: 3px; font-size: 9.5px; font-weight: 600; font-style: normal; opacity: .82; white-space: nowrap; }
 .rank-metric-tooltip {
   position: absolute; z-index: 40; left: 50%; top: calc(100% + 9px); width: min(370px, 82vw);
   padding: 14px 15px; border: 1px solid var(--line); border-radius: 11px;
@@ -1870,23 +1999,23 @@ html[data-theme="light"] .rank-funnel-segment .bar-comparison-delta {
 .rank-funnel-row:focus-visible .rank-metric-tooltip {
   opacity: 1; visibility: visible; transform: translate(-50%, 0);
 }
-.rank-tooltip-eyebrow { color: var(--teal); font-size: 9.5px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; }
+.rank-tooltip-eyebrow { color: var(--teal); font-size: 9.5px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; }
 .rank-metric-tooltip h4 { margin: 3px 0 10px; font-size: 14px; line-height: 1.3; }
 /* One hero number, one change line, one context line, and a compact secondary
    row for the two non-selected percentage views — replaces a dense list that
    spelled out every metric's full formula on every hover. */
 .tooltip-hero { display: flex; align-items: baseline; gap: 9px; }
-.tooltip-hero strong { color: var(--txt); font-size: 26px; font-weight: 840; line-height: 1; font-variant-numeric: tabular-nums; }
+.tooltip-hero strong { color: var(--txt); font-size: 26px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
 .tooltip-hero span { color: var(--txt-2); font-size: 12px; font-weight: 700; }
-.tooltip-change { margin-top: 6px; font-size: 12px; font-weight: 650; color: var(--txt-2); }
-.tooltip-change b { font-weight: 850; }
+.tooltip-change { margin-top: 6px; font-size: 12px; font-weight: 600; color: var(--txt-2); }
+.tooltip-change b { font-weight: 700; }
 .tooltip-change.comparison-up b { color: #21D69B; }
 .tooltip-change.comparison-down b { color: #FF5D7D; }
 .tooltip-change.comparison-flat b { color: var(--txt-3); }
 .tooltip-change.muted { color: var(--txt-3); font-style: italic; }
 .tooltip-context { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line-2); color: var(--txt-2); font-size: 11.5px; }
 .tooltip-secondary { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--txt-3); font-size: 10.5px; }
-.tooltip-secondary b { color: var(--txt-2); font-weight: 750; }
+.tooltip-secondary b { color: var(--txt-2); font-weight: 700; }
 .rank-funnel-key {
   width: min(100%, 720px); margin-top: 13px; padding: 8px 11px; display: flex; justify-content: center; gap: 22px;
   color: var(--txt-2); background: var(--line-2); border: 1px solid var(--line); border-radius: 8px; font-size: 10.5px;
@@ -1912,15 +2041,15 @@ html[data-theme="light"] .rank-metric-tooltip { box-shadow: 0 18px 40px rgba(24,
 .advanced-date-trigger {
   min-height: 42px; width: 100%; max-width: 430px; padding: 0 12px;
   display: grid; grid-template-columns: 18px minmax(0, 1fr) 16px; align-items: center; gap: 8px;
-  color: var(--txt); background: var(--card); border: 1px solid var(--line); border-radius: 9px;
-  font-size: 12.5px; font-weight: 550; text-align: left; cursor: pointer;
+  color: var(--txt); background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+  font-size: 12.5px; font-weight: 600; text-align: left; cursor: pointer;
 }
 .advanced-date-trigger > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .advanced-date-trigger:hover, .advanced-date-trigger.on { border-color: var(--blue); background: color-mix(in srgb, var(--blue) 8%, var(--card)); }
 .date-range-icon { color: var(--teal); font-size: 12px; }
 .advanced-date-panel {
   position: fixed; z-index: 2500; max-height: calc(100vh - 24px); overflow-y: auto;
-  border: 1px solid var(--line); border-radius: 14px; background: var(--card); color: var(--txt);
+  border: 1px solid var(--line); border-radius: 18px; background: var(--card); color: var(--txt);
   box-shadow: 0 24px 70px rgba(0,0,0,.48);
 }
 .advanced-date-head {
@@ -1938,7 +2067,7 @@ html[data-theme="light"] .rank-metric-tooltip { box-shadow: 0 18px 40px rgba(24,
 .advanced-date-groups { padding: 15px 18px 4px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px 18px; }
 .advanced-date-groups section, .advanced-date-n, .advanced-date-custom { display: grid; gap: 7px; }
 .advanced-date-groups h4, .advanced-date-n h4, .advanced-date-custom h4 {
-  color: var(--txt-3); font-size: 10px; font-weight: 780; letter-spacing: .65px; text-transform: uppercase;
+  color: var(--txt-3); font-size: 10px; font-weight: 700; letter-spacing: .65px; text-transform: uppercase;
 }
 .advanced-date-groups section > div { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .advanced-date-groups button {
@@ -1965,7 +2094,7 @@ html[data-theme="light"] .rank-metric-tooltip { box-shadow: 0 18px 40px rgba(24,
   margin-top: 16px; padding: 12px 18px; display: flex; justify-content: space-between; align-items: center; gap: 12px;
   border-top: 1px solid var(--line); color: var(--txt-3); font-size: 10.5px;
 }
-.advanced-date-foot button { padding: 0; border: 0; background: transparent; color: var(--red); font: inherit; font-size: 11.5px; font-weight: 650; cursor: pointer; }
+.advanced-date-foot button { padding: 0; border: 0; background: transparent; color: var(--red); font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; }
 html[data-theme="light"] .advanced-date-panel { box-shadow: 0 24px 64px rgba(24,39,65,.2); }
 html[data-theme="light"] .advanced-date-n input,
 html[data-theme="light"] .advanced-date-n select,
@@ -1986,21 +2115,21 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   gap: 1px;
   min-width: 96px;
   padding: 5px 9px;
-  border-radius: 9px;
+  border-radius: 8px;
   line-height: 1.15;
   white-space: nowrap;
 }
-.comparison-badge b { font-size: 11.5px; font-weight: 800; }
+.comparison-badge b { font-size: 11.5px; font-weight: 700; }
 .comparison-badge small { font-size: 9.5px; font-weight: 700; opacity: .9; }
 .chart-inline-controls { display: flex; justify-content: flex-end; min-height: 42px; margin: -4px 0 4px; }
-.chart-inline-controls .sort-button { font-size: 12px; font-weight: 720; }
+.chart-inline-controls .sort-button { font-size: 12px; font-weight: 700; }
 /* Sits alongside the sort button in the same row — the auto margin claims
    all the free space so the key stays pinned left and the sort button
    pinned right, without touching .chart-inline-controls' own flex-end
    (which every other chart's inline-controls row still relies on). */
-.trend-chart-key { margin-right: auto; display: flex; align-items: center; gap: 16px; color: var(--txt-3); font-size: 11px; font-weight: 650; }
+.trend-chart-key { margin-right: auto; display: flex; align-items: center; gap: 16px; color: var(--txt-3); font-size: 11px; font-weight: 600; }
 .trend-chart-key span { display: inline-flex; align-items: center; gap: 6px; }
-.trend-chart-key i { width: 16px; height: 3px; border-radius: 2px; display: inline-block; }
+.trend-chart-key i { width: 16px; height: 3px; border-radius: 5px; display: inline-block; }
 .trend-key-current { background: #126BFF; }
 .trend-key-previous { background: repeating-linear-gradient(to right, #DC2626 0 5px, transparent 5px 8px); }
 .presentation-slide .trend-chart-key { font-size: clamp(10px, 1.6vh, 16px); gap: clamp(10px, 1.6vw, 22px); }
@@ -2009,17 +2138,17 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
    sort button's visual language, pinned to the row's right edge by sitting
    after .trend-chart-key (whose own margin-right:auto claims the rest of
    the row). */
-.trend-granularity-toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
-.trend-granularity-toggle button { padding: 6px 11px; border: 0; background: var(--line-2); color: var(--txt-2); font: inherit; font-size: 10.5px; font-weight: 650; cursor: pointer; }
+.trend-granularity-toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.trend-granularity-toggle button { padding: 6px 11px; border: 0; background: var(--line-2); color: var(--txt-2); font: inherit; font-size: 10.5px; font-weight: 600; cursor: pointer; }
 .trend-granularity-toggle button + button { border-left: 1px solid var(--line); }
 .trend-granularity-toggle button:hover { color: var(--teal); }
-.trend-granularity-toggle button.on { background: color-mix(in srgb, var(--blue) 18%, var(--card)); color: var(--blue); font-weight: 780; }
+.trend-granularity-toggle button.on { background: color-mix(in srgb, var(--blue) 18%, var(--card)); color: var(--blue); font-weight: 700; }
 .presentation-slide .trend-granularity-toggle button { font-size: clamp(9.5px, 1.3vh, 12px); padding: clamp(4px, .8vh, 7px) clamp(8px, 1.2vw, 12px); }
 .card-head h3, .card h3 { font-size: 16px; }
 .card .hint { font-size: 13.5px; }
 .rank-funnel-segment strong { font-size: 13.5px; }
 .rank-funnel-values b { font-size: 15px; }
-.rank-funnel-values em { font-size: 10.5px; font-weight: 750; opacity: .92; }
+.rank-funnel-values em { font-size: 10.5px; font-weight: 700; opacity: .92; }
 .bar-comparison-delta {
   display: inline-flex;
   align-items: center;
@@ -2030,14 +2159,14 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   border-radius: 999px;
   background: color-mix(in srgb, currentColor 9%, transparent);
   font-size: 10.5px;
-  font-weight: 850;
+  font-weight: 700;
   line-height: 1.2;
   white-space: nowrap;
 }
 .rank-funnel-key { font-size: 11.5px; }
 .rank-tooltip-eyebrow { font-size: 10.5px; }
 .rank-metric-tooltip h4 { font-size: 15.5px; }
-.top .sub strong { color: var(--txt); font-weight: 720; }
+.top .sub strong { color: var(--txt); font-weight: 700; }
 .kpi-visibility-toggle {
   margin-left: auto;
   min-height: 30px;
@@ -2048,7 +2177,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   color: var(--txt-2);
   font: inherit;
   font-size: 10.5px;
-  font-weight: 750;
+  font-weight: 700;
   cursor: pointer;
 }
 .kpi-visibility-toggle:hover { border-color: var(--teal); color: var(--teal); }
@@ -2088,8 +2217,8 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   text-transform: uppercase;
   letter-spacing: .65px;
 }
-.win-rate-summary-head span { color: var(--txt-2); font-size: 11px; font-weight: 800; }
-.win-rate-summary-head small { font-size: 10px; font-weight: 650; }
+.win-rate-summary-head span { color: var(--txt-2); font-size: 11px; font-weight: 700; }
+.win-rate-summary-head small { font-size: 10px; font-weight: 600; }
 .win-rate-summary-period {
   margin: 2px 22px 0;
   padding-top: 6px;
@@ -2098,7 +2227,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   font-size: 11.5px;
   font-weight: 600;
 }
-.win-rate-summary-period b { color: var(--txt-2); font-weight: 780; }
+.win-rate-summary-period b { color: var(--txt-2); font-weight: 700; }
 /* auto-fit lets tiles wrap onto a second row on their own if the container
    is ever too narrow for all four, instead of forcing every tile's internal
    layout into less width than it needs (the previous fixed 7-column
@@ -2128,9 +2257,9 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
 .win-rate-summary-metric:first-child,
 .win-rate-summary-counts:first-child { padding-left: 0; border-left: none; }
 .win-rate-summary-metric > span,
-.win-rate-summary-counts > span { color: var(--txt-3); font-size: 12px; font-weight: 780; letter-spacing: .55px; text-transform: uppercase; }
-.win-rate-summary-metric > strong { color: var(--txt); font-size: clamp(32px, 3vw, 44px); font-weight: 840; line-height: 1; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
-.win-rate-summary-metric > small { color: var(--txt-2); font-size: 12.5px; font-weight: 640; line-height: 1.4; }
+.win-rate-summary-counts > span { color: var(--txt-3); font-size: 12px; font-weight: 700; letter-spacing: .55px; text-transform: uppercase; }
+.win-rate-summary-metric > strong { color: var(--txt); font-size: clamp(32px, 3vw, 44px); font-weight: 700; line-height: 1; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
+.win-rate-summary-metric > small { color: var(--txt-2); font-size: 12.5px; font-weight: 600; line-height: 1.4; }
 .win-rate-summary-metric > .bar-comparison-delta { font-size: 11.5px; padding: 3px 8px; margin-top: 1px; }
 .win-rate-summary-metric > .bar-comparison-delta.comparison-up {
   color: #21D69B;
@@ -2151,7 +2280,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
 .win-rate-summary-counts-grid { display: flex; flex-wrap: wrap; row-gap: 12px; column-gap: 0; }
 .win-rate-summary-counts-grid > div { display: grid; gap: 2px; padding-right: 20px; border-right: 1px solid var(--line); }
 .win-rate-summary-counts-grid > div:last-child { padding-right: 0; border-right: none; }
-.win-rate-summary-counts-grid b { font-size: 27px; font-weight: 840; line-height: 1; letter-spacing: -.6px; font-variant-numeric: tabular-nums; }
+.win-rate-summary-counts-grid b { font-size: 27px; font-weight: 700; line-height: 1; letter-spacing: -.6px; font-variant-numeric: tabular-nums; }
 /* Each count picks up the same accent colors used elsewhere in the app for
    the same concepts (amber = open, green = won, red = lost), rather than
    sitting in flat black while every other tile's headline number is
@@ -2191,7 +2320,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   z-index: 3000;
   min-height: 0;
   overflow: hidden;
-  border-radius: 10px;
+  border-radius: 11px;
 }
 .ms-list { min-height: 0; overscroll-behavior: contain; }
 .ms-option > span { min-width: 0; overflow-wrap: anywhere; }
@@ -2270,7 +2399,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   margin-top: 7px;
   color: var(--txt-3);
   font-size: 10px;
-  font-weight: 760;
+  font-weight: 700;
   letter-spacing: .55px;
   line-height: 1.3;
   text-transform: uppercase;
@@ -2332,13 +2461,13 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   display: grid;
   place-items: center;
 }
-.team-rate-gauge-center strong { color: var(--txt); font-size: 19px; font-weight: 820; font-variant-numeric: tabular-nums; }
+.team-rate-gauge-center strong { color: var(--txt); font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .team-rate-gauge-label {
   max-width: 100%;
   overflow: hidden;
   color: var(--txt-2);
   font-size: 11.5px;
-  font-weight: 720;
+  font-weight: 700;
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2364,7 +2493,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   align-items: center;
   gap: 9px;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: 11px;
   outline: none;
   transition: border-color .14s ease, background .14s ease, transform .14s ease;
 }
@@ -2383,7 +2512,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   border-radius: 50%;
   color: var(--txt-3);
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 700;
 }
 .team-share-row > i { width: 10px; height: 28px; border-radius: 999px; }
 .team-share-row > strong {
@@ -2394,7 +2523,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   white-space: nowrap;
 }
 .team-share-value-wrap { display: grid; justify-items: end; gap: 2px; }
-.team-share-value { color: var(--txt); font-size: 14px; font-weight: 820; font-variant-numeric: tabular-nums; }
+.team-share-value { color: var(--txt); font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .team-share-value small { margin-top: 2px; color: var(--txt-3); font-size: 9px; font-weight: 700; white-space: nowrap; }
 
 .org-fill-chart {
@@ -2415,10 +2544,10 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   gap: 15px;
   color: var(--txt-3);
   font-size: 10.5px;
-  font-weight: 650;
+  font-weight: 600;
 }
 .org-fill-key span { display: inline-flex; align-items: center; gap: 6px; }
-.org-fill-key i { width: 11px; height: 11px; display: inline-block; border-radius: 3px; }
+.org-fill-key i { width: 11px; height: 11px; display: inline-block; border-radius: 5px; }
 .org-fill-key i.current { background: var(--blue); }
 .org-fill-key i.previous { border: 2px solid var(--txt-2); border-radius: 50%; background: var(--card); }
 .org-fill-row {
@@ -2489,7 +2618,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   color: var(--txt);
   font-size: 10px;
   font-style: normal;
-  font-weight: 800;
+  font-weight: 700;
   white-space: nowrap;
   box-shadow: 0 2px 6px rgba(0,0,0,.25);
 }
@@ -2506,7 +2635,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   color: var(--txt);
   font-variant-numeric: tabular-nums;
 }
-.org-fill-summary strong { font-size: 14px; font-weight: 840; }
+.org-fill-summary strong { font-size: 14px; font-weight: 700; }
 .org-fill-row .bar-comparison-delta { justify-self: end; }
 /* The axis ticks need to line up with the track column specifically — a
    margin guessed to match that column's pixel position drifts out of sync
@@ -2569,7 +2698,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   gap: 20px;
   color: var(--txt-3);
   font-size: 10.5px;
-  font-weight: 650;
+  font-weight: 600;
 }
 .pod-scorecard-key span { display: inline-flex; align-items: center; gap: 7px; }
 .pod-scorecard-key .pod-growth-key {
@@ -2584,7 +2713,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   height: 9px;
   border: 3px solid var(--blue);
   border-bottom: 0;
-  border-radius: 16px 16px 0 0;
+  border-radius: 18px 18px 0px 0px;
 }
 .pod-key-marker {
   width: 10px;
@@ -2598,7 +2727,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   height: 8px;
   border: 3px solid var(--blue);
   border-bottom: 0;
-  border-radius: 16px 16px 0 0;
+  border-radius: 18px 18px 0px 0px;
 }
 .pod-scorecard-grid {
   min-height: 345px;
@@ -2620,7 +2749,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   justify-items: center;
   align-content: end;
   border: 1px solid transparent;
-  border-radius: 14px;
+  border-radius: 18px;
   outline: none;
   text-align: center;
   transition: transform .15s ease, border-color .15s ease, background .15s ease;
@@ -2678,7 +2807,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   margin-top: 5px;
   color: var(--txt-3);
   font-size: 8.5px;
-  font-weight: 760;
+  font-weight: 700;
   letter-spacing: .45px;
   line-height: 1.2;
   text-transform: uppercase;
@@ -2718,7 +2847,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   color: var(--txt);
   font-size: 9px;
   font-style: normal;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1.4;
   text-align: center;
   white-space: nowrap;
@@ -2730,7 +2859,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   overflow: hidden;
   color: var(--txt);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 700;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2913,7 +3042,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
    header's brand block — not per chart card, which duplicated it across
    every panel of a paired slide and pushed each card's own content down. */
 .presentation-brand-period { color: var(--txt-3); font-size: 10.5px; font-weight: 600; margin-top: 1px; }
-.presentation-brand-period b { color: var(--txt-2); font-weight: 750; }
+.presentation-brand-period b { color: var(--txt-2); font-weight: 700; }
 
 /* Every chart is now on screen at once, each in roughly a sixth to a third
    of the TV's own area instead of a whole or half slide — so instead of a
@@ -3031,14 +3160,14 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   container-type: size;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: clamp(1px, 1.2cqh, 4px);
-  border: 1px solid var(--line); border-radius: 12px;
+  border: 1px solid var(--line); border-radius: 11px;
   background: color-mix(in srgb, var(--pod-color) 5%, var(--card));
   text-align: center;
 }
 .pod-gauge-card h4 {
   flex: 0 0 auto; width: auto; max-width: 100%; margin: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-size: clamp(11px, 9cqh, 16px); font-weight: 760; color: var(--txt);
+  font-size: clamp(11px, 9cqh, 16px); font-weight: 700; color: var(--txt);
 }
 /* Default (tall/narrow, e.g. the TV rail's stacked rows): gauge sits above
    its details, matching the hand-drawn reference. A wide/short card (e.g.
@@ -3061,7 +3190,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
 /* Halo stroke (paint-order: stroke fill) keeps the marker's own value
    legible riding over the arc's fill/track regardless of which color is
    underneath it, the same technique the team donut's callout labels use. */
-.pod-gauge-marker-label { fill: var(--txt); stroke: var(--card); stroke-width: 4px; paint-order: stroke fill; font-size: 15px; font-weight: 800; }
+.pod-gauge-marker-label { fill: var(--txt); stroke: var(--card); stroke-width: 4px; paint-order: stroke fill; font-size: 15px; font-weight: 700; }
 /* The current value sits in the gauge belly. Presentation mode moves the
    comparison delta into a dedicated details column beside the gauge so the
    pill can never cover either the value or the arc. */
@@ -3070,7 +3199,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   display: flex; align-items: baseline; gap: clamp(4px, 3cqw, 10px); white-space: nowrap;
 }
 .pod-gauge-value {
-  font-size: clamp(16px, 22cqh, 34px); font-weight: 800; color: var(--txt);
+  font-size: clamp(16px, 22cqh, 34px); font-weight: 700; color: var(--txt);
   font-variant-numeric: tabular-nums; line-height: 1;
 }
 .pod-gauge-wrap .bar-comparison-delta { flex: 0 0 auto; margin: 0; font-size: clamp(9px, 13cqh, 13px); padding: 2px 7px; }
@@ -3080,7 +3209,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
    gauge shrinks too small for overlaid text to fit without fully covering
    the arc, so this plain inline number takes over instead. */
 .pod-gauge-value-row-inline { display: none; align-items: baseline; gap: clamp(4px, 1vw, 8px); }
-.pod-gauge-value-inline { font-size: clamp(14px, 1.5vh, 22px); font-weight: 800; color: var(--txt); font-variant-numeric: tabular-nums; }
+.pod-gauge-value-inline { font-size: clamp(14px, 1.5vh, 22px); font-weight: 700; color: var(--txt); font-variant-numeric: tabular-nums; }
 .pod-gauge-details > small {
   flex: 0 0 auto; min-height: 0; margin: 0; color: var(--txt-2);
   font-size: clamp(8.5px, 6.5cqh, 12px);
@@ -3098,7 +3227,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   width: clamp(15px, 12cqh, 23px); height: clamp(15px, 12cqh, 23px);
   display: grid; place-items: center; border-radius: 50%;
   background: var(--line-2); color: var(--txt-2);
-  font-size: clamp(8px, 6cqh, 11px); font-weight: 800;
+  font-size: clamp(8px, 6cqh, 11px); font-weight: 700;
 }
 
 /* The org-fill rows flex to fill the card's remaining height exactly,
@@ -3115,8 +3244,8 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
 /* Same cqh technique as the rank funnel above — see that comment. */
 .presentation-slide .org-fill-row { flex: 1 1 0; min-height: 0; height: auto; container-type: size; }
 .presentation-slide .org-fill-axis-row { flex: 0 0 auto; }
-.presentation-slide .org-fill-track { height: clamp(18px, 55cqh, 50px); border-radius: 9px; }
-.presentation-slide .org-fill-value { border-radius: 9px; }
+.presentation-slide .org-fill-track { height: clamp(18px, 55cqh, 50px); border-radius: 8px; }
+.presentation-slide .org-fill-value { border-radius: 8px; }
 .presentation-slide .org-fill-label { font-size: clamp(10.5px, 26cqh, 18px); }
 .presentation-slide .org-fill-summary strong { font-size: clamp(11.5px, 28cqh, 19px); }
 .presentation-slide .org-fill-previous { width: 14px; height: 14px; }
@@ -3262,7 +3391,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   overflow: hidden;
   color: var(--txt-2);
   font-size: clamp(9px, .68vw, 12px);
-  font-weight: 680;
+  font-weight: 600;
   line-height: 1.05;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3272,12 +3401,12 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   overflow: hidden;
   color: var(--txt-2);
   font-size: clamp(14px, 1.05vw, 18px);
-  font-weight: 750;
+  font-weight: 700;
   line-height: 1.05;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.win-board-tv-shell .presentation-brand-period b { color: var(--txt); font-size: inherit; font-weight: 800; }
+.win-board-tv-shell .presentation-brand-period b { color: var(--txt); font-size: inherit; font-weight: 700; }
 .win-board-tv-shell .presentation-clock b { font-size: clamp(15px, 1.25vw, 21px); }
 
 .presentation-slide.win-board-tv-layout {
@@ -3403,8 +3532,8 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   pointer-events: none;
 }
 .pod-rail-center strong { color: var(--txt); font-size: clamp(25px, 3.4vh, 38px); line-height: 1; font-variant-numeric: tabular-nums; }
-.pod-rail-center span { margin-top: 4px; color: var(--txt-3); font-size: clamp(9px, 1.15vh, 12px); font-weight: 760; text-transform: uppercase; letter-spacing: .6px; }
-.pod-rail-section-label { color: var(--txt-3); font-size: clamp(9px, .68vw, 12px); font-weight: 800; letter-spacing: .75px; text-transform: uppercase; }
+.pod-rail-center span { margin-top: 4px; color: var(--txt-3); font-size: clamp(9px, 1.15vh, 12px); font-weight: 700; text-transform: uppercase; letter-spacing: .6px; }
+.pod-rail-section-label { color: var(--txt-3); font-size: clamp(9px, .68vw, 12px); font-weight: 700; letter-spacing: .75px; text-transform: uppercase; }
 .pod-rail-list { min-height: 0; display: grid; grid-template-rows: repeat(5, minmax(0, 1fr)); gap: clamp(3px, .55vh, 7px); }
 .pod-rail-row {
   position: relative;
@@ -3440,7 +3569,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   padding: 6px;
   transform: translateX(-50%);
   border: 1px solid var(--line);
-  border-radius: 9px;
+  border-radius: 8px;
   background: color-mix(in srgb, var(--card) 92%, transparent);
   box-shadow: 0 10px 30px rgba(0,0,0,.28);
 }
@@ -3481,7 +3610,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
    left half of the header (not its previous near-full-width) so it can't
    run underneath this centred title at typical opportunity-scope lengths. */
 .win-board-tv-shell .presentation-view-label {
-  display: block; font-weight: 900; font-size: clamp(20px, 2.1vw, 34px);
+  display: block; font-weight: 700; font-size: clamp(20px, 2.1vw, 34px);
   letter-spacing: -.3px; color: var(--txt);
 }
 /* The full sentence (~915px at a legible size) doesn't fit on one line in
@@ -3501,7 +3630,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   overflow: hidden;
   color: var(--txt-2);
   font-size: clamp(10.5px, .7vw, 13px);
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1.25;
 }
 .win-board-tv-shell .presentation-brand-context span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -3543,12 +3672,12 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   stroke-width: 4px;
   paint-order: stroke fill;
   font-size: clamp(13px, .9vw, 16px);
-  font-weight: 850;
+  font-weight: 700;
   letter-spacing: -.1px;
 }
 .team-share-callout .team-share-callout-delta {
   font-size: clamp(12px, .78vw, 14px);
-  font-weight: 850;
+  font-weight: 700;
 }
 .team-share-callout .team-share-callout-delta.comparison-up { fill: var(--green); }
 .team-share-callout .team-share-callout-delta.comparison-down { fill: var(--red); }
@@ -3663,7 +3792,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
 .win-board-tv-pod-rail .pod-gauge-details > small {
   max-width: 145px;
   font-size: clamp(10px, .66vw, 12.5px);
-  font-weight: 720;
+  font-weight: 700;
   line-height: 1.2;
 }
 .win-board-tv-pod-rail .pod-gauge-details > .bar-comparison-delta {
@@ -3680,7 +3809,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   width: 18px; height: 18px;
   display: grid; place-items: center; border-radius: 50%;
   background: var(--line-2); color: var(--txt-2);
-  font-size: 10px; font-weight: 800;
+  font-size: 10px; font-weight: 700;
 }
 
 @media (max-width: 1180px) {
@@ -3712,34 +3841,56 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
 .ae-leaderboard-empty { padding: 40px 20px; text-align: center; color: var(--txt-3); font-size: 13px; }
 .ae-leaderboard-row {
   display: grid; grid-template-columns: 36px 42px minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
   align-items: center; gap: 14px; padding: 12px 16px;
   /* --line-2, not --ink-2: in light mode the "ink" tokens are dark TEXT
      colors, so using one as a row surface rendered dark-navy rows under
      dark text. --line-2 is the subtle-surface token that flips correctly
      with the theme (light in light mode, dark in dark mode). */
-  border-radius: 12px; border: 1px solid var(--line); background: var(--line-2);
+  border-radius: 11px; border: 1px solid var(--line); background: var(--line-2);
   transition: transform .15s ease, box-shadow .15s ease;
 }
-.ae-leaderboard-row:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(0,0,0,.22); }
-/* Top-3 rows get a subtle medal-tinted wash, matching their badge's metal. */
-.ae-leaderboard-row.ae-rank-1 { background: linear-gradient(135deg, color-mix(in srgb, #FFD76A 26%, var(--line-2)), var(--line-2)); border-color: color-mix(in srgb, #FFD76A 55%, var(--line)); }
-.ae-leaderboard-row.ae-rank-2 { background: linear-gradient(135deg, color-mix(in srgb, #C9D3DE 26%, var(--line-2)), var(--line-2)); border-color: color-mix(in srgb, #C9D3DE 55%, var(--line)); }
-.ae-leaderboard-row.ae-rank-3 { background: linear-gradient(135deg, color-mix(in srgb, #E3A56F 26%, var(--line-2)), var(--line-2)); border-color: color-mix(in srgb, #E3A56F 55%, var(--line)); }
+/* No lift, no shadow: this world separates with hairlines and surface, and a
+   ranked list that jumps under the pointer is harder to read across, not
+   easier. Hover darkens the hairline instead. */
+.ae-leaderboard-row:hover { border-color: var(--txt-3); }
+
+/* The top three carry a metal tint so the podium reads from across a room.
+   Flat colour-mix over the row surface, no gradient and no halo: the tint is
+   the signal, and it stays legible in both themes because it mixes into the
+   theme's own surface token. */
+.ae-leaderboard-row.ae-rank-1 {
+  background: color-mix(in srgb, var(--medal-gold) 15%, var(--card));
+  border-color: color-mix(in srgb, var(--medal-gold) 52%, var(--line));
+}
+.ae-leaderboard-row.ae-rank-2 {
+  background: color-mix(in srgb, var(--medal-silver) 15%, var(--card));
+  border-color: color-mix(in srgb, var(--medal-silver) 46%, var(--line));
+}
+.ae-leaderboard-row.ae-rank-3 {
+  background: color-mix(in srgb, var(--medal-bronze) 14%, var(--card));
+  border-color: color-mix(in srgb, var(--medal-bronze) 46%, var(--line));
+}
+.ae-leaderboard-row.ae-rank-1 .ae-leaderboard-name strong,
+.ae-leaderboard-row.ae-rank-1 .ae-leaderboard-value strong { font-weight: 700; }
 
 .ae-rank-medal, .ae-rank-number {
   width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
-  font-size: 13px; font-weight: 800; flex-shrink: 0;
+  font-size: 13px; font-weight: 700; flex-shrink: 0;
 }
-.ae-rank-number { color: var(--txt-2); background: var(--line-2); border: 1px solid var(--line); }
-.ae-rank-medal.gold { background: linear-gradient(135deg, #FFE9A8, #C99323); color: #3B2900; box-shadow: 0 0 14px rgba(201,147,35,.5); }
-.ae-rank-medal.silver { background: linear-gradient(135deg, #F1F4F8, #9AA5B1); color: #20242B; box-shadow: 0 0 14px rgba(154,165,177,.45); }
-.ae-rank-medal.bronze { background: linear-gradient(135deg, #E3A56F, #A85A2A); color: #2E1608; box-shadow: 0 0 14px rgba(168,90,42,.45); }
+/* Solid metal discs with a tonal ring. Tabular figures so the column of
+   numerals stays on a common axis down the list. */
+.ae-rank-number, .ae-rank-medal { font-variant-numeric: tabular-nums; }
+.ae-rank-number { color: var(--txt-3); background: transparent; border: 1px solid var(--line); }
+.ae-rank-medal { color: var(--medal-ink); font-weight: 700; border: 0; }
+.ae-rank-medal.gold   { background: var(--medal-gold);   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--medal-gold) 60%, #000); }
+.ae-rank-medal.silver { background: var(--medal-silver); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--medal-silver) 62%, #000); }
+.ae-rank-medal.bronze { background: var(--medal-bronze); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--medal-bronze) 62%, #000); }
 
 /* Initials placeholder until a real photo source (e.g. Slack) is wired up. */
 .ae-avatar {
   width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
-  font-size: 13px; font-weight: 800; color: #fff; flex-shrink: 0;
-  box-shadow: inset 0 2px 0 rgba(255,255,255,.28), inset 0 -8px 12px rgba(0,0,0,.24);
+  font-size: 13px; font-weight: 700; color: #fff; flex-shrink: 0;
 }
 
 .ae-leaderboard-name { display: flex; align-items: center; min-width: 0; }
@@ -3797,6 +3948,16 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
 .ae-performance-slide .ae-leaderboard-no-avatar .ae-leaderboard-row {
   grid-template-columns: clamp(30px, 9cqh, 52px) minmax(0, 1fr) auto;
 }
+/* With a leader avatar the slide needs its fourth column back, at a
+   specificity that beats the three-column rule above. */
+.ae-performance-slide .ae-leaderboard-no-avatar.ae-leaderboard-leaders .ae-leaderboard-row {
+  grid-template-columns: clamp(30px, 9cqh, 52px) clamp(40px, 56cqh, 190px) minmax(0, 1fr) auto;
+  /* Content centres in the space left over; the bar takes only what it needs.
+     Without this the two auto rows split the row evenly and the avatar had
+     nowhere to go but outside it. */
+  grid-template-rows: 1fr auto;
+  align-content: center;
+}
 @media (max-width: 1100px) {
   .ae-performance-slide { grid-template-columns: minmax(0, 1fr); }
 }
@@ -3813,9 +3974,9 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
 
 .account-form { display: flex; flex-direction: column; gap: 14px; max-width: 420px; }
 .account-form label { display: flex; flex-direction: column; gap: 6px; }
-.account-form label > span { color: var(--txt-2); font-size: 12.5px; font-weight: 650; }
+.account-form label > span { color: var(--txt-2); font-size: 12.5px; font-weight: 600; }
 .account-form input, .account-form select {
-  padding: 9px 12px; border: 1px solid var(--line); border-radius: 7px;
+  padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px;
   background: var(--line-2); color: var(--txt); font: inherit; font-size: 14px;
 }
 .account-form input:focus-visible, .account-form select:focus-visible {
@@ -3823,9 +3984,9 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
 }
 .account-form .hint { margin: -4px 0 2px; font-size: 12.5px; line-height: 1.45; color: var(--txt-3); }
 .account-form button { align-self: flex-start; }
-.account-invite { max-width: 460px; margin-bottom: 18px; padding: 16px; border: 1px solid var(--line); border-radius: 9px; background: var(--line-2); }
+.account-invite { max-width: 460px; margin-bottom: 18px; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--line-2); }
 
-.account-error, .account-success { padding: 9px 12px; border-radius: 7px; font-size: 13px; font-weight: 600; }
+.account-error, .account-success { padding: 9px 12px; border-radius: 8px; font-size: 13px; font-weight: 600; }
 .account-error { color: var(--red); background: color-mix(in srgb, var(--red) 10%, transparent); border: 1px solid color-mix(in srgb, var(--red) 32%, transparent); }
 .account-success { color: var(--green); background: color-mix(in srgb, var(--green) 10%, transparent); border: 1px solid color-mix(in srgb, var(--green) 32%, transparent); }
 
@@ -3833,14 +3994,14 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
    field to leave sitting on screen. */
 .account-secret {
   display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;
-  margin-bottom: 16px; padding: 16px 18px; border-radius: 9px;
+  margin-bottom: 16px; padding: 16px 18px; border-radius: 8px;
   border: 1px solid color-mix(in srgb, var(--amber) 42%, var(--line));
   background: color-mix(in srgb, var(--amber) 10%, transparent);
 }
 .account-secret b { font-size: 14px; }
 .account-secret p { margin: 4px 0 10px; max-width: 54ch; color: var(--txt-2); font-size: 12.5px; line-height: 1.45; }
 .account-secret code {
-  display: inline-block; padding: 7px 11px; border-radius: 6px;
+  display: inline-block; padding: 7px 11px; border-radius: 8px;
   background: var(--card); border: 1px solid var(--line);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px;
   user-select: all; word-break: break-all;
@@ -3857,7 +4018,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
 .account-table td b { display: block; font-size: 14px; }
 .account-table td span { display: block; color: var(--txt-3); font-size: 12.5px; }
 .account-table tr.is-disabled td b, .account-table tr.is-disabled td span { opacity: .55; }
-.account-table select { padding: 6px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--line-2); color: var(--txt); font: inherit; font-size: 13px; }
+.account-table select { padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--line-2); color: var(--txt); font: inherit; font-size: 13px; }
 .account-table select:disabled { opacity: .5; cursor: not-allowed; }
 .account-flag { display: block; margin-top: 3px; color: var(--amber); font-size: 11.5px; font-style: normal; font-weight: 700; }
 .account-row-actions { display: flex; gap: 8px; justify-content: flex-end; white-space: nowrap; }
@@ -3876,8 +4037,8 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
 .account-danger h3 { color: var(--red); }
 .btn-danger {
   padding: 8px 14px; border: 1px solid color-mix(in srgb, var(--red) 45%, var(--line));
-  border-radius: 7px; background: color-mix(in srgb, var(--red) 12%, transparent);
-  color: var(--red); font: inherit; font-size: 13px; font-weight: 650; cursor: pointer;
+  border-radius: 8px; background: color-mix(in srgb, var(--red) 12%, transparent);
+  color: var(--red); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
 }
 .btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--red) 20%, transparent); }
 .btn-danger:disabled { opacity: .45; cursor: not-allowed; }
@@ -3899,7 +4060,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   font-weight: 600;
   line-height: 1.5;
 }
-.metric-definition b { font-weight: 800; }
+.metric-definition b { font-weight: 700; }
 /* Example and caveat sit on their own lines: the whole point is that this is
    scannable, and a single wrapped paragraph is what made the first attempt
    read as a wall of red. */
@@ -3923,7 +4084,7 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
   overflow: hidden;
   color: var(--red);
   font-size: clamp(9.5px, .74vw, 13px);
-  font-weight: 750;
+  font-weight: 700;
   letter-spacing: 0;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -3931,3 +4092,507 @@ html[data-theme="light"] .advanced-date-custom input { color-scheme: light; }
 @media (max-width: 1180px) {
   .win-board-tv-shell .presentation-view-label > small { display: none; }
 }
+
+/* ==========================================================================
+   APPLE CHROME - final word on interactive surfaces.
+
+   This file accumulated five generations of theme blocks that override one
+   another, so the working density rules live here at the end of the cascade
+   rather than being threaded back through all of them. Everything below is
+   the source system's grammar (DESIGN.md at the project root) expressed at
+   dashboard density:
+
+     - one accent (Action Blue / Sky Link Blue on dark), nothing else
+     - hairlines, never shadows, to separate chrome
+     - pill for anything that reads as an action
+     - scale(.95) as the universal press state
+     - backdrop blur only on the sticky nav, where it is functional
+   ========================================================================== */
+
+/* ---- Sticky nav: the sub-nav-frosted grammar ---- */
+.top-nav {
+  height: 52px;
+  background: color-mix(in srgb, var(--card) 80%, transparent);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid var(--line);
+  box-shadow: none;
+}
+.top-nav .brand { color: var(--txt); font-size: 21px; font-weight: 600; letter-spacing: 0.231px; }
+.top-nav .brand .logo { background: var(--ink); border-radius: var(--r-sm); }
+
+/* ---- Tabs: configurator-chip grammar (pill track, pill thumb) ---- */
+nav.tabs {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  padding: 4px;
+  gap: 4px;
+  box-shadow: none;
+}
+nav.tabs button {
+  border-radius: var(--r-pill);
+  padding: 8px 16px;
+  font-size: 14px; font-weight: 400; letter-spacing: -0.224px;
+  color: var(--txt-2); background: transparent;
+  transition: color .2s cubic-bezier(.16,1,.3,1), background .2s cubic-bezier(.16,1,.3,1);
+}
+nav.tabs button:hover { background: var(--line-2); color: var(--txt); }
+nav.tabs button.on { background: var(--blue); color: #fff; font-weight: 600; }
+nav.tabs button:active { transform: scale(.95); }
+nav.tabs .num { border-radius: var(--r-pill); font-weight: 600; }
+
+/* ---- Buttons: pill primary, pearl-capsule secondary ---- */
+.btn-primary, .btn, button.btn-primary {
+  background: var(--blue); color: #fff; border: 0;
+  border-radius: var(--r-pill);
+  padding: 11px 22px;
+  font-size: 17px; font-weight: 400; letter-spacing: -0.374px;
+  transition: background .2s cubic-bezier(.16,1,.3,1), transform .2s cubic-bezier(.16,1,.3,1);
+}
+.btn-primary:hover, .btn:hover { background: var(--blue-focus); }
+.btn-primary:active, .btn:active { transform: scale(.95); }
+.btn-secondary {
+  background: var(--pearl); color: var(--txt-2);
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  padding: 8px 14px; font-size: 14px; font-weight: 400; letter-spacing: -0.224px;
+  box-shadow: none;
+}
+.btn-secondary:hover { border-color: var(--txt-3); color: var(--txt); }
+.btn-secondary:active { transform: scale(.95); }
+
+/* ---- Focus: one ring, everywhere ---- */
+a:focus-visible, button:focus-visible, input:focus-visible,
+select:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--blue-focus);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+/* ---- Filter controls inherit the same grammar ---- */
+.ms-trigger, .fg select, .date-range-trigger {
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--card); color: var(--txt);
+  font-size: 14px; letter-spacing: -0.224px;
+  box-shadow: none;
+}
+.ms-trigger:hover, .fg select:hover, .date-range-trigger:hover,
+.date-range-trigger.on { border-color: var(--txt-3); background: var(--card); }
+
+/* ---- Anything still carrying a decorative shadow loses it. The source
+        system's single drop-shadow is reserved for imagery. ---- */
+.card, .kpi, .sec-head, .template-card, .intro, .insight,
+.present-card, .present-kpi, header.top, nav.tabs, .top-nav {
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  nav.tabs button, .btn, .btn-primary, .btn-secondary { transition: none; }
+  nav.tabs button:active, .btn:active, .btn-primary:active, .btn-secondary:active { transform: none; }
+}
+
+/* ==========================================================================
+   PRESENTATION SHELLS - the second surface that gets the full gallery
+   treatment rather than working density.
+   ========================================================================== */
+
+/* The deck carried six decorative gradient shapes (orb, panel, ring, square,
+   line, dot). The source system is explicit that atmosphere comes from
+   photography and never from a decorative gradient, so they are removed
+   rather than restyled. The slide's own surface colour is the composition. */
+.deck-shape { display: none !important; }
+
+.deck-backdrop, .presentation-shell {
+  background: var(--bg);
+  background-image: none;
+}
+
+/* Tile headline grammar: display-lg with the signature tight tracking. */
+.presentation-view-label b,
+.presentation-shell h1,
+.present-title {
+  font-size: clamp(28px, 3.2cqw, 40px);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.28px;
+  color: var(--txt);
+}
+.presentation-brand-context,
+.presentation-view-label small {
+  font-size: clamp(12px, 1.1cqw, 14px);
+  font-weight: 400;
+  line-height: 1.43;
+  letter-spacing: -0.224px;
+  color: var(--txt-3);
+}
+
+/* Slides are full-bleed tiles: the surface change is the divider, so they
+   carry no rounding, no border and no shadow. */
+.deck-slide {
+  border-radius: 0;
+  border: 0;
+  box-shadow: none;
+}
+
+/* KPI accent rail: a flat 3px hairline in the accent, no halo. */
+.present-kpi::before,
+.present-kpi.present-blue::before {
+  width: 3px;
+  background: var(--blue);
+  box-shadow: none;
+}
+.present-kpi.present-green::before { background: var(--green); box-shadow: none; }
+.present-kpi.present-amber::before { background: var(--amber); box-shadow: none; }
+
+/* The primary action carried a tinted drop-shadow. In this system a button is
+   never elevated: colour alone signals the action. */
+.btn-primary, .btn, button.btn-primary,
+.login-form .btn-primary, .floating-filter-button { box-shadow: none; }
+
+/* ==========================================================================
+   AE QUOTA ATTAINMENT STRIP
+   Apple grammar at working density: flat surface, hairline separation,
+   one accent. Numbers are tabular so the three tiles line up on the decimal.
+   ========================================================================== */
+.ae-quota-strip { padding: 20px 22px; margin-bottom: var(--gap); }
+.ae-quota-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+  padding-bottom: 14px; margin-bottom: 16px; border-bottom: 1px solid var(--line);
+}
+.ae-quota-head b { font-size: 17px; font-weight: 600; letter-spacing: -0.374px; color: var(--txt); }
+/* The scope note is not decoration. A viewer who has filtered to a fortnight
+   must be told the quota figures did not follow the picker. */
+.ae-quota-scope { display: block; margin-top: 4px; font-size: 14px; letter-spacing: -0.224px; color: var(--txt-3); }
+.ae-quota-vs { font-size: 14px; letter-spacing: -0.224px; color: var(--txt-3); white-space: nowrap; }
+
+.ae-quota-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line); }
+.ae-quota-tile { display: flex; flex-direction: column; gap: 6px; padding: 4px 20px 4px 0; background: var(--card); }
+.ae-quota-tile:not(:first-child) { padding-left: 20px; }
+.ae-quota-label { font-size: 14px; font-weight: 400; letter-spacing: -0.224px; color: var(--txt-3); }
+.ae-quota-value {
+  display: flex; align-items: baseline; gap: 8px;
+  font-size: 34px; font-weight: 600; line-height: 1.1; letter-spacing: -0.374px;
+  color: var(--txt); font-variant-numeric: tabular-nums;
+}
+.ae-quota-meta { font-size: 14px; letter-spacing: -0.224px; color: var(--txt-3); font-variant-numeric: tabular-nums; }
+
+/* "No quota" is a mapping gap, not a score of zero. Rendered in muted ink so
+   it never reads as a performance result next to real percentages. */
+.ae-no-quota { font-size: 14px; font-weight: 400; letter-spacing: -0.224px; color: var(--txt-3); font-style: normal; }
+
+.ae-quota-unmapped { display: grid; gap: 10px; justify-items: start; }
+.ae-quota-unmapped p { margin: 0; font-size: 17px; line-height: 1.47; letter-spacing: -0.374px; color: var(--txt-2); max-width: 65ch; }
+
+@media (max-width: 768px) {
+  .ae-quota-tiles { grid-template-columns: 1fr; }
+  .ae-quota-tile { padding: 14px 0; }
+  .ae-quota-tile:not(:first-child) { padding-left: 0; }
+  .ae-quota-value { font-size: 28px; }
+}
+
+/* Mapping-error banner. Uses the semantic warning colour, never the accent:
+   this is a state, not an action, and the source system reserves its one blue
+   for things you can click. */
+.ae-quota-mismatch {
+  display: grid; gap: 10px; justify-items: start;
+  padding: 18px 22px; margin-bottom: var(--gap);
+  border-left: 3px solid var(--amber);
+}
+.ae-quota-mismatch b { font-size: 17px; font-weight: 600; letter-spacing: -0.374px; color: var(--txt); }
+.ae-quota-mismatch p { margin: 0; font-size: 17px; line-height: 1.47; letter-spacing: -0.374px; color: var(--txt-2); max-width: 70ch; }
+.ae-quota-mismatch code {
+  font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  font-size: 15px; padding: 2px 6px; border-radius: var(--r-sm);
+  background: var(--pearl); border: 1px solid var(--line); color: var(--txt);
+}
+
+/* Rep status is a mode, not a value set, so it reads as a plain select rather
+   than borrowing the multi-select grammar of the other filters. */
+.rep-status-filter select { border-radius: var(--r-pill); border: 1px solid var(--line); background: var(--card); color: var(--txt); font-size: 14px; letter-spacing: -0.224px; padding: 8px 14px; }
+.ae-reps-hidden { margin: 0 0 var(--gap); font-size: 14px; line-height: 1.43; letter-spacing: -0.224px; color: var(--txt-3); max-width: 80ch; }
+
+/* Shown when a commit is about to detach dashboards that are bound right now.
+   Amber, not the accent: this is a consequence, not an action. */
+.unbind-warning {
+  display: grid; gap: 10px; justify-items: start;
+  padding: 16px 18px; margin-bottom: var(--gap);
+  background: var(--card); border: 1px solid var(--line);
+  border-left: 3px solid var(--amber); border-radius: var(--r);
+}
+.unbind-warning b { font-size: 17px; font-weight: 600; letter-spacing: -0.374px; color: var(--txt); }
+.unbind-warning p { margin: 0; font-size: 15px; line-height: 1.47; letter-spacing: -0.374px; color: var(--txt-2); max-width: 70ch; }
+
+/* ---- Top performer tiles ----
+   The names carry this strip, so they are the largest type on the board. The
+   emphasis is size, weight and a lifted surface, never colour: the single
+   accent stays reserved for things you can click. */
+.ae-top-tiles {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px;
+  background: var(--line); margin-top: 1px;
+}
+.ae-top-tile {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 22px 20px 20px;
+  background: var(--pearl);          /* lifted surface, no shadow */
+}
+.ae-top-tile:first-child { padding-left: 0; background: var(--pearl); }
+.ae-top-name {
+  font-size: clamp(28px, 3.4vw, 40px);   /* typography.display-lg */
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.9px;                /* tighter than body: Apple display tracking */
+  color: var(--txt);
+  text-wrap: balance;
+  overflow-wrap: anywhere;               /* long names must not overflow the tile */
+}
+.ae-top-value {
+  font-size: 21px; font-weight: 600; letter-spacing: 0.231px;
+  color: var(--txt-2); font-variant-numeric: tabular-nums;
+}
+.ae-top-value small { font-size: 14px; font-weight: 400; letter-spacing: -0.224px; color: var(--txt-3); }
+.ae-top-empty { font-size: 17px; line-height: 1.47; letter-spacing: -0.374px; color: var(--txt-3); }
+
+@media (max-width: 768px) {
+  .ae-top-tiles { grid-template-columns: 1fr; }
+  .ae-top-tile, .ae-top-tile:first-child { padding: 18px 0; }
+  .ae-top-name { font-size: 28px; }
+}
+
+/* ---- POD leader ----
+   A circular photo with a hairline ring. No shadow: elevation in this system
+   is reserved for imagery resting on a surface, and a 34px avatar is chrome. */
+.ae-leader-avatar {
+  width: 34px; height: 34px; flex: 0 0 34px;
+  border-radius: var(--r-pill);
+  object-fit: cover;
+  background: var(--pearl);
+  border: 1px solid var(--line);
+  display: grid; place-items: center;
+  font-size: 12px; font-weight: 600; color: #fff;
+}
+/* The initials fallback paints its own background, so the hairline would read
+   as a seam against it. */
+span.ae-leader-avatar { border-color: transparent; }
+
+/* The POD is the ranked entity, so it keeps the primary line and the leader
+   sits beneath it in muted ink rather than competing for the same weight. */
+.ae-leader-name {
+  display: block; margin-top: 2px;
+  font-size: 13px; font-weight: 400; letter-spacing: -0.224px;
+  color: var(--txt-3);
+}
+.ae-leaderboard-no-avatar .ae-leaderboard-row { align-items: center; }
+
+/* On the TV shell everything scales with the container, leader included. */
+.win-board-tv-shell .ae-leader-avatar {
+  width: clamp(30px, 4.2cqh, 60px); height: clamp(30px, 4.2cqh, 60px); flex-basis: clamp(30px, 4.2cqh, 60px);
+}
+.win-board-tv-shell .ae-leader-name { font-size: clamp(11px, 1.5cqh, 20px); }
+
+/* ---- POD rows carrying a leader ----
+   The leader avatar is a fourth grid child, so the no-avatar template needs its
+   own column back. Without this the row overflowed and wrapped: the value fell
+   to a second line and the two names ran together as "EMEA AESaif Rizvi". */
+.ae-leaderboard-no-avatar.ae-leaderboard-leaders .ae-leaderboard-row {
+  grid-template-columns: 36px 72px minmax(0, 1fr) auto;
+}
+.ae-leaderboard-leaders .ae-leader-avatar {
+  width: 72px; height: 72px; flex: 0 0 72px; font-size: 20px;
+}
+/* The two names stack; as flex row siblings they had no separation at all. */
+.ae-leaderboard-leaders .ae-leaderboard-name {
+  display: flex; flex-direction: column; align-items: flex-start;
+  justify-content: center; gap: 1px; min-width: 0;
+}
+.ae-leaderboard-leaders .ae-leaderboard-name strong { font-size: 16px; line-height: 1.2; }
+.ae-leaderboard-leaders .ae-leader-name {
+  margin-top: 0; font-size: 13px; line-height: 1.3;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ae-leaderboard-leaders .ae-leaderboard-row { padding: 14px 16px; }
+
+@media (max-width: 900px) {
+  .ae-leaderboard-no-avatar.ae-leaderboard-leaders .ae-leaderboard-row { grid-template-columns: 30px 56px minmax(0, 1fr) auto; gap: 10px; }
+  .ae-leaderboard-leaders .ae-leader-avatar { width: 56px; height: 56px; flex-basis: 56px; }
+}
+
+/* TV shell: everything scales with the container. */
+.win-board-tv-shell .ae-leaderboard-no-avatar.ae-leaderboard-leaders .ae-leaderboard-row {
+  grid-template-columns: clamp(30px, 4cqh, 52px) clamp(40px, 56cqh, 190px) minmax(0, 1fr) auto;
+}
+.win-board-tv-shell .ae-leaderboard-leaders .ae-leader-avatar {
+  width: clamp(40px, 56cqh, 190px); height: clamp(40px, 56cqh, 190px); flex-basis: clamp(40px, 56cqh, 190px);
+  align-self: center;
+}
+.win-board-tv-shell .ae-leaderboard-leaders .ae-leaderboard-name strong { font-size: clamp(22px, 5cqh, 44px); }
+.win-board-tv-shell .ae-leaderboard-leaders .ae-leader-name { font-size: clamp(15px, 3.2cqh, 28px); }
+
+/* Holds the avatar column open for a POD with no leader assigned. */
+.ae-leader-avatar-empty { display: block; width: 100%; height: 1px; }
+
+
+/* Scope note under the board title. Red is the user's chosen convention for
+   these definition lines (the same treatment the Win and Loss boards use for
+   their contribution-% definitions), so it is deliberately NOT the semantic
+   error red's job here - it is a reading aid, not a warning. */
+.board-scope-note {
+  margin-top: 6px;
+  color: var(--red);
+  font-size: 14px; font-weight: 600; letter-spacing: -0.224px; line-height: 1.4;
+}
+.presentation-view-label .board-scope-note {
+  display: block; margin-top: 4px;
+  font-size: clamp(11px, 1.4cqh, 17px); font-weight: 600;
+}
+
+/* ==========================================================================
+   ATTAINMENT BAR
+   The one amplified element on this board. Everything around it was quieted
+   so this move stays legible.
+   ========================================================================== */
+.ae-attain {
+  grid-column: 1 / -1;
+  position: relative;
+  height: 6px; margin-top: 2px;
+  border-radius: var(--r-pill);
+  /* A hairline trough, not a filled track: the empty part is the shortfall,
+     and painting it solid gives absence the same visual weight as achievement. */
+  background: color-mix(in srgb, var(--txt-3) 18%, transparent);
+  overflow: visible;
+}
+.ae-attain-fill {
+  position: absolute; inset: 0 auto 0 0;
+  width: var(--pct);
+  border-radius: var(--r-pill);
+  background: var(--txt-2);
+  /* One authored moment: the bars draw once on mount. Exponential ease-out
+     from an already-visible default, so a reduced-motion viewer or a failed
+     animation still sees the true value rather than an empty row. */
+  animation: ae-attain-draw .9s cubic-bezier(.16, 1, .3, 1) both;
+}
+@keyframes ae-attain-draw { from { width: 0; } to { width: var(--pct); } }
+
+/* At or over target the fill takes the accent and the trough closes with a
+   notch, so 100% is a readable landmark rather than a colour change alone. */
+.ae-attain-over .ae-attain-fill { background: var(--blue); }
+.ae-attain-over::after {
+  content: ''; position: absolute; right: -1px; top: -3px; bottom: -3px;
+  width: 2px; border-radius: 1px; background: var(--blue);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ae-attain-fill { animation: none; }
+}
+
+/* The bar is information, so it scales with the row on the TV shell. */
+.win-board-tv-shell .ae-attain { height: clamp(8px, 1.6cqh, 16px); margin-top: clamp(6px, 1.4cqh, 18px); }
+
+/* --------------------------------------------------------------------------
+   Browser surfaces. These ship with defaults that belong to no design system,
+   and they are the cheapest tell that a page was assembled rather than built.
+   Scoped to the two performance boards so no other surface shifts.
+   -------------------------------------------------------------------------- */
+.ae-performance-card ::selection,
+.ae-performance-slide ::selection { background: color-mix(in srgb, var(--blue) 22%, transparent); color: var(--txt); }
+
+.ae-performance-card, .ae-performance-slide {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+  /* Digits in a ranked column must sit on a common axis or the eye cannot
+     compare them down the list. */
+  font-variant-numeric: tabular-nums;
+}
+.ae-performance-card ::-webkit-scrollbar,
+.ae-performance-slide ::-webkit-scrollbar { width: 10px; height: 10px; }
+.ae-performance-card ::-webkit-scrollbar-thumb,
+.ae-performance-slide ::-webkit-scrollbar-thumb {
+  background: var(--line); border-radius: var(--r-pill);
+  border: 3px solid transparent; background-clip: content-box;
+}
+.ae-performance-card ::-webkit-scrollbar-thumb:hover,
+.ae-performance-slide ::-webkit-scrollbar-thumb:hover { background: var(--txt-3); background-clip: content-box; }
+.ae-performance-card ::-webkit-scrollbar-track,
+.ae-performance-slide ::-webkit-scrollbar-track { background: transparent; }
+
+/* ==========================================================================
+   PODIUM + ATTAINMENT BAND COLOURS
+   Metals are brand-neutral display tones, not part of the accent system.
+   Band colours are semantic: they encode a value, which is the one job the
+   single-accent rule was never meant to cover.
+   ========================================================================== */
+:root {
+  --medal-gold:   #E8B33C;
+  --medal-silver: #B9C2CC;
+  --medal-bronze: #C88A4E;
+  --medal-ink:    #2A1D00;
+
+  --band-hit:     #00875A;   /* at or above target */
+  --band-close:   #0066CC;   /* 75-99, in reach    */
+  --band-behind:  #B25000;   /* 50-74, slipping    */
+  --band-risk:    #CC0033;   /* under 50, at risk  */
+}
+html[data-theme="light"] {
+  --medal-gold: #D9A21F; --medal-silver: #A8B2BE; --medal-bronze: #B8763B; --medal-ink: #241900;
+  --band-hit: #006B47; --band-close: #0066CC; --band-behind: #A34800; --band-risk: #C4002E;
+}
+/* Dark tiles need the lifted steps, same hues. */
+html:not([data-theme="light"]) {
+  --medal-gold: #E8B33C; --medal-silver: #C4CDD8; --medal-bronze: #D4955A; --medal-ink: #241900;
+  --band-hit: #30D158; --band-close: #2997FF; --band-behind: #FF9F0A; --band-risk: #FF453A;
+}
+
+.ae-band-hit    .ae-attain-fill { background: var(--band-hit); }
+.ae-band-close  .ae-attain-fill { background: var(--band-close); }
+.ae-band-behind .ae-attain-fill { background: var(--band-behind); }
+.ae-band-risk   .ae-attain-fill { background: var(--band-risk); }
+
+/* The target notch only appears once the bar has actually reached it. */
+.ae-band-hit::after {
+  content: ''; position: absolute; right: -1px; top: -4px; bottom: -4px;
+  width: 3px; border-radius: 2px; background: var(--band-hit);
+}
+
+/* The value stays in ink. The bar beside it already carries the band, and
+   colouring the number too says the same thing twice - then on a board where
+   every POD sits under target, every number turns red and the page reads as
+   an error state rather than as a ranking. Colour marks the data; text wears
+   text tokens. */
+.ae-leaderboard-value strong { color: var(--txt); }
+
+/* ---- Top performer strip on the TV shell ----
+   A slim band above the rankings. Sized in vh rather than cqh: it sits outside
+   the slide, so it has no row-sized query container to measure against. */
+.ae-top-tiles-tv {
+  flex: 0 0 auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px; margin: 0 0 clamp(8px, 1.2vh, 16px);
+  background: var(--line);
+  border: 1px solid var(--line); border-radius: var(--r);
+  overflow: hidden;
+}
+.ae-top-tiles-tv .ae-top-tile {
+  padding: clamp(10px, 1.6vh, 20px) clamp(16px, 2vw, 30px);
+  background: var(--card);
+  gap: clamp(2px, .4vh, 6px);
+}
+.ae-top-tiles-tv .ae-top-tile:first-child { padding-left: clamp(16px, 2vw, 30px); }
+.ae-top-tiles-tv .ae-quota-label { font-size: clamp(11px, 1.4vh, 17px); }
+.ae-top-tiles-tv .ae-top-name { font-size: clamp(22px, 4.4vh, 54px); line-height: 1.02; }
+.ae-top-tiles-tv .ae-top-value { font-size: clamp(14px, 2vh, 24px); }
+.ae-top-tiles-tv .ae-top-value small { font-size: clamp(10px, 1.3vh, 15px); }
+
+/* The slide keeps whatever height the strip leaves. */
+.win-board-tv-shell .presentation-slide { min-height: 0; }
+
+/* The TV shell declares two grid rows: header, then the slide takes the rest.
+   The top-performer strip adds a THIRD child, so without its own track it
+   claimed the slide's 1fr and squeezed the rankings into an implicit row.
+   Give it an auto track and let the slide keep the remainder. */
+.win-board-tv-shell.presentation-shell:has(.ae-top-tiles-tv) {
+  grid-template-rows: clamp(58px, 6.5vh, 72px) auto minmax(0, 1fr) auto;
+}
+/* Belt and braces for engines without :has(): the strip is pinned to its own
+   track and cannot stretch, so a missing :has() degrades to a slim band
+   rather than to the broken layout. */
+.ae-top-tiles-tv { align-self: start; }

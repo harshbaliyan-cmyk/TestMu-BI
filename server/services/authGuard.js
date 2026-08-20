@@ -122,3 +122,32 @@ export function passwordProblem(password, { email = '', name = '' } = {}) {
 }
 
 export const AUTH_LIMITS = { IP_MAX_ATTEMPTS, EMAIL_MAX_ATTEMPTS, WINDOW_MS, LOCKOUT_MS };
+
+// ===== ACCOUNT-CREATION AND ADMIN POLICY =====
+//
+// Both of these were inline in server.js, where nothing could reach them: the
+// module starts a listener on import, so a test cannot load it. They are the
+// two rules that decide who gets in and who is privileged, which makes them
+// the last things that should be untestable.
+
+// Self-service signup is OFF unless explicitly enabled.
+//
+// The signup route used to accept any address that ended in ALLOWED_DOMAIN and
+// hand back a session immediately. A domain suffix is not proof of ownership —
+// it is a string check anyone can satisfy by typing — and there is no email
+// verification in this system to stand behind it: no token table, no verified
+// flag, and SMTP unconfigured. Until address ownership is actually proven,
+// accounts come from an administrator.
+export const selfSignupAllowed = (env = process.env) => env.ALLOW_SELF_SIGNUP === 'true';
+
+// Admin is the ROLE on the user record, and nothing else.
+//
+// This used to also accept any session whose email appeared in ADMIN_EMAILS,
+// which made an env var a live authorization check against a value the caller
+// chooses. Combined with open signup, guessing a listed address that had not
+// registered yet was enough to become an administrator; only registration
+// order prevented it, and registration order is not a security control.
+//
+// ADMIN_EMAILS still bootstraps the role when an account is CREATED. Granting
+// is a write, not a check.
+export const isAdminSession = session => session?.role === 'admin';

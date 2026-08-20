@@ -10,6 +10,7 @@ import axios from 'axios';
 import cron from 'node-cron';
 import { createHash, randomUUID } from 'node:crypto';
 import { encryptCredential, decryptCredential } from './services/credentialCipher.js';
+import { quarterFromColumnName } from './services/aePerformanceMetrics.js';
 import {
   saveTableauConnection, listTableauConnections, getRestorableTableauConnection,
   setTableauConnectionStatus,
@@ -123,6 +124,20 @@ export const OPP_SCHEMA = {
                       formula: '([Amount] / [Subscription Duration]) * 12',
                       desc: 'Annual recurring revenue, normalised from the deal value and contract term. Subscription Duration is in months. Must be a row-level calculation in Tableau — aggregate functions will not import correctly through VizQL Data Service.',
                       aliases: ['arr', 'annualrecurringrevenue', 'annualvalue', 'opparr'] },
+  ownerActive:      { type: 'boolean', group: 'segmentation', label: 'Rep is active', hint: 'Rep status filter on every board',
+                      desc: 'Whether the opportunity owner still works here. Filters departed reps out of INDIVIDUAL rep rankings while their closed ARR still counts towards POD rankings and team totals, so a resignation never rewrites a past quarter. A blank value is treated as inactive, which is the strict reading: it means an explicitly unmatched rep is hidden rather than assumed present. Note the BDR variant of this flag exists on the opportunity source and is deliberately not mapped here, so the filter means one thing on every board: is the deal OWNER still here.',
+                      aliases: ['active', 'isactive', 'useractive', 'repactive', 'owneractive', 'activeuser'] },
+  quotaCurrent:     { type: 'number',  group: 'metrics', label: 'Current quarter quota', hint: 'AE Performance - % of quota achieved',
+                      desc: 'The rep quota for the quarter the board is reporting on. Deliberately named by POSITION (current) rather than by quarter, so moving to a new quarter is a mapping change on this one field and nothing in the code moves. Arrives per opportunity row and is read with MIN() per rep, matching {FIXED [Full Name]: MIN([Quota])} - a quota is one number per rep, not something to sum across their deals. Source naming is inconsistent across quarters - some use a hyphen and a four-digit year, others an apostrophe and two digits - which is exactly why this is mapped by hand rather than auto-matched.',
+                      // Deliberately no aliases: this field is manual-only.
+                      // Auto-matching used to bind it to whichever quota column
+                      // scored first, which silently produced a full board
+                      // measured against the wrong quarter.
+                      aliases: [] },
+  quotaPrior:       { type: 'number',  group: 'metrics', label: 'Prior quarter quota', hint: 'AE Performance - quota comparison tile',
+                      desc: 'The rep quota for the quarter immediately before the current one. Powers the comparison tile only. Same MIN()-per-rep semantics as the current quota. Leave unmapped and the comparison tile hides rather than showing a false movement.',
+                      // Manual-only for the same reason as quotaCurrent.
+                      aliases: [] },
   trialArr:         { type: 'number',  group: 'metrics', label: 'Trial ARR', hint: 'ARR at trial entry',
                       desc: 'ARR captured at the moment the deal moved into Trial stage, and retained thereafter — a historical snapshot rather than a filter on current stage. A Closed Won deal still carries the ARR it had at trial, which makes trial-to-close movement analysable. Comes from source; no calculation needed. Note this is trial, not trailing — the earlier field name trailArr was misleading and has been retired.',
                       aliases: ['trialarr', 'trailarr', 'trialannualrecurringrevenue'] },
@@ -198,6 +213,25 @@ export const UPSTREAM_FIELDS = [
 export const GLOBAL_FILTERS = [
   'region', 'orgType', 'pod', 'team', 'owner', 'product', 'industry', 'source', 'type',
 ];
+
+// Rep status is deliberately NOT in GLOBAL_FILTERS. Those are generic row
+// filters, and this one is not: it hides a rep from individual rankings while
+// their ARR keeps counting towards POD rankings and team totals. Wiring it in
+// as a row filter would delete that revenue from history.
+export const REP_STATUS_FILTER = { key: 'repStatus', field: 'ownerActive', default: 'active' };
+
+// Which schema fields each dashboard needs. Colocated with the schema they
+// reference, and served to the client through /api/templates, so registering a
+// dashboard is ONE edit here instead of four hand-kept lists that nothing
+// checks against each other. Three separate bugs in this app traced back to a
+// dashboard being present in some of those lists and absent from others.
+export const DASHBOARD_FIELD_SETS = {
+  opportunity: ['id','name','account','accountId','owner','stage','amount','arr','closeDate','createdDate','isClosed','isWon','orgType','region','pod','industry','product','source','type','daysStuck','cycleDays','staleThreshold','isStalled','dealHealth','forecastCategory','lossReason','trialStageAt','ownerActive'],
+  winBoard:    ['id','stage','arr','createdDate','isClosed','isWon','region','orgType','industry','pod','team','type','ownerActive'],
+  lossBoard:   ['id','stage','arr','createdDate','isClosed','isWon','region','orgType','pod','team','type','lossReason','trialStageAt','ownerActive'],
+  // AE and AM map the identical set: same formulas, only the row scope differs.
+  repQuota:    ['id','stage','owner','ownerRole','pod','arr','closeDate','createdDate','isClosed','isWon','region','orgType','type','ownerActive','quotaCurrent'],
+};
 
 export const FIELD_GROUPS = [
   { key: 'essential',    label: 'Essential',    note: 'The dashboard is mostly empty without these.' },
@@ -313,7 +347,48 @@ export function autoMap(headers) {
 const STALE_THRESHOLD_BY_ORG_TYPE = { Enterprise: 90, 'Mid-Market': 30, SMB: 15 };
 const STALE_THRESHOLD_DEFAULT = 30;
 
+// Prior-quarter quota is DERIVED, never mapped by hand.
+//
+// The comparison tile needs {FIXED [Full Name]: MIN([<prior quarter> Quota])},
+// but a second mapped field is a second thing that can drift out of step, and
+// a wrong pairing produces a plausible board rather than an obvious error.
+// Instead the prior column is resolved from the current one: read the quarter
+// the mapped current column names, step back one quarter, find the source
+// column naming THAT quarter.
+//
+// Matching is on the parsed quarter rather than the string, because the source
+// names quarters two ways ("Q3-2026 Quota" and "Q2'26 Quota"). If nothing
+// matches, or several do, nothing is mapped and the comparison tile hides -
+// no figure is better than a figure built on a guess.
+export function deriveQuotaPriorMapping(fieldMapping, headers) {
+  const current = fieldMapping?.quotaCurrent;
+  if (!current) return { column: null, reason: 'current quarter quota is not mapped' };
+  const claimed = quarterFromColumnName(current);
+  if (!claimed) return { column: null, reason: 'cannot read a quarter from the mapped column name' };
+
+  const targetQuarter = claimed.quarter === 1 ? 4 : claimed.quarter - 1;
+  const targetYear = claimed.quarter === 1 ? claimed.year - 1 : claimed.year;
+  const wanted = 'Q' + targetQuarter + '-' + targetYear;
+
+  const matches = (headers || []).filter(header => {
+    if (header === current) return false;
+    if (!/quota/i.test(header)) return false;
+    const parsed = quarterFromColumnName(header);
+    return parsed && parsed.label === wanted;
+  });
+  if (!matches.length) return { column: null, reason: 'no source column names ' + wanted, wanted };
+  if (matches.length > 1) return { column: null, reason: matches.length + ' columns name ' + wanted, wanted, ambiguous: matches };
+  return { column: matches[0], wanted };
+}
+
 export function applyMapping(rawRows, fieldMapping) {
+  // Resolved here rather than at each call site so every path that builds rows
+  // - upload, Tableau refresh, preview - gets the same derived prior quarter.
+  // An explicit mapping, if one ever exists, always wins over the derivation.
+  if (fieldMapping && fieldMapping.quotaCurrent && !fieldMapping.quotaPrior && rawRows.length) {
+    const derived = deriveQuotaPriorMapping(fieldMapping, Object.keys(rawRows[0]));
+    if (derived.column) fieldMapping = { ...fieldMapping, quotaPrior: derived.column };
+  }
   return rawRows.map((raw, i) => {
     const row = {};
     for (const field of OPP_COLUMNS) {
@@ -455,7 +530,9 @@ function buildPreview({ headers, rows }) {
 }
 
 // ===== TABLEAU =====
-class TableauSession {
+// Exported so verification scripts can read the same rows the server reads,
+// through the same code path, rather than reimplementing the query.
+export class TableauSession {
   constructor({ server, siteId, patName, patSecret }) {
     this.server = server.replace(/\/+$/, '').replace(/\/#.*$/, '');
     this.siteId = siteId;
@@ -934,8 +1011,17 @@ export function createDataSourceRouter({ store, requireAuth }) {
   });
 
   const refreshAllTableauSources = async triggerType => {
-    for(const item of await listRefreshableSourceIds()){
-      const spec=await getRefreshableSource(item.userId,item.id);
+    // Both DB reads below can reject on a credential, DNS or timeout failure.
+    // They used to be unguarded, so a database that refused the connection
+    // took the whole process down at boot through an unhandled rejection -
+    // a crash loop instead of a server that stays up and reports 503.
+    let items;
+    try { items = await listRefreshableSourceIds(); }
+    catch(error){ console.error('[Tableau sync] could not list sources:',error?.message||error); return; }
+    for(const item of items){
+      let spec;
+      try { spec = await getRefreshableSource(item.userId,item.id); }
+      catch(error){ console.error(`[Tableau sync] could not load ${item.id}:`,error?.message||error); continue; }
       if(spec) try{await refreshSource(spec,item.userId,triggerType);}catch(error){console.error(`[Tableau sync] ${item.id}:`,tableauError(error));}
     }
   };
@@ -944,9 +1030,11 @@ export function createDataSourceRouter({ store, requireAuth }) {
     // Business rows intentionally remain outside PostgreSQL. Rehydrate every
     // saved Tableau binding after a server restart so dashboards do not come
     // back empty between scheduled syncs.
-    setTimeout(()=>refreshAllTableauSources('startup'),0);
+    const runRefresh = trigger => refreshAllTableauSources(trigger)
+      .catch(error=>console.error(`[Tableau sync] ${trigger} refresh failed:`,error?.message||error));
+    setTimeout(()=>runRefresh('startup'),0);
     cron.schedule(process.env.TABLEAU_SOURCE_SYNC_CRON||'0 */12 * * *',
-      ()=>refreshAllTableauSources('scheduled'),
+      ()=>runRefresh('scheduled'),
       {timezone:process.env.CRON_TZ_OFFSET||'UTC'});
   }
 

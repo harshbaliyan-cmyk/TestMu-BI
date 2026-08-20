@@ -4,7 +4,10 @@ import {autoMap,applyMapping} from '../datasources.js';
 import {encryptCredential,decryptCredential} from '../services/credentialCipher.js';
 import {buildWinBoardMetrics,buildWinBoardComparisons,buildWinBoardSnapshot} from '../services/winBoardMetrics.js';
 import {buildLossBoardMetrics,buildLossBoardComparisons,buildLossBoardSnapshot} from '../services/lossBoardMetrics.js';
-import {buildAePerformanceMetrics,buildAePerformanceSnapshot} from '../services/aePerformanceMetrics.js';
+import {buildAePerformanceMetrics,buildAePerformanceSnapshot,quotaAttainment,quarterStartOf,previousQuarterStart,quarterFromColumnName} from '../services/aePerformanceMetrics.js';
+import {isActiveRep,filterRepList,repStatusSummary,resolveRepStatus} from '../services/repStatus.js';
+import {isAmRow} from '../services/aePerformanceMetrics.js';
+import {deriveQuotaPriorMapping} from '../datasources.js';
 import {previousEqualPeriod,compareArr,compareLossArr,buildGenericComparison} from '../services/periodComparison.js';
 
 test('Tableau credentials round-trip with authenticated encryption',()=>{
@@ -692,12 +695,14 @@ test('AE comparison reports Won ARR growth separately from the contribution poin
   assert.equal(a.changePoints,-30);      // but share fell 50% -> 20%
 });
 
-test('AE reps with no Won ARR are dropped rather than listed at 0%',()=>{
+test('AE reps with no Won ARR stay on the board — a quota board must show who is at zero',()=>{
   const {reps}=buildAePerformanceMetrics([
     {id:'1',owner:'A',ownerRole:'AE APAC',arr:100,isClosed:true,isWon:true},
     {id:'2',owner:'B',ownerRole:'AE EMEA',arr:100,isClosed:true,isWon:false},
   ]);
-  assert.deepEqual(reps.map(rep=>rep.label),['A']);
+  // Both present, winner first. Dropping B would hide exactly the rep the
+  // ranking exists to surface.
+  assert.deepEqual(reps.map(rep=>rep.label),['A','B']);
 });
 
 test('AE board reports zero (not NaN) when no AE rep has won anything',()=>{
@@ -706,7 +711,8 @@ test('AE board reports zero (not NaN) when no AE rep has won anything',()=>{
   ]);
   assert.equal(overall.wonArr,0);
   assert.equal(overall.contribution,0);
-  assert.equal(reps.length,0);
+  assert.equal(reps.length,1);
+  assert.equal(reps[0].wonArr,0);
 });
 
 test('AE POD ranking shares the rep denominator so each list sums to 100%',()=>{
@@ -914,4 +920,344 @@ test('AE Performance reports no comparison until both close-date bounds are set'
   assert.match(open.comparison.reason,/Close Date/);
   // A one-sided bound still filters the board itself.
   assert.equal(open.metrics.overall.wins,1);
+});
+
+// ===== QUOTA ATTAINMENT =====
+
+test('quota attainment divides quarter Won ARR by the rep quota',()=>{
+  const rows=[{id:'1',arr:60000,isClosed:true,isWon:true,closeDate:'2026-08-04',quotaCurrent:100000}];
+  assert.equal(quotaAttainment(rows,'quotaCurrent','2026-07-01').attainment,60);
+});
+
+test('a zero quota yields null, never Infinity — "cannot be measured" is not a score',()=>{
+  const rows=[{id:'1',arr:50000,isClosed:true,isWon:true,closeDate:'2026-08-04',quotaCurrent:0}];
+  const result=quotaAttainment(rows,'quotaCurrent','2026-07-01');
+  assert.equal(result.attainment,null);
+  assert.equal(Number.isFinite(result.attainment),false);
+});
+
+test('quota is read with MIN across a rep rows, not summed',()=>{
+  // The quota repeats on every opportunity row. Summing would make the target
+  // 300000 here and understate attainment by a factor of three.
+  const rows=[
+    {id:'1',arr:30000,isClosed:true,isWon:true,closeDate:'2026-07-10',quotaCurrent:100000},
+    {id:'2',arr:30000,isClosed:true,isWon:true,closeDate:'2026-08-10',quotaCurrent:100000},
+    {id:'3',arr:40000,isClosed:true,isWon:true,closeDate:'2026-09-10',quotaCurrent:100000},
+  ];
+  const result=quotaAttainment(rows,'quotaCurrent','2026-07-01');
+  assert.equal(result.quota,100000);
+  assert.equal(result.attainment,100);
+});
+
+test('quota Won ARR counts only wins closing inside that quarter',()=>{
+  const rows=[
+    {id:'1',arr:50000,isClosed:true,isWon:true,closeDate:'2026-08-04',quotaCurrent:100000}, // Q3
+    {id:'2',arr:90000,isClosed:true,isWon:true,closeDate:'2026-05-04',quotaCurrent:100000}, // Q2, excluded
+    {id:'3',arr:70000,isClosed:true,isWon:false,closeDate:'2026-08-06',quotaCurrent:100000}, // lost
+  ];
+  assert.equal(quotaAttainment(rows,'quotaCurrent','2026-07-01').attainment,50);
+});
+
+test('reps with no usable quota rank below reps genuinely at zero',()=>{
+  const quarters={current:'2026-07-01',previous:'2026-04-01'};
+  const {reps}=buildAePerformanceMetrics([
+    {id:'1',owner:'Hit',ownerRole:'AE APAC',arr:80000,isClosed:true,isWon:true,closeDate:'2026-08-01',quotaCurrent:100000},
+    {id:'2',owner:'Zero',ownerRole:'AE EMEA',arr:0,isClosed:true,isWon:false,closeDate:'2026-08-01',quotaCurrent:100000},
+    {id:'3',owner:'NoQuota',ownerRole:'AE AMER',arr:500000,isClosed:true,isWon:true,closeDate:'2026-08-01'},
+  ],quarters);
+  // NoQuota has the largest Won ARR but no target, so it cannot outrank a
+  // measured result - it sorts last rather than first.
+  assert.deepEqual(reps.map(r=>r.label),['Hit','Zero','NoQuota']);
+  assert.equal(reps[0].attainment,80);
+  assert.equal(reps[1].attainment,0);
+  assert.equal(reps[2].attainment,null);
+});
+
+test('quarter helpers resolve boundaries and roll back across a year',()=>{
+  assert.equal(quarterStartOf('2026-08-19'),'2026-07-01');
+  assert.equal(quarterStartOf('2026-01-01'),'2026-01-01');
+  assert.equal(previousQuarterStart('2026-07-01'),'2026-04-01');
+  assert.equal(previousQuarterStart('2026-01-01'),'2025-10-01');
+});
+
+test('quota figures ignore the close-date filter, so a short window cannot fake a miss',()=>{
+  const rows=[
+    {id:'1',owner:'A',ownerRole:'AE APAC',arr:60000,isClosed:true,isWon:true,closeDate:'2026-07-05',quotaCurrent:100000},
+    {id:'2',owner:'A',ownerRole:'AE APAC',arr:40000,isClosed:true,isWon:true,closeDate:'2026-09-20',quotaCurrent:100000},
+  ];
+  // Filter to a fortnight that contains neither win.
+  const snap=buildAePerformanceSnapshot(rows,{closeFrom:'2026-08-01',closeTo:'2026-08-15'});
+  const rep=snap.quotaMetrics.reps.find(r=>r.label==='A');
+  assert.equal(rep.attainment,100);          // full quarter, not the window
+  assert.equal(snap.quota.ignoresDateFilter,true);
+});
+
+test('a quota column names its own quarter, in either source convention',()=>{
+  assert.deepEqual(quarterFromColumnName('SUM(Q3-2026 Quota)'),{quarter:3,year:2026,label:'Q3-2026'});
+  assert.deepEqual(quarterFromColumnName("SUM(Q2'26 Quota)"),{quarter:2,year:2026,label:'Q2-2026'});
+  assert.deepEqual(quarterFromColumnName('SUM(Q3-2025 Quota)'),{quarter:3,year:2025,label:'Q3-2025'});
+  // No period in the name asserts nothing: a guard that guesses is worse than none.
+  assert.equal(quarterFromColumnName('SUM(Annual Target)'),null);
+  assert.equal(quarterFromColumnName(null),null);
+});
+
+test('mapping quota to the wrong year is reported, not silently divided by',()=>{
+  const rows=[{id:'1',owner:'A',ownerRole:'AE APAC',arr:80000,isClosed:true,isWon:true,
+    closeDate:quarterStartOf(new Date().toISOString().slice(0,10)),quotaCurrent:100000}];
+  const wrong=buildAePerformanceSnapshot(rows,{},{quotaSourceColumn:'SUM(Q3-2025 Quota)'});
+  assert.ok(wrong.quota.mismatch,'a wrong-year column must be flagged');
+  assert.equal(wrong.quota.mismatch.mappedTo,'Q3-2025');
+  const right=buildAePerformanceSnapshot(rows,{},{quotaSourceColumn:'SUM('+wrong.quota.currentQuarter+' Quota)'});
+  assert.equal(right.quota.mismatch,null,'the matching quarter must not warn');
+});
+
+// ===== REP STATUS (Active) =====
+
+test('only an explicit true counts as active - blank, null and false are all hidden',()=>{
+  assert.equal(isActiveRep({ownerActive:true}),true);
+  assert.equal(isActiveRep({ownerActive:false}),false);
+  assert.equal(isActiveRep({ownerActive:null}),false);
+  assert.equal(isActiveRep({}),false);
+});
+
+test('a departed rep leaves the individual ranking but their ARR stays in POD and totals',()=>{
+  const rows=[
+    {id:'1',owner:'Stayed',pod:'AMER AE',ownerRole:'AE AMER',arr:60,isClosed:true,isWon:true,ownerActive:true},
+    {id:'2',owner:'Left',  pod:'AMER AE',ownerRole:'AE AMER',arr:40,isClosed:true,isWon:true,ownerActive:false},
+  ];
+  const m=buildAePerformanceMetrics(rows,null,'active');
+  // Individual list drops the departed rep...
+  assert.deepEqual(m.reps.map(r=>r.label),['Stayed']);
+  assert.equal(m.repsHidden,1);
+  // ...but their 40 still counts. The POD holds all 100 and the team total is
+  // unchanged, so a resignation cannot rewrite a closed quarter.
+  assert.equal(m.pods.find(p=>p.label==='AMER AE').wonArr,100);
+  assert.equal(m.overall.wonArr,100);
+  // And the surviving rep's contribution is still measured against all 100,
+  // so the visible list deliberately no longer sums to 100.
+  assert.equal(m.reps[0].contribution,60);
+});
+
+test('rep status "all" shows everyone again',()=>{
+  const rows=[
+    {id:'1',owner:'Stayed',ownerRole:'AE AMER',arr:60,isClosed:true,isWon:true,ownerActive:true},
+    {id:'2',owner:'Left',  ownerRole:'AE AMER',arr:40,isClosed:true,isWon:true,ownerActive:false},
+  ];
+  assert.equal(buildAePerformanceMetrics(rows,null,'all').reps.length,2);
+  assert.equal(resolveRepStatus(undefined),'active'); // default is Active only
+});
+
+test('an UNMAPPED Active field must not blank the board',()=>{
+  // The strict "blank means inactive" rule applies to rows that carry the
+  // flag. With the field unmapped, every row is blank - and hiding all of them
+  // would empty every dashboard and read as data loss, not a missing mapping.
+  const rows=[
+    {id:'1',owner:'A',ownerRole:'AE AMER',arr:60,isClosed:true,isWon:true},
+    {id:'2',owner:'B',ownerRole:'AE AMER',arr:40,isClosed:true,isWon:true},
+  ];
+  const m=buildAePerformanceMetrics(rows,null,'active');
+  assert.equal(m.reps.length,2,'no rep may be hidden when nothing is flagged active');
+  assert.equal(m.repStatus.likelyUnmapped,true,'and the board must say the field looks unmapped');
+});
+
+test('rep status summary counts who is hidden so source drift stays visible',()=>{
+  const rows=[
+    {owner:'A',ownerActive:true},{owner:'B',ownerActive:false},{owner:'C'},
+  ];
+  const s=repStatusSummary(rows);
+  assert.equal(s.total,3); assert.equal(s.active,1); assert.equal(s.hidden,2);
+  assert.equal(s.likelyUnmapped,false);
+});
+
+test('filterRepList never touches the rows that feed denominators',()=>{
+  const rows=[{owner:'A',ownerActive:true},{owner:'B',ownerActive:false}];
+  const reps=[{label:'A'},{label:'B'}];
+  const filtered=filterRepList(reps,rows,r=>r.owner,'active');
+  assert.deepEqual(filtered.map(r=>r.label),['A']);
+  assert.equal(rows.length,2,'the source rows must be left intact');
+});
+
+// ===== DERIVED PRIOR-QUARTER QUOTA =====
+
+const QUOTA_HEADERS=["SUM(Q1'26 Quota)","SUM(Q2'26 Quota)",'SUM(Q3-2026 Quota)','SUM(Q4-2026 Quota)','SUM(Q3-2025 Quota)','Active'];
+
+test('prior quota is derived from the current mapping, across both naming conventions',()=>{
+  // Current uses hyphen/4-digit, prior uses apostrophe/2-digit. Matching on the
+  // parsed quarter rather than the string is what makes this work.
+  const r=deriveQuotaPriorMapping({quotaCurrent:'SUM(Q3-2026 Quota)'},QUOTA_HEADERS);
+  assert.equal(r.column,"SUM(Q2'26 Quota)");
+  assert.equal(r.wanted,'Q2-2026');
+});
+
+test('deriving the prior quarter rolls back across a year boundary',()=>{
+  const r=deriveQuotaPriorMapping({quotaCurrent:"SUM(Q1'26 Quota)"},QUOTA_HEADERS);
+  assert.equal(r.wanted,'Q4-2025');
+  assert.equal(r.column,null,'Q4-2025 is absent from this source, so nothing is mapped');
+});
+
+test('an ambiguous prior quarter maps nothing rather than guessing',()=>{
+  // Two columns naming the same quarter (a QMs variant alongside the standard
+  // one) must not be silently resolved to whichever sorts first.
+  const headers=['SUM(Q3-2026 Quota)',"SUM(Q2'26 Quota)",'SUM(Q2-2026 QMs Quota)'];
+  const r=deriveQuotaPriorMapping({quotaCurrent:'SUM(Q3-2026 Quota)'},headers);
+  assert.equal(r.column,null);
+  assert.equal(r.ambiguous.length,2);
+});
+
+test('no current quota mapping means no derivation, and a stated reason',()=>{
+  const r=deriveQuotaPriorMapping({},QUOTA_HEADERS);
+  assert.equal(r.column,null);
+  assert.match(r.reason,/not mapped/);
+});
+
+test('applyMapping populates quotaPrior without anyone mapping it',()=>{
+  const raw=[{'Full Name':'A','SUM(ARR)':100,'SUM(Q3-2026 Quota)':500,"SUM(Q2'26 Quota)":400}];
+  const [row]=applyMapping(raw,{owner:'Full Name',arr:'SUM(ARR)',quotaCurrent:'SUM(Q3-2026 Quota)'});
+  assert.equal(row.quotaCurrent,500);
+  assert.equal(row.quotaPrior,400);
+});
+
+test('an explicit quotaPrior mapping still wins over the derivation',()=>{
+  const raw=[{'Full Name':'A','SUM(Q3-2026 Quota)':500,"SUM(Q2'26 Quota)":400,'Custom':999}];
+  const [row]=applyMapping(raw,{quotaCurrent:'SUM(Q3-2026 Quota)',quotaPrior:'Custom'});
+  assert.equal(row.quotaPrior,999);
+});
+
+// ===== POD QUOTA = SUM OF ITS REPS' TARGETS =====
+
+test('a POD quota is the SUM of its reps targets, not the smallest one',()=>{
+  // The regression that produced 773%: MIN across the whole POD as the
+  // denominator, against the whole POD's Won ARR as the numerator.
+  const rows=[
+    {id:'1',owner:'A',pod:'EMEA AE',ownerRole:'AE EMEA',arr:400000,isClosed:true,isWon:true,closeDate:'2026-08-01',quotaCurrent:300000},
+    {id:'2',owner:'B',pod:'EMEA AE',ownerRole:'AE EMEA',arr:350000,isClosed:true,isWon:true,closeDate:'2026-08-02',quotaCurrent:250000},
+    {id:'3',owner:'C',pod:'EMEA AE',ownerRole:'AE EMEA',arr:250000,isClosed:true,isWon:true,closeDate:'2026-08-03',quotaCurrent:100000},
+  ];
+  const {pods,reps}=buildAePerformanceMetrics(rows,{current:'2026-07-01',previous:'2026-04-01'},'all');
+  const pod=pods.find(p=>p.label==='EMEA AE');
+  assert.equal(pod.quota,650000,'650k = 300k + 250k + 100k, not 100k');
+  assert.equal(pod.quotaWonArr,1000000);
+  assert.equal(Number(pod.attainment.toFixed(1)),153.8);
+  // The individual case is just the single-member case of the same rule.
+  assert.equal(reps.find(r=>r.label==='A').quota,300000);
+  assert.equal(reps.find(r=>r.label==='A').attainment,400000/300000*100);
+});
+
+test('a rep with no quota is excluded from BOTH halves of the POD fraction',()=>{
+  const rows=[
+    {id:'1',owner:'A',pod:'EMEA AE',ownerRole:'AE EMEA',arr:400000,isClosed:true,isWon:true,closeDate:'2026-08-01',quotaCurrent:300000},
+    {id:'2',owner:'B',pod:'EMEA AE',ownerRole:'AE EMEA',arr:350000,isClosed:true,isWon:true,closeDate:'2026-08-02',quotaCurrent:250000},
+    {id:'3',owner:'C',pod:'EMEA AE',ownerRole:'AE EMEA',arr:250000,isClosed:true,isWon:true,closeDate:'2026-08-03'}, // no quota
+  ];
+  const {pods}=buildAePerformanceMetrics(rows,{current:'2026-07-01',previous:'2026-04-01'},'all');
+  const pod=pods.find(p=>p.label==='EMEA AE');
+  assert.equal(pod.quota,550000,'C contributes no target');
+  assert.equal(pod.quotaWonArr,750000,'so C contributes no revenue either');
+  assert.equal(pod.repsWithoutQuota,1);
+  assert.equal(pod.excludedArr,250000,'and the excluded amount is reported, not hidden');
+});
+
+test('a rep who closed nothing still counts towards their POD target',()=>{
+  // A POD must not improve its percentage by having a member go quiet.
+  //
+  // This is a DELIBERATE divergence from the reference Tableau view, which
+  // drops a rep with no wins out of the view entirely and so reads this POD at
+  // 136.4% instead of 100%. A quiet quarter is a miss and stays a miss here.
+  const rows=[
+    {id:'1',owner:'A',pod:'EMEA AE',ownerRole:'AE EMEA',arr:400000,isClosed:true,isWon:true,closeDate:'2026-08-01',quotaCurrent:300000},
+    {id:'2',owner:'B',pod:'EMEA AE',ownerRole:'AE EMEA',arr:350000,isClosed:true,isWon:true,closeDate:'2026-08-02',quotaCurrent:250000},
+    {id:'3',owner:'C',pod:'EMEA AE',ownerRole:'AE EMEA',arr:0,isClosed:true,isWon:false,closeDate:'2026-08-03',quotaCurrent:200000},
+  ];
+  const m=buildAePerformanceMetrics(rows,{current:'2026-07-01',previous:'2026-04-01'},'all');
+  const pod=m.pods.find(p=>p.label==='EMEA AE');
+  assert.equal(pod.quota,750000,'C carries a target despite closing nothing');
+  assert.equal(Number(pod.attainment.toFixed(1)),100.0);
+  // And C is on the individual board too, at a true 0% against a real target.
+  const c=m.reps.find(r=>r.label==='C');
+  assert.equal(c.quota,200000);
+  assert.equal(c.attainment,0,'0%, not "no quota"');
+});
+
+test('a POD where NOBODY closed anything reads a true 0%, not "no quota"',()=>{
+  // A POD carrying a target with nothing closed against it is the loudest
+  // thing on a quota board; "No quota" would say the opposite of what is true.
+  const rows=[
+    {id:'1',owner:'A',pod:'AMER AE I',ownerRole:'AE AMER I',arr:0,isClosed:true,isWon:false,closeDate:'2026-08-01',quotaCurrent:300000},
+  ];
+  const pod=buildAePerformanceMetrics(rows,{current:'2026-07-01',previous:'2026-04-01'},'all').pods.find(p=>p.label==='AMER AE I');
+  assert.equal(pod.quota,300000,'the target is real and stays visible');
+  assert.equal(pod.attainment,0,'0% measured, not null/unmeasurable');
+});
+
+test('a departed rep takes their quota out of the POD, but only their quota',()=>{
+  // Also reversed against the reference view: EMEA AM reads 19.9% with the
+  // departed rep in and 17.3% with them out, and 17.3% is the reference.
+  const rows=[
+    {id:'1',owner:'Here',pod:'EMEA AE',ownerRole:'AE EMEA',arr:400000,isClosed:true,isWon:true,closeDate:'2026-08-01',quotaCurrent:300000,ownerActive:true},
+    {id:'2',owner:'Left',pod:'EMEA AE',ownerRole:'AE EMEA',arr:200000,isClosed:true,isWon:true,closeDate:'2026-08-02',quotaCurrent:250000,ownerActive:false},
+  ];
+  const m=buildAePerformanceMetrics(rows,{current:'2026-07-01',previous:'2026-04-01'},'active');
+  const pod=m.pods.find(p=>p.label==='EMEA AE');
+  assert.equal(pod.quota,300000,'the departed rep takes their target with them');
+  assert.equal(pod.quotaWonArr,400000,'and the revenue behind it');
+  // Everything that is NOT quota attainment still counts every row, so a
+  // closed quarter keeps reconciling with what was reported at the time.
+  assert.equal(pod.wins,2,'their closed deals still count');
+  assert.equal(pod.wonArr,600000,'and their ARR still counts');
+  assert.deepEqual(m.reps.map(r=>r.label),['Here'],'and they leave the individual ranking');
+});
+
+test('rep status ALL puts the departed rep back into the POD quota',()=>{
+  const rows=[
+    {id:'1',owner:'Here',pod:'EMEA AE',ownerRole:'AE EMEA',arr:400000,isClosed:true,isWon:true,closeDate:'2026-08-01',quotaCurrent:300000,ownerActive:true},
+    {id:'2',owner:'Left',pod:'EMEA AE',ownerRole:'AE EMEA',arr:200000,isClosed:true,isWon:true,closeDate:'2026-08-02',quotaCurrent:250000,ownerActive:false},
+  ];
+  const pod=buildAePerformanceMetrics(rows,{current:'2026-07-01',previous:'2026-04-01'},'all').pods.find(p=>p.label==='EMEA AE');
+  assert.equal(pod.quota,550000,'the filter is a filter, not a hard-coded rule');
+  assert.equal(pod.quotaWonArr,600000);
+});
+
+test('an unmapped Active field never empties a POD denominator',()=>{
+  // Same guard, and the same reason, as the individual rep list: with no row
+  // anywhere flagged active, "blank means inactive" would drop every rep from
+  // every denominator and read as data loss rather than a missing mapping.
+  const rows=[
+    {id:'1',owner:'A',pod:'EMEA AE',ownerRole:'AE EMEA',arr:400000,isClosed:true,isWon:true,closeDate:'2026-08-01',quotaCurrent:300000},
+    {id:'2',owner:'B',pod:'EMEA AE',ownerRole:'AE EMEA',arr:200000,isClosed:true,isWon:true,closeDate:'2026-08-02',quotaCurrent:250000},
+  ];
+  const pod=buildAePerformanceMetrics(rows,{current:'2026-07-01',previous:'2026-04-01'},'active').pods.find(p=>p.label==='EMEA AE');
+  assert.equal(pod.quota,550000,'nothing is flagged active, so nothing is filtered');
+  assert.equal(Number(pod.attainment.toFixed(1)),109.1);
+});
+
+// ===== AM SCOPE =====
+
+test('AM scope matches the AM PODs and excludes every AMER AE one',()=>{
+  // "AMER AE II", "AMER AE I" and "AMER AE Corp" all CONTAIN the letters AM,
+  // so a substring test pulls seven PODs into an AM board instead of three.
+  for(const pod of ['AMER AM','EMEA AM','APAC AM'])
+    assert.equal(isAmRow({pod}),true,pod+' belongs on the AM board');
+  for(const pod of ['AMER AE II','AMER AE I','AMER AE Corp','AMER AE III','EMEA AE','APAC AE','GCC'])
+    assert.equal(isAmRow({pod}),false,pod+' must not leak into the AM board');
+});
+
+test('AM scope tolerates a missing or non-string POD',()=>{
+  assert.equal(isAmRow({}),false);
+  assert.equal(isAmRow({pod:null}),false);
+  assert.equal(isAmRow({pod:123}),false);
+});
+
+test('AM and AE boards share one metric implementation, differing only in scope',()=>{
+  const rows=[
+    {id:'1',owner:'AmRep',pod:'EMEA AM',ownerRole:'AM EMEA',arr:50000,isClosed:true,isWon:true,closeDate:'2026-08-01',quotaCurrent:100000},
+    {id:'2',owner:'AeRep',pod:'EMEA AE',ownerRole:'AE EMEA',arr:80000,isClosed:true,isWon:true,closeDate:'2026-08-01',quotaCurrent:100000},
+  ];
+  const q={current:'2026-07-01',previous:'2026-04-01'};
+  const am=buildAePerformanceMetrics(rows,q,'all',isAmRow);
+  const ae=buildAePerformanceMetrics(rows,q,'all');
+  assert.deepEqual(am.reps.map(r=>r.label),['AmRep']);
+  assert.deepEqual(ae.reps.map(r=>r.label),['AeRep']);
+  // Same formula on each side of the scope line.
+  assert.equal(am.reps[0].attainment,50);
+  assert.equal(ae.reps[0].attainment,80);
 });

@@ -79,6 +79,12 @@ export async function getAePerformanceSnapshot(filters) {
   const config={params:filters,paramsSerializer:serializer};
   return (await api.get('/ae-performance/snapshot',config)).data;
 }
+// AM Performance is the same board scoped to AM PODs; it shares the snapshot
+// shape exactly, so both pages read the identical payload.
+export async function getAmPerformanceSnapshot(filters) {
+  const config={params:filters,paramsSerializer:serializer};
+  return (await api.get('/am-performance/snapshot',config)).data;
+}
 
 
 const serializer = {

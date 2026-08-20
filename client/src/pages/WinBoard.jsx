@@ -346,9 +346,13 @@ function SortButton({direction,onChange,label='chart values'}){
 }
 
 
+// Every caller passes a difference between two percentages, which is measured
+// in percentage POINTS. Rendering it with a % sign said something different
+// from the tooltip on the same element, and next to a value that is itself a
+// percentage ("183.5%  ↑ 7.0%") it reads as a relative change.
 export function comparisonText(value){
   const number=Number(value)||0;
-  return `${number>.005?'↑':number<-.005?'↓':'→'} ${Math.abs(number).toFixed(1)}%`;
+  return `${number>.005?'↑':number<-.005?'↓':'→'} ${Math.abs(number).toFixed(1)} pts`;
 }
 
 const MONTH_ABBR=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];

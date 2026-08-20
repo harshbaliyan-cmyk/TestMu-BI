@@ -11,7 +11,7 @@ import {
   ConcentricRings, NeonColumns, LollipopList, MiniBar, Pill, Th, useTableSort,
   fmtCurrency, fmtPercent, fmtNumber, fmtDays,
   timeAxis, trimEmpty, valueLabels, baseOptions, rateTone,
-  CHART_PALETTE,
+  seriesColor,
 } from '../components/charts';
 
 const TABS = [
@@ -1140,7 +1140,7 @@ export default function Dashboard({ user }) {
           <div className="g2 pulse-open-row">
             <ChartCard title="Region performance" hint="Closed-won value by region.">
               <NeonColumns data={regionPerformance.map((d, i) => ({ ...d,
-                color: CHART_PALETTE[i % CHART_PALETTE.length] }))} format={fmtCurrency} />
+                color: seriesColor(i) }))} format={fmtCurrency} />
             </ChartCard>
 
             <ChartCard title="Largest open opportunities" hint="All open opportunities; click any column heading to sort." controls={<TableTopControl table={largestSort} count={largestOpen.length} />}>
@@ -1194,7 +1194,7 @@ export default function Dashboard({ user }) {
             </ChartCard>
             <ChartCard title="Win rate by org type" hint="Conversion against average deal size.">
               <MetricGauges data={winRateByOrg.map((d, i) => ({ ...d,
-                color: CHART_PALETTE[i % CHART_PALETTE.length] }))} format={v => fmtPercent(v, 1)} />
+                color: seriesColor(i) }))} format={v => fmtPercent(v, 1)} />
             </ChartCard>
           </div>
 

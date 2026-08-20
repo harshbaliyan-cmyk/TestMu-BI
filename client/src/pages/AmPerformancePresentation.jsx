@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getAePerformanceSnapshot, getDashboardState } from '../lib/api';
+import { getAmPerformanceSnapshot, getDashboardState } from '../lib/api';
 import { RepLeaderboard, POD_LEADERS } from './AePerformance';
 import { fmtPercent } from '../components/charts';
 import AppLoader from '../components/AppLoader';
 
-const TEMPLATE = 'ae-performance';
+const TEMPLATE = 'am-performance';
 const EMPTY_METRICS = {
   overall: { opportunities: 0, closed: 0, wins: 0, losses: 0, closedArr: 0, wonArr: 0, dealWinRate: 0, arrWinRate: 0, contribution: 0 },
   reps: [], pods: [],
@@ -23,7 +23,7 @@ function PresentCard({ title, subtitle, children }) {
   </section>;
 }
 
-export default function AePerformancePresentation() {
+export default function AmPerformancePresentation() {
   const navigate = useNavigate();
   const [now, setNow] = useState(new Date());
   const [loading, setLoading] = useState(true);
@@ -31,7 +31,7 @@ export default function AePerformancePresentation() {
   const [quota, setQuota] = useState(null);
   const [comparison, setComparison] = useState({ available: false });
   const [config, setConfig] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('testmu-aeperformance-presentation-config') || '{}'); }
+    try { return JSON.parse(localStorage.getItem('testmu-amperformance-presentation-config') || '{}'); }
     catch { return {}; }
   });
   const [configReady, setConfigReady] = useState(false);
@@ -53,7 +53,7 @@ export default function AePerformancePresentation() {
     if (!configReady) return;
     let cancelled = false;
     setLoading(true);
-    getAePerformanceSnapshot(config.filters || {}).then(snapshot => {
+    getAmPerformanceSnapshot(config.filters || {}).then(snapshot => {
       if (cancelled) return;
       // The rankings read quotaMetrics, not metrics: attainment is only
       // computed on the quarter-anchored set. Reading metrics here is what
@@ -112,19 +112,19 @@ export default function AePerformancePresentation() {
     <header className="presentation-header">
       <div className="presentation-brand"><img src="/testmu-bi-logo-v2.png" alt="" /><div><b>TestMu BI</b>
         <div className="presentation-brand-context">
-          <span>AE-owned opportunities only.</span>
+          <span>AM-owned opportunities only.</span>
           <i aria-hidden="true">•</i>
           <span>Quota: all of {quarterLabel}, not narrowed by the date filter</span>
         </div>
       </div></div>
-      <div className="presentation-view-label"><b>AE Performance</b><small className="board-scope-note">Opp type = New Business, New Business AM, Existing Business - Up-sell</small></div>
+      <div className="presentation-view-label"><b>AM Performance</b><small className="board-scope-note">Opp type = New Business, New Business AM, Existing Business - Up-sell</small></div>
       <div className="presentation-clock"><b>{now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</b><span>{now.toLocaleDateString()}</span></div>
     </header>
     {/* The two names lead the slide. On a wall display the question is who is
         winning, and the rankings below answer it only after you read them. */}
     <div className="ae-top-tiles ae-top-tiles-tv">
       <div className="ae-top-tile">
-        <span className="ae-quota-label">Top AE performer</span>
+        <span className="ae-quota-label">Top AM performer</span>
         {topRep
           ? <><span className="ae-top-name">{topRep.label}</span>
               <span className="ae-top-value">{fmtPercent(topRep.attainment)}<small> of quota</small></span></>
@@ -139,16 +139,16 @@ export default function AePerformancePresentation() {
       </div>
     </div>
     <div className="presentation-slide ae-performance-slide">
-      <PresentCard title="AE Quota Attainment" subtitle={`Won ARR closed in ${quarterLabel} ÷ each rep's quota · ${measured.length} of ${reps.length} carry a target`}>
+      <PresentCard title="AM Quota Attainment" subtitle={`Won ARR closed in ${quarterLabel} ÷ each rep's quota · ${measured.length} of ${reps.length} carry a target`}>
         <RepLeaderboard reps={reps} comparisons={groupComparisons.reps} topN={repTopN} />
       </PresentCard>
-      <PresentCard title="AE POD Quota Attainment" subtitle={`A POD's quota is the sum of its reps' targets · ${quarterLabel}`}>
+      <PresentCard title="AM POD Quota Attainment" subtitle={`A POD's quota is the sum of its reps' targets · ${quarterLabel}`}>
         <RepLeaderboard reps={pods} comparisons={groupComparisons.pods} topN={podTopN} showAvatar={false} leaders={POD_LEADERS} />
       </PresentCard>
     </div>
     <footer className={`presentation-controls${isFullscreen && !controlsVisible ? ' controls-hidden' : ''}`}>
       <button onClick={() => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()}>Fullscreen</button>
-      <button onClick={() => navigate('/dashboard/ae-performance')}>Exit</button>
+      <button onClick={() => navigate('/dashboard/am-performance')}>Exit</button>
     </footer>
   </main>;
 }

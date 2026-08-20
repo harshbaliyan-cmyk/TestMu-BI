@@ -1,47 +1,14 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import ThemeToggle from '../components/ThemeToggle';
+import { useTemplates } from '../hooks/useTemplates';
 
-const TEMPLATES = [
-  {
-    id: 'opportunity-analytics',
-    name: 'Opportunity Analytics',
-    description: 'Revenue Command Center with funnel, win rates, and rep performance.',
-    tags: ['Salesforce', '6 views'],
-  },
-  {
-    id: 'event-analytics',
-    name: 'Event Analytics',
-    description: 'Tenant onboarding, feature adoption, and churn signals.',
-    tags: ['Segment', '4 views'],
-  },
-  {
-    id: 'tenant-health',
-    name: 'Tenant Health',
-    description: 'Account whitespace, expansion candidates, and NRR tracking.',
-    tags: ['HubSpot', '5 views'],
-  },
-  {
-    id: 'win-board',
-    name: 'Win Board',
-    description: 'Won ARR contribution, ARR win rate, and sales-team performance.',
-    tags: ['Tableau', 'Won ARR'],
-  },
-  {
-    id: 'loss-board',
-    name: 'Loss Board',
-    description: 'Loss ARR contribution, loss reasons, and lost-after-trial rate.',
-    tags: ['Tableau', 'Lost ARR'],
-  },
-  {
-    id: 'ae-performance',
-    name: 'AE Performance',
-    description: 'AE rep ranking by share of closed ARR, with period comparison.',
-    tags: ['Tableau', 'ARR Contribution'],
-  },
-];
+// The gallery renders whatever the server registers. It used to keep its own
+// copy of this list, which meant a new dashboard had to be added in two places
+// and silently went missing from one of them.
 
 export default function Gallery({ user }) {
+  const { templates: TEMPLATES } = useTemplates();
   const navigate = useNavigate();
   const { signOut } = useAuth();
 
@@ -93,11 +60,17 @@ export default function Gallery({ user }) {
                 <span style={{ fontSize: 11, color: 'var(--txt-3)', width: 32, textAlign: 'right' }}>34%</span>
               </div>
             </div>
+            {/* A registry entry is only guaranteed to carry an id and a name.
+                useTemplates renders a FALLBACK of exactly that shape until
+                /api/templates lands - and keeps it if the request fails - so
+                anything richer has to be optional here. This read `t.tags.map`
+                bare, which threw on the very first paint, every time, and took
+                the whole gallery to the error boundary. */}
             <div className="template-info">
               <h3>{t.name}</h3>
-              <p>{t.description}</p>
+              {t.description && <p>{t.description}</p>}
               <div className="tags">
-                {t.tags.map((tag) => (
+                {(t.tags || []).map((tag) => (
                   <span key={tag} className="tag">{tag}</span>
                 ))}
               </div>

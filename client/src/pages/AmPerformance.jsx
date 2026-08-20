@@ -1,6 +1,6 @@
 import {useEffect,useMemo,useState} from 'react';
 import {useNavigate} from 'react-router-dom';
-import {getAePerformanceSnapshot,getOptions,getDashboardState,saveDashboardState} from '../lib/api';
+import {getAmPerformanceSnapshot,getOptions,getDashboardState,saveDashboardState} from '../lib/api';
 // No fmtCurrency: this board reports shares and counts, never ARR amounts.
 import {MultiSelect,ChartCard,fmtNumber,fmtPercent,ComparisonProvider} from '../components/charts';
 import ThemeToggle from '../components/ThemeToggle';
@@ -8,8 +8,12 @@ import AppLoader from '../components/AppLoader';
 import AdvancedDateRange, {rangeFor,isoDate} from '../components/AdvancedDateRange';
 import {useAuth} from '../hooks/useAuth';
 import {KpiDelta} from './WinBoard';
+// The ranking UI is shared with the AE board, not copied: both must render a
+// rep row identically, and a duplicate drifts on the first fix that lands on
+// only one of them.
+import { RepLeaderboard, POD_LEADERS } from './AePerformance';
 
-const TEMPLATE='ae-performance';
+const TEMPLATE='am-performance';
 const [DEFAULT_QUARTER_START,DEFAULT_QUARTER_TODAY]=rangeFor('currentQuarter');
 // Close date, not created date (unlike Win/Loss Board): a rep's Won ARR
 // belongs to the period the deal actually closed in.
@@ -23,153 +27,17 @@ const EMPTY_METRICS={
   reps:[],pods:[],
 };
 
-// Two-letter initials for the avatar placeholder — first + last name initial,
-// or the first two letters of a single-word name. Stands in for a real photo
-// until Slack (or another photo source) is wired up.
-function repInitials(name){
-  const parts=String(name||'').trim().split(/\s+/).filter(Boolean);
-  if(!parts.length)return '?';
-  if(parts.length===1)return parts[0].slice(0,2).toUpperCase();
-  return (parts[0][0]+parts[parts.length-1][0]).toUpperCase();
-}
 
-// Darkened from the shared Win Board palette specifically for white initials
-// on top — the original (brighter) hues read below 4.5:1 white-text contrast
-// (validated with the data-viz accessibility checker; e.g. #2FAE1D only hit
-// 2.9:1). Each hue here clears ≥4.5:1 while staying inside the same lightness
-// band and chroma floor the checker requires.
-const AVATAR_COLORS=['#1761c7','#a9410c','#007d53','#9a5e00','#b3305e','#258817','#6148c3','#b53737','#50830c'];
-function avatarColor(name){
-  const hash=Array.from(String(name||'')).reduce((total,character)=>((total*31)+character.charCodeAt(0))|0,0);
-  return AVATAR_COLORS[Math.abs(hash)%AVATAR_COLORS.length];
-}
-
-const MEDAL_CLASS={1:'gold',2:'silver',3:'bronze'};
-
-// Reused by both the interactive dashboard and the presentation view, and by
-// both the rep and POD rankings — the ranked list itself, independent of the
-// filter/Top-N chrome around it. showAvatar is off for the POD ranking: an
-// initials bubble reads as a person, and a POD is a team.
-// Attainment is null when a rep has no usable target (unmapped quota, or a
-// zero one). That is not 0% and must not render as 0% - it is shown as "No
-// quota" so a data-mapping gap never reads as a performance result.
-// Attainment bands. Colour here is DATA, not decoration: on a wall display the
-// band is readable before the number is, and it is the difference between
-// "scan five rows" and "see who is behind". The thresholds are the ones a
-// quota conversation actually turns on.
-export const attainmentBand = pct =>
-  pct >= 100 ? 'hit'
-  : pct >= 75 ? 'close'
-  : pct >= 25 ? 'behind'
-  : 'risk';
-
-const attainmentLabel=rep=>rep.attainment===null||rep.attainment===undefined
-  ?<span className="ae-no-quota" title="No quota mapped for this rep, so attainment cannot be calculated">No quota</span>
-  :<strong>{fmtPercent(rep.attainment)}</strong>;
-
-// POD leaders, supplied by the sales ops team. Keyed by the POD label exactly
-// as it arrives in the data, so a POD whose name changes upstream simply loses
-// its leader rather than showing the wrong person.
-//
-// Hardcoded on purpose: there is no leader column in the source, and inventing
-// one would mean a mapping that nobody maintains. Update this map when a POD
-// changes hands. A POD absent from here renders without a leader, which is the
-// correct state for one that has none assigned.
-export const POD_LEADERS = {
-  'EMEA AE':      { name: 'Saif Rizvi',     photo: '/pod-leaders/saif-rizvi.webp' },
-  'AMER AE II':   { name: 'Misbah Farooqi', photo: '/pod-leaders/misbah-farooqi.webp' },
-  'APAC AE':      { name: 'Karan Rana',     photo: '/pod-leaders/karan-rana.webp' },
-  'AMER AE III':  { name: 'Mohit Juneja',   photo: '/pod-leaders/mohit-juneja.webp' },
-  'AMER AE Corp': { name: 'Misbah Farooqi', photo: '/pod-leaders/misbah-farooqi.webp' },
-  'GCC':          { name: 'Saif Rizvi',     photo: '/pod-leaders/saif-rizvi.webp' },
-
-  // AM PODs. Karan Rana leads APAC on both sides, so the same asset is reused
-  // rather than stored twice.
-  'AMER AM':      { name: 'Prakhar Goyal',   photo: '/pod-leaders/prakhar-goyal.webp' },
-  'APAC AM':      { name: 'Karan Rana',      photo: '/pod-leaders/karan-rana.webp' },
-  'EMEA AM':      { name: 'Rishabh Agarwal', photo: '/pod-leaders/rishabh-agarwal.webp' },
-};
-
-// Photos are served from this app, not hotlinked from Slack. The originals were
-// ~350 KB each for a 34px circle, they would break on a TV with no route to
-// Slack's CDN, and every view leaked a request to a third party. Re-encoded to
-// 96px WebP: 1.4 MB total became 9 KB.
-//
-// The error fallback stays anyway - a missing file should degrade to initials
-// rather than collapse the row around a broken image.
-function LeaderAvatar({leader}){
-  const [failed,setFailed]=useState(false);
-  if(failed||!leader.photo){
-    return <span className="ae-avatar ae-leader-avatar" style={{background:avatarColor(leader.name)}} aria-hidden="true">{repInitials(leader.name)}</span>;
-  }
-  return <img className="ae-leader-avatar" src={leader.photo} alt="" loading="lazy" referrerPolicy="no-referrer"
-    onError={()=>setFailed(true)} />;
-}
-
-export function RepLeaderboard({reps=[],comparisons=[],topN=5,showAvatar=true,leaders=null,emptyLabel='No AE-owned won opportunities in the selected scope.'}){
-  const comparisonByLabel=useMemo(()=>new Map((comparisons||[]).map(item=>[item.label,item])),[comparisons]);
-  const rows=topN>0?reps.slice(0,topN):reps;
-  if(!rows.length)return <div className="ae-leaderboard-empty">{emptyLabel}</div>;
-  // The row is a fixed grid, so a leader avatar adds a COLUMN. Without this
-  // class the extra child overflowed the template and every row wrapped.
-  const cls=['ae-leaderboard', showAvatar?'':'ae-leaderboard-no-avatar', leaders?'ae-leaderboard-leaders':''].filter(Boolean).join(' ');
-  return <div className={cls}>
-    {rows.map((rep,index)=>{
-      const rank=index+1;
-      const comparison=comparisonByLabel.get(rep.label);
-      const medal=MEDAL_CLASS[rank];
-      const leader=leaders?leaders[rep.label]:null;
-      return <div key={rep.label} className={`ae-leaderboard-row${medal?` ae-rank-${rank}`:''}`}>
-        {medal
-          ?<span className={`ae-rank-medal ${medal}`} aria-label={`Rank ${rank}`}>{rank}</span>
-          :<span className="ae-rank-number" aria-label={`Rank ${rank}`}>{rank}</span>}
-        {showAvatar&&<span className="ae-avatar" style={{background:avatarColor(rep.label)}} aria-hidden="true">{repInitials(rep.label)}</span>}
-        {/* A POD with no leader still needs to occupy the avatar COLUMN, or grid
-            auto-placement slides its name left and it stops lining up with the
-            rows above it. */}
-        {leaders&&(leader?<LeaderAvatar leader={leader}/>:<span className="ae-leader-avatar-empty" aria-hidden="true"/>)}
-        <span className="ae-leaderboard-name"><strong>{rep.label}</strong>
-          {/* The POD is what is ranked, so it stays the primary label and the
-              leader sits under it rather than replacing it. */}
-          {leader&&<small className="ae-leader-name">{leader.name}</small>}</span>
-        <span className="ae-leaderboard-value">{attainmentLabel(rep)}
-          {/* Quarter-on-quarter movement in percentage points, shown ONLY when
-              the prior quarter had a real target. It used to fall back to the
-              contribution-share delta, which put a different metric in the same
-              pill next to a quota figure with nothing to distinguish them. No
-              prior quota now means no delta. */}
-          {rep.priorAttainment!==null&&rep.priorAttainment!==undefined&&rep.attainment!==null&&rep.attainment!==undefined
-            &&<KpiDelta value={rep.attainment-rep.priorAttainment}/>}</span>
-        {/* Attainment as form, not only as a number. A ranked list of
-            percentages makes you read every value to compare two rows; a
-            common baseline makes the gap between them visible at a glance,
-            which is the whole job of this board.
-
-            The track is 0-100% of quota, so the notch at the end is the
-            target itself rather than a decorative tick. The fill is CAPPED at
-            100% while the printed number keeps the true value - a 134.6% rep
-            cannot overflow the row, and the number never disagrees with the
-            data. Anything over target gets its own end cap instead. */}
-        {rep.attainment!==null&&rep.attainment!==undefined&&(
-          <span className={`ae-attain ae-band-${attainmentBand(rep.attainment)}`} aria-hidden="true">
-            <span className="ae-attain-fill" style={{'--pct': Math.max(0, Math.min(100, rep.attainment)) + '%'}}/>
-          </span>
-        )}
-      </div>;
-    })}
-  </div>;
-}
-
-const savedAePerformanceState=()=>{
+const savedAmPerformanceState=()=>{
   try{return JSON.parse(localStorage.getItem(`testmu-dashboard-state-${TEMPLATE}`)||'{}');}
   catch{return {};}
 };
 
-export default function AePerformance({user}){
+export default function AmPerformance({user}){
   const navigate=useNavigate();
   const {signOut}=useAuth();
   const [filters,setFilters]=useState(()=>{
-    const local=savedAePerformanceState().filters;
+    const local=savedAmPerformanceState().filters;
     return local?Object.fromEntries(FILTER_KEYS.map(key=>[key,local[key]??EMPTY[key]])):EMPTY;
   });
   const [options,setOptions]=useState({region:[],orgType:[],type:[]});
@@ -179,11 +47,11 @@ export default function AePerformance({user}){
   const [quotaMetrics,setQuotaMetrics]=useState(EMPTY_METRICS);
   const [loading,setLoading]=useState(true);
   const [repTopN,setRepTopN]=useState(()=>{
-    const v=Number(savedAePerformanceState().tableTops?.rep);
+    const v=Number(savedAmPerformanceState().tableTops?.rep);
     return [0,5,10,20].includes(v)?v:5;
   });
   const [podTopN,setPodTopN]=useState(()=>{
-    const v=Number(savedAePerformanceState().tableTops?.pod);
+    const v=Number(savedAmPerformanceState().tableTops?.pod);
     return [0,5,10,20].includes(v)?v:5;
   });
   const [hydrated,setHydrated]=useState(false);
@@ -197,14 +65,14 @@ export default function AePerformance({user}){
     if([0,5,10,20].includes(Number(state?.tableTops?.pod)))setPodTopN(Number(state.tableTops.pod));
   }).finally(()=>setHydrated(true));},[]);
   useEffect(()=>{if(!hydrated)return;const timer=setTimeout(()=>{
-    const state={view:'ae-performance',filters,tableTops:{rep:repTopN,pod:podTopN}};
+    const state={view:'am-performance',filters,tableTops:{rep:repTopN,pod:podTopN}};
     localStorage.setItem(`testmu-dashboard-state-${TEMPLATE}`,JSON.stringify(state));
     saveDashboardState(TEMPLATE,state).catch(()=>{});
   },500);return()=>clearTimeout(timer);},[filters,repTopN,podTopN,hydrated]);
   useEffect(()=>{
     let cancelled=false;
     setLoading(true);setLoadError('');setComparison({available:false});
-    getAePerformanceSnapshot(filters).then(snapshot=>{
+    getAmPerformanceSnapshot(filters).then(snapshot=>{
       if(cancelled)return;
       setMetrics(snapshot.metrics||EMPTY_METRICS);
       setQuota(snapshot.quota||null);
@@ -213,7 +81,7 @@ export default function AePerformance({user}){
     }).catch(error=>{
       if(cancelled)return;
       setMetrics(EMPTY_METRICS);setQuota(null);setQuotaMetrics(EMPTY_METRICS);setComparison({available:false});
-      setLoadError(error.response?.data?.error||error.message||'Could not load AE Performance data');
+      setLoadError(error.response?.data?.error||error.message||'Could not load AM Performance data');
     }).finally(()=>{if(!cancelled)setLoading(false);});
     return()=>{cancelled=true;};
   },[filters]);
@@ -255,7 +123,7 @@ export default function AePerformance({user}){
   const topPod=(pods||[]).find(pod=>pod.attainment!==null&&pod.attainment!==undefined)||null;
   const groupComparisons=comparison.groups||{};
 
-  if(loading&&!reps.length&&!loadError)return <AppLoader fullscreen label="Loading AE Performance…"/>;
+  if(loading&&!reps.length&&!loadError)return <AppLoader fullscreen label="Loading AM Performance…"/>;
   const filterDefs=[['region','Region'],['orgType','Org type'],['type','Opp type']];
   const dateChangedFromDefault=filters.datePreset!==EMPTY.datePreset||filters.closeFrom!==EMPTY.closeFrom||filters.closeTo!==EMPTY.closeTo;
   const activeFilterCount=filterDefs.reduce((total,[key])=>{
@@ -268,16 +136,16 @@ export default function AePerformance({user}){
   const updateFilter=(key,value)=>setFilters(current=>({...current,[key]:value}));
   const startPresentation=()=>{
     const config={filters,repTopN,podTopN};
-    localStorage.setItem('testmu-aeperformance-presentation-config',JSON.stringify(config));
-    saveDashboardState(TEMPLATE,{view:'ae-performance',filters,tableTops:{rep:repTopN,pod:podTopN},
-      presentationSettings:{view:'ae-performance'}}).catch(()=>{});
-    window.open('/present/ae-performance','_blank','noopener');
+    localStorage.setItem('testmu-amperformance-presentation-config',JSON.stringify(config));
+    saveDashboardState(TEMPLATE,{view:'am-performance',filters,tableTops:{rep:repTopN,pod:podTopN},
+      presentationSettings:{view:'am-performance'}}).catch(()=>{});
+    window.open('/present/am-performance','_blank','noopener');
   };
 
   return <ComparisonProvider value={comparison}><div className="wrap win-board-wrap"><div className="top-nav" style={{margin:'-18px -18px 18px'}}>
     <div className="brand" onClick={()=>navigate('/gallery')} style={{cursor:'pointer'}}><img className="brand-logo" src="/testmu-bi-logo-v2.png" alt="TestMu BI"/><span>TestMu BI</span></div>
     <div className="user-pill"><ThemeToggle/><span>{user?.name||'User'}</span><button className="btn-secondary" onClick={signOut}>Sign out</button></div></div>
-    <header className="top"><div className="top-row"><div><h1>AE Performance</h1><div className="sub">Ranks AE reps by <strong>% of quota achieved</strong> for {quota?.currentQuarter||'the current quarter'}. <strong>Owned by an AE-prefixed role only.</strong></div><div className="board-scope-note">Opp type = New Business, New Business AM, Existing Business - Up-sell</div></div>
+    <header className="top"><div className="top-row"><div><h1>AM Performance</h1><div className="sub">Ranks AM reps by <strong>% of quota achieved</strong> for {quota?.currentQuarter||'the current quarter'}. <strong>Owned by an AM POD only.</strong></div><div className="board-scope-note">Opp type = New Business, New Business AM, Existing Business - Up-sell</div></div>
       <button type="button" className="present-button" onClick={startPresentation}>▶ Present</button></div>
       <div className="filters win-board-filter-shelf">{filterDefs.map(([key,label])=><MultiSelect key={key} label={label} options={options[key]||[]} value={filters[key]} onChange={value=>updateFilter(key,value)}/>) }
         <AdvancedDateRange filters={filters} setFilters={setFilters} fromKey="closeFrom" toKey="closeTo"
@@ -291,8 +159,8 @@ export default function AePerformance({user}){
         <button className="btn-secondary filter-reset-button" onClick={()=>setFilters(EMPTY)}>Reset</button></div></header>
 
     {!loading && (loadError || !overall.wins) ? <div className="card win-board-empty">
-      <div className="win-board-empty-icon">↻</div><div><h3>{loadError ? 'AE Performance could not load' : 'No AE Performance data is loaded'}</h3>
-        <p>{loadError || 'Connect a data source to AE Performance from Data Sources, and make sure its field mapping includes Owner, Owner role (Role Name) and POD.'}</p></div>
+      <div className="win-board-empty-icon">↻</div><div><h3>{loadError ? 'AM Performance could not load' : 'No AM Performance data is loaded'}</h3>
+        <p>{loadError || 'Connect a data source to AM Performance from Data Sources, and make sure its field mapping includes Owner, Owner role (Role Name) and POD.'}</p></div>
       <button type="button" className="btn-primary" onClick={()=>navigate('/data-sources')}>Open data sources</button>
     </div> : <>
       {quotaMetrics.repStatus?.likelyUnmapped&&<div className="card ae-quota-mismatch" role="alert">
@@ -361,32 +229,32 @@ export default function AePerformance({user}){
         </div>
       </div>:<div className="card ae-quota-strip ae-quota-unmapped">
         <b>Quota is not mapped</b>
-        <p>AE Performance ranks by % of quota achieved. Map <b>Current quarter quota</b> (and optionally <b>Prior quarter quota</b>) on the data source to populate this board.</p>
+        <p>AM Performance ranks by % of quota achieved. Map <b>Current quarter quota</b> (and optionally <b>Prior quarter quota</b>) on the data source to populate this board.</p>
         <button type="button" className="btn-secondary" onClick={()=>navigate('/data-sources')}>Open data sources</button>
       </div>}
 
       <div className="g2">
-        <ChartCard className="ae-performance-card" showComparison={false} title="AE Quota Attainment" hint={`Won ARR closed in ${quota?.currentQuarter||'the quarter'} divided by each rep’s quota. ${measured.length} of ${reps.length} rep${reps.length===1?'':'s'} carry a target.`}
+        <ChartCard className="ae-performance-card" showComparison={false} title="AM Quota Attainment" hint={`Won ARR closed in ${quota?.currentQuarter||'the quarter'} divided by each rep’s quota. ${measured.length} of ${reps.length} rep${reps.length===1?'':'s'} carry a target.`}
           controls={<select className="table-top-select" aria-label="Number of reps to display" value={repTopN} onChange={event=>setRepTopN(Number(event.target.value))}><option value="5">Top 5</option><option value="10">Top 10</option><option value="20">Top 20</option><option value="0">All</option></select>}>
           <RepLeaderboard reps={reps} comparisons={groupComparisons.reps} topN={repTopN}/>
         </ChartCard>
-        <ChartCard className="ae-performance-card" showComparison={false} title="AE POD Quota Attainment" hint={`The same attainment, grouped by POD instead of by rep — ${pods.length} POD${pods.length===1?'':'s'}. A POD quota is the sum of its reps targets, including reps who closed nothing.`}
+        <ChartCard className="ae-performance-card" showComparison={false} title="AM POD Quota Attainment" hint={`The same attainment, grouped by POD instead of by rep — ${pods.length} POD${pods.length===1?'':'s'}. A POD quota is the sum of its reps targets, including reps who closed nothing.`}
           controls={<select className="table-top-select" aria-label="Number of PODs to display" value={podTopN} onChange={event=>setPodTopN(Number(event.target.value))}><option value="5">Top 5</option><option value="10">Top 10</option><option value="20">Top 20</option><option value="0">All</option></select>}>
           <RepLeaderboard reps={pods} comparisons={groupComparisons.pods} topN={podTopN} showAvatar={false} leaders={POD_LEADERS}
-            emptyLabel="No AE-owned won opportunities in the selected scope."/>
+            emptyLabel="No AM-owned won opportunities in the selected scope."/>
         </ChartCard>
       </div>
     </>}
 
-    <button type="button" className="floating-filter-button" aria-label="Open AE Performance filters" title="AE Performance filters" onClick={()=>setFilterPanelOpen(open=>!open)}>
+    <button type="button" className="floating-filter-button" aria-label="Open AM Performance filters" title="AM Performance filters" onClick={()=>setFilterPanelOpen(open=>!open)}>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h3M11 12h9M4 18h7M15 18h5"/><circle cx="16" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="13" cy="18" r="2"/></svg>
       {activeFilterCount>0
         ?<span className="floating-filter-badge">{activeFilterCount}</span>
         :hasAnyTouchedFilter&&<span className="floating-filter-badge floating-filter-badge-dot" aria-label="Filters set to All"/>}
     </button>
 
-    {filterPanelOpen&&<aside className="floating-filter-panel" aria-label="AE Performance filters">
-      <div className="floating-filter-head"><div><b>AE Performance filters</b><span>{fmtNumber(overall.opportunities)} opportunities</span></div>
+    {filterPanelOpen&&<aside className="floating-filter-panel" aria-label="AM Performance filters">
+      <div className="floating-filter-head"><div><b>AM Performance filters</b><span>{fmtNumber(overall.opportunities)} opportunities</span></div>
         <button type="button" aria-label="Close filters" onClick={()=>setFilterPanelOpen(false)}>×</button></div>
       <div className="floating-filter-controls">{filterDefs.map(([key,label])=><MultiSelect key={key} label={label} options={options[key]||[]} value={filters[key]} onChange={value=>updateFilter(key,value)}/>)}
         <AdvancedDateRange filters={filters} setFilters={setFilters} fromKey="closeFrom" toKey="closeTo"

@@ -1,19 +1,17 @@
 // client/src/pages/DataSources.jsx
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTemplates, fieldsByTemplate } from '../hooks/useTemplates';
 import api from '../lib/api';
 import ThemeToggle from '../components/ThemeToggle';
 
-const TEMPLATES = [
-  { id: 'opportunity-analytics', name: 'Opportunity Analytics' },
-  { id: 'event-analytics', name: 'Event Analytics' },
-  { id: 'tenant-health', name: 'Tenant Health' },
-  { id: 'win-board', name: 'Win Board' },
-  { id: 'loss-board', name: 'Loss Board' },
-  { id: 'ae-performance', name: 'AE Performance' },
-];
-const TEMPLATE_LABELS = Object.fromEntries(TEMPLATES.map(t => [t.id, t.name]));
-const dashboardLabel = key => TEMPLATE_LABELS[key] || key;
+// Registry and field sets both come from /api/templates now. They were
+// duplicated here, and a dashboard missing from either copy was invisible with
+// no error anywhere - that is how AM Performance came to exist and work while
+// being unbindable.
+// Falls back to the raw key while the registry is loading, which reads as an
+// id rather than as a wrong name.
+const labelFor = (templates, key) => (templates.find(t => t.id === key) || {}).name || key;
 
 // Relative for anything recent (where the exact minute matters most), an
 // absolute date once it's old enough that "N hours ago" stops being useful.
@@ -31,38 +29,21 @@ function formatRefreshTime(value) {
 
 // Keep the mapper focused on fields that the selected dashboards actually
 // consume. Optional schema fields remain available behind an explicit toggle.
-const OPPORTUNITY_FIELDS = [
-  'id','name','account','accountId','owner','stage','amount','arr','closeDate','createdDate',
-  'isClosed','isWon','orgType','region','pod','industry','product','source','type',
-  'daysStuck','cycleDays','staleThreshold','isStalled','dealHealth',
-  'forecastCategory','lossReason','trialStageAt',
-];
-const WIN_BOARD_FIELDS = [
-  'id','stage','arr','createdDate','isClosed','isWon','region','orgType',
-  'industry','pod','team','type',
-];
-const LOSS_BOARD_FIELDS = [
-  'id','stage','arr','createdDate','isClosed','isWon','region','orgType',
-  'pod','team','type','lossReason','trialStageAt',
-];
+
+
+
 // ownerRole scopes the board to AE-owned rows (STARTSWITH([Role Name],"AE"));
 // pod is what the POD ranking groups by, the same field the Win and Loss
 // boards use. Omitting pod here is what left the POD ranking grouping by raw
 // Role Name and showing a fraction of the real PODs.
-const AE_PERFORMANCE_FIELDS = [
-  'id','stage','owner','ownerRole','pod','arr','closeDate','createdDate','isClosed','isWon','region','orgType','type',
-];
-const DASHBOARD_FIELDS = {
-  'opportunity-analytics': OPPORTUNITY_FIELDS,
-  'event-analytics': OPPORTUNITY_FIELDS,
-  'tenant-health': OPPORTUNITY_FIELDS,
-  'win-board': WIN_BOARD_FIELDS,
-  'loss-board': LOSS_BOARD_FIELDS,
-  'ae-performance': AE_PERFORMANCE_FIELDS,
-};
+
+// AM Performance maps the identical field set: same formulas, same quota, only
+// the row scope differs (POD contains AM rather than an AE-prefixed role).
+
 
 export default function DataSources() {
   const navigate = useNavigate();
+  const { templates } = useTemplates();
   const [tab, setTab] = useState('upload');
   const [preview, setPreview] = useState(null);
   const [workflowStep, setWorkflowStep] = useState('preview');
@@ -94,6 +75,26 @@ export default function DataSources() {
 
   useEffect(() => { loadSavedSources(); loadSyncRuns(); }, []);
 
+  // Re-committing a source rewrites its bindings, so the dashboard tick-boxes
+  // are destructive: any dashboard left unticked is unbound. They used to open
+  // on a hardcoded default regardless of what the source was already serving,
+  // so fixing one field's mapping silently detached every other dashboard.
+  // Seed the selection from the live bindings instead.
+  function boundDashboards(info) {
+    if (!info) return null;
+    const keys = [info.sourceId, info.datasourceId, info.externalId, info.id].filter(Boolean).map(String);
+    const name = info.sourceName || info.datasourceName || info.name;
+    const match = savedSources.find(source =>
+      keys.includes(String(source.id)) || (name && source.name === name));
+    const bound = match?.dashboards || [];
+    return bound.length ? bound : null;
+  }
+
+  function seedDashboardSelection(info) {
+    const bound = boundDashboards(info);
+    if (bound) setSelectedDashboards(bound);
+  }
+
   function stage(data) {
     if (data.items?.length) {
       const [first, ...rest] = data.items;
@@ -101,6 +102,7 @@ export default function DataSources() {
       setPreview(first);
       setMapping(first.fieldMapping || {});
       setResult(null); setError(null); setStagedInfo(first);
+      seedDashboardSelection(first);
       setWorkflowStep('preview');
       return;
     }
@@ -109,6 +111,7 @@ export default function DataSources() {
     setResult(null);
     setError(null);
     setStagedInfo(data);
+    seedDashboardSelection(data);
     setWorkflowStep('preview');
   }
 
@@ -130,6 +133,7 @@ export default function DataSources() {
     setMapping(stagedInfo.fieldMapping || {});
     setResult(null);
     setError(null);
+    seedDashboardSelection(stagedInfo);
     setWorkflowStep('mapping');
   }
 
@@ -178,6 +182,7 @@ export default function DataSources() {
         <MappingPanel
           preview={preview} mapping={mapping} setMapping={setMapping}
           templateIds={selectedDashboards} setTemplateIds={setSelectedDashboards}
+          alreadyBound={boundDashboards(stagedInfo) || []}
           busy={busy} setBusy={setBusy} setError={setError}
           onCancel={() => { setError(null); setWorkflowStep('preview'); }}
           onCommitted={committed}
@@ -236,8 +241,8 @@ export default function DataSources() {
                 <td>{(source.dashboards || []).length
                   ? <div style={{display:'flex',flexWrap:'wrap',gap:6}}>{source.dashboards.map(key =>
                       <button key={key} type="button" className="pill pill-link"
-                        title={`Open ${dashboardLabel(key)}`} onClick={()=>navigate(`/dashboard/${key}`)}>
-                        {dashboardLabel(key)} ↗
+                        title={`Open ${labelFor(templates, key)}`} onClick={()=>navigate(`/dashboard/${key}`)}>
+                        {labelFor(templates, key)} ↗
                       </button>)}</div>
                   : 'Not assigned'}</td>
                 <td><span className="pill">{source.status}</span></td>
@@ -725,6 +730,8 @@ function Toggle({ on, onClick, children }) {
 /* ================= Mapping ================= */
 
 function DashboardPicker({ value, onChange }) {
+  const { templates: TEMPLATES } = useTemplates();
+  const DASHBOARD_FIELDS = fieldsByTemplate(TEMPLATES);
   const [open, setOpen] = useState(false);
   const selected = TEMPLATES.filter(template => value.includes(template.id));
   const toggle = id => onChange(value.includes(id) ? value.filter(item => item !== id) : [...value, id]);
@@ -752,7 +759,7 @@ function DashboardPicker({ value, onChange }) {
   </div>;
 }
 
-function MappingPanel({ preview, mapping, setMapping, templateIds, setTemplateIds, busy, setBusy, setError, onCancel, onCommitted }) {
+function MappingPanel({ preview, mapping, setMapping, templateIds, setTemplateIds, busy, setBusy, setError, onCancel, onCommitted, alreadyBound = [] }) {
   const [search, setSearch] = useState('');
   const [onlyUnmatched, setOnlyUnmatched] = useState(false);
   const [fill, setFill] = useState({});
@@ -781,7 +788,18 @@ function MappingPanel({ preview, mapping, setMapping, templateIds, setTemplateId
     return () => { cancelled = true; clearTimeout(t); };
   }, [mapping, preview.stagingId]);
 
-  const relevantKeys = useMemo(() => new Set(templateIds.flatMap(id => DASHBOARD_FIELDS[id] || [])), [templateIds]);
+  // Committing rewrites this source's bindings, so anything currently bound
+  // and now unticked is about to be detached. Naming them is the difference
+  // between a reversible mistake and a dashboard that silently stops loading.
+  const aboutToUnbind = (alreadyBound || []).filter(key => !templateIds.includes(key));
+
+  const { templates } = useTemplates();
+  // Empty until the registry arrives. Callers must read that as "not known
+  // yet", never as "this dashboard needs no fields" - showing a field list
+  // built from a stale copy is exactly the bug this refactor removes.
+  const relevantKeys = useMemo(
+    () => new Set(templateIds.flatMap(id => (templates.find(t => t.id === id) || {}).fields || [])),
+    [templateIds, templates]);
   const relevantFields = preview.fields.filter(field => relevantKeys.has(field.key));
   const mappedCount = relevantFields.filter(f => status[f.key] !== 'unmapped').length;
   const essentialGaps = relevantFields.filter(f => f.group === 'essential' && status[f.key] === 'unmapped');
@@ -891,6 +909,18 @@ function MappingPanel({ preview, mapping, setMapping, templateIds, setTemplateId
           <div style={{ color: 'var(--txt-2)', marginTop: 3 }}>
             Usually means the wrong column, or one whose type doesn't convert.
           </div>
+        </div>
+      )}
+
+      {aboutToUnbind.length > 0 && (
+        <div className="unbind-warning" role="alert">
+          <b>This will unbind {aboutToUnbind.length} dashboard{aboutToUnbind.length===1?'':'s'}</b>
+          <p>Committing rewrites this source&rsquo;s bindings. <b>{aboutToUnbind.join(', ')}</b> {aboutToUnbind.length===1?'is':'are'} bound
+            to it now and will stop loading data unless {aboutToUnbind.length===1?'it is':'they are'} ticked below.</p>
+          <button type="button" className="btn-secondary"
+            onClick={() => setTemplateIds([...new Set([...templateIds, ...aboutToUnbind])])}>
+            Keep {aboutToUnbind.length===1?'it':'them'} bound
+          </button>
         </div>
       )}
 

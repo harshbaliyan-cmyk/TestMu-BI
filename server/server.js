@@ -3,7 +3,7 @@ import cors from 'cors';
 import session from 'express-session';
 import connectPgSimple from 'connect-pg-simple';
 import { OAuth2Client } from 'google-auth-library';
-import { createDataSourceRouter } from './datasources.js';
+import { createDataSourceRouter , DASHBOARD_FIELD_SETS } from './datasources.js';
 import axios from 'axios';
 import cron from 'node-cron';
 import dotenv from 'dotenv';
@@ -19,13 +19,15 @@ import { getDashboardState, saveDashboardState } from './repositories/dashboardS
 import { logSourceAccess, logAudit } from './repositories/activityLogs.js';
 import {
   authAttemptStatus, recordAuthFailure, clearAuthFailures, verifyPassword, passwordProblem,
+  selfSignupAllowed, isAdminSession,
 } from './services/authGuard.js';
 import { sendSecurityNotification } from './services/mailer.js';
 import { listSavedContent, createSavedContent, deleteSavedContent } from './repositories/savedContent.js';
 import { listAdminLogs, cleanupOldRecords } from './repositories/adminLogs.js';
 import { buildWinBoardSnapshot } from './services/winBoardMetrics.js';
 import { buildLossBoardSnapshot } from './services/lossBoardMetrics.js';
-import { buildAePerformanceSnapshot } from './services/aePerformanceMetrics.js';
+import { buildAePerformanceSnapshot, isAmRow } from './services/aePerformanceMetrics.js';
+import { getMappedSourceColumn } from './repositories/dataSources.js';
 import { buildGenericComparison } from './services/periodComparison.js';
 
 dotenv.config();
@@ -81,7 +83,7 @@ const systemScope = templateId => `sys:${templateId}`;
 // be mapped independently of (and more sparsely than) the Opportunity
 // Analytics source — this backfills any of these fields left blank on a row
 // from the same Opportunity ID's Opportunity Analytics record, when present.
-const DASHBOARDS_WITH_OPPORTUNITY_ENRICHMENT = new Set(['win-board', 'loss-board', 'ae-performance']);
+const DASHBOARDS_WITH_OPPORTUNITY_ENRICHMENT = new Set(['win-board', 'loss-board', 'ae-performance', 'am-performance']);
 function dashboardRows(userId, key) {
   const rows = cacheGet(userScope(userId, key)) || [];
   if (!DASHBOARDS_WITH_OPPORTUNITY_ENRICHMENT.has(key) || !rows.length) return rows;
@@ -466,10 +468,11 @@ function requireAuth(req, res, next) {
   next();
 }
 
+// Policy lives in authGuard.isAdminSession — see there for why an email is no
+// longer accepted in place of a role.
 function requireAdmin(req, res, next) {
   if (!req.session?.email) return res.status(401).json({ error: 'Not authenticated' });
-  const admins = (process.env.ADMIN_EMAILS||'').split(',').map(e => e.trim()).filter(Boolean);
-  if (req.session.role !== 'admin' && !admins.includes(req.session.email)) return res.status(403).json({ error: 'Admin access required' });
+  if (!isAdminSession(req.session)) return res.status(403).json({ error: 'Admin access required' });
   next();
 }
 
@@ -503,8 +506,19 @@ app.post('/api/auth/verify', async (req, res) => {
   }
 });
 
+// Policy lives in authGuard.selfSignupAllowed. Accounts are provisioned via
+// POST /api/admin/users, which issues a temporary password and forces a change
+// on first login; the first administrator comes from scripts/create-admin.mjs.
+const SELF_SIGNUP_ENABLED = selfSignupAllowed();
+
 app.post('/api/auth/signup', async (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
+  // Refused before any lookup, and identically for every address, so this
+  // cannot be used to tell a registered address from an unregistered one.
+  if (!SELF_SIGNUP_ENABLED) {
+    await logAuthEvent({ email, action: 'auth.signup', req, outcome: 'blocked' }).catch(() => {});
+    return res.status(403).json({ error: 'Accounts are created by an administrator. Ask your admin for an invite.' });
+  }
   try {
     const displayName = String(req.body?.name || '').trim();
     const password = String(req.body?.password || '');
@@ -575,7 +589,12 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 app.get('/api/auth/config', (req, res) => {
-  res.json({ googleClientId: GOOGLE_AUTH_ENABLED ? process.env.GOOGLE_CLIENT_ID : null });
+  res.json({
+    googleClientId: GOOGLE_AUTH_ENABLED ? process.env.GOOGLE_CLIENT_ID : null,
+    // So the form does not offer a door the server will refuse. The server is
+    // still the gate — this only keeps the UI honest about it.
+    selfSignupEnabled: SELF_SIGNUP_ENABLED,
+  });
 });
 
 // The development login is deliberately gone. It minted an *admin* session for
@@ -602,36 +621,49 @@ const TEMPLATES = [
     name: 'Opportunity Analytics',
     description: 'Revenue funnel, win rates, rep performance',
     tags: ['Salesforce', '6 views'],
+    fields: DASHBOARD_FIELD_SETS.opportunity,
   },
   {
     id: 'event-analytics',
     name: 'Event Analytics',
     description: 'Feature adoption, churn signals',
     tags: ['orgType', '4 views'],
+    fields: DASHBOARD_FIELD_SETS.opportunity,
   },
   {
     id: 'tenant-health',
     name: 'Tenant Health',
     description: 'Account whitespace, expansion candidates',
     tags: ['HubSpot', '5 views'],
+    fields: DASHBOARD_FIELD_SETS.opportunity,
   },
   {
     id: 'win-board',
     name: 'Win Board',
     description: 'Won ARR, ARR win rate, and contribution performance',
     tags: ['Tableau', 'Won ARR'],
+    fields: DASHBOARD_FIELD_SETS.winBoard,
   },
   {
     id: 'loss-board',
     name: 'Loss Board',
     description: 'Where business is being lost — ARR lost rate, loss reasons, and lost-after-trial',
     tags: ['Tableau', 'Lost ARR'],
+    fields: DASHBOARD_FIELD_SETS.lossBoard,
+  },
+  {
+    id: 'am-performance',
+    name: 'AM Performance',
+    description: 'AM rep ranking by % of quota achieved, with POD attainment',
+    tags: ['Tableau', 'Quota'],
+    fields: DASHBOARD_FIELD_SETS.repQuota,
   },
   {
     id: 'ae-performance',
     name: 'AE Performance',
     description: 'AE rep ranking by share of closed ARR, with period comparison',
     tags: ['Tableau', 'ARR Contribution'],
+    fields: DASHBOARD_FIELD_SETS.repQuota,
   },
 ];
 
@@ -863,10 +895,62 @@ app.post('/api/admin/retention-cleanup', requireAdmin, async (req,res,next) => {
   try { res.json({ok:true,deleted:await cleanupOldRecords(req.body?.days)}); } catch(error){ next(error); }
 });
 
+// Maps a driver error onto a stable reason code plus a one-line summary.
+//
+// This exists because "unavailable" with no reason cost a real debugging
+// session: a server process was still holding pre-rotation credentials, and
+// the endpoint reported the same opaque string it reports for a DNS failure,
+// a suspended database, or an expired certificate. The reason code is the
+// whole point - it tells you which of those you are looking at.
+//
+// The endpoint is public and unauthenticated (the platform health check hits
+// it), so the response carries a CLASSIFICATION only. Raw driver text can
+// contain the database hostname, so it is logged server-side and never
+// returned. Nothing here ever touches the connection string or password.
+function classifyDatabaseError(error) {
+  const pgCode = error && error.code;
+  switch (pgCode) {
+    case '28P01': case '28000':
+      return { reason: 'auth_failed', summary: 'Database rejected the credentials. If they were rotated, this process is still holding the old ones - restart it.' };
+    case '3D000':
+      return { reason: 'unknown_database', summary: 'The configured database name does not exist on the server.' };
+    case '53300':
+      return { reason: 'too_many_connections', summary: 'The server refused a new connection: the pool limit is exhausted.' };
+    case '57P03':
+      return { reason: 'starting_up', summary: 'The database is starting and not accepting connections yet.' };
+    case '08006': case '08001': case '08003':
+      return { reason: 'connection_failed', summary: 'The connection to the database dropped.' };
+    case 'ENOTFOUND': case 'EAI_AGAIN':
+      return { reason: 'dns_failure', summary: 'The database hostname did not resolve. Usually a network or DNS problem, not a credential one.' };
+    case 'ECONNREFUSED':
+      return { reason: 'connection_refused', summary: 'Nothing accepted the connection on that host and port.' };
+    case 'ETIMEDOUT': case 'ECONNRESET':
+      return { reason: 'network_timeout', summary: 'The connection timed out or was reset in transit.' };
+    case 'CERT_HAS_EXPIRED': case 'DEPTH_ZERO_SELF_SIGNED_CERT': case 'UNABLE_TO_VERIFY_LEAF_SIGNATURE':
+      return { reason: 'tls_failure', summary: 'The TLS handshake failed while connecting to the database.' };
+    default:
+      return { reason: pgCode ? 'driver_error' : 'unknown', summary: 'The database did not answer. See the server log for the driver error.' };
+  }
+}
+
 app.get('/api/health/database', async (req,res) => {
-  if (!databaseEnabled) return res.status(503).json({ok:false,database:'not configured'});
-  try { const result=await pool.query('SELECT now() AS time'); res.json({ok:true,database:'postgresql',time:result.rows[0].time}); }
-  catch { res.status(503).json({ok:false,database:'unavailable'}); }
+  if (!databaseEnabled) {
+    return res.status(503).json({ ok:false, database:'not configured', reason:'not_configured',
+      summary:'DATABASE_URL is not set, so the server started without a database.' });
+  }
+  // Bounded so a hung socket cannot hang the health check itself - an
+  // unbounded probe here stalls the platform's checker instead of failing it.
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(Object.assign(new Error('health probe timed out'), { code:'ETIMEDOUT' })), 5000));
+  try {
+    const result = await Promise.race([pool.query('SELECT now() AS time'), timeout]);
+    res.json({ ok:true, database:'postgresql', time:result.rows[0].time });
+  } catch (error) {
+    const { reason, summary } = classifyDatabaseError(error);
+    // Full detail goes to the log, never to the response.
+    console.error('[health] database probe failed:', reason, '-', error && error.message);
+    res.status(503).json({ ok:false, database:'unavailable', reason, summary });
+  }
 });
 
 // ===== DATA ENDPOINTS =====
@@ -1047,12 +1131,41 @@ app.get('/api/loss-board/snapshot', requireAuth, (req,res) => {
 // AE Performance is its own connectable data source (see DataSources.jsx's
 // dashboard picker) — 'ae-performance' is a distinct cache key, mapped and
 // loaded independently of Win Board, not read off Win Board's rows.
+// AM Performance is the AE board with one different scope rule. It shares the
+// metric code entirely, so a fix to quota, attainment or rep status lands on
+// both boards at once and they cannot drift apart.
+app.get('/api/am-performance/metrics', requireAuth, (req, res) => {
+  res.json(buildAePerformanceSnapshot(dashboardRows(req.session.userId,'am-performance'),req.query,{scope:isAmRow}).metrics);
+});
+
+app.get('/api/am-performance/snapshot', requireAuth, async (req,res,next) => {
+  try {
+    const [quotaSourceColumn, quotaPriorSourceColumn] = await Promise.all([
+      getMappedSourceColumn(req.session.userId,'am-performance','quotaCurrent').catch(()=>null),
+      getMappedSourceColumn(req.session.userId,'am-performance','quotaPrior').catch(()=>null),
+    ]);
+    res.json(buildAePerformanceSnapshot(dashboardRows(req.session.userId,'am-performance'),req.query,
+      {quotaSourceColumn, quotaPriorSourceColumn, scope:isAmRow}));
+  } catch(error){ next(error); }
+});
+
 app.get('/api/ae-performance/metrics', requireAuth, (req, res) => {
   res.json(buildAePerformanceSnapshot(dashboardRows(req.session.userId,'ae-performance'),req.query).metrics);
 });
 
-app.get('/api/ae-performance/snapshot', requireAuth, (req,res) => {
-  res.json(buildAePerformanceSnapshot(dashboardRows(req.session.userId,'ae-performance'),req.query));
+app.get('/api/ae-performance/snapshot', requireAuth, async (req,res,next) => {
+  try {
+    // The mapped column NAMES are read alongside the rows so the board can
+    // warn when a quota column is named for a different quarter than the one
+    // being reported. Failing to read them must not fail the board, so a
+    // lookup error degrades to "no warning" rather than to no dashboard.
+    const [quotaSourceColumn, quotaPriorSourceColumn] = await Promise.all([
+      getMappedSourceColumn(req.session.userId,'ae-performance','quotaCurrent').catch(()=>null),
+      getMappedSourceColumn(req.session.userId,'ae-performance','quotaPrior').catch(()=>null),
+    ]);
+    res.json(buildAePerformanceSnapshot(dashboardRows(req.session.userId,'ae-performance'),req.query,
+      {quotaSourceColumn, quotaPriorSourceColumn}));
+  } catch(error){ next(error); }
 });
 
 app.get('/api/comparison/:templateId', requireAuth, (req,res) => {
@@ -1064,6 +1177,9 @@ app.get('/api/comparison/:templateId', requireAuth, (req,res) => {
   }
   if(req.params.templateId==='ae-performance'){
     return res.json(buildAePerformanceSnapshot(dashboardRows(req.session.userId,'ae-performance'),req.query).comparison);
+  }
+  if(req.params.templateId==='am-performance'){
+    return res.json(buildAePerformanceSnapshot(dashboardRows(req.session.userId,'am-performance'),req.query,{scope:isAmRow}).comparison);
   }
   res.json(buildGenericComparison(dashboardRows(req.session.userId,req.params.templateId),req.query));
 });
@@ -1097,25 +1213,63 @@ app.use(async (error,req,res,next) => {
 });
 
 // ===== STARTUP =====
+// Every step below is best-effort. This callback is async, so an unhandled
+// rejection here terminates the process: the server would bind the port, print
+// "running", then die on the first query if the database refused the
+// connection. That turned a diagnosable 503 into a crash loop with no
+// explanation. Startup housekeeping must never take the HTTP layer down - if
+// the database is unreachable we stay up and let /api/health/database name it.
 app.listen(PORT, async () => {
   console.log(`\n📊 Dashboard Server running on http://localhost:${PORT}`);
   console.log(`Auth mode: ${GOOGLE_AUTH_ENABLED ? `Google SSO @${process.env.ALLOWED_DOMAIN || 'any'}` : 'Email and password'}`);
   console.log(`Database: ${databaseEnabled ? 'PostgreSQL' : 'not configured (memory-only development mode)'}`);
-  if(databaseEnabled) await pool.query(`UPDATE data_sources SET status='needs_reload',updated_at=now()
-    WHERE source_type='file' AND status='loaded'`);
+  if (databaseEnabled) {
+    // Every template needs a row in `dashboards`: it is the FK target that
+    // dashboard_source_bindings joins against, so a template present in code
+    // but absent from the table cannot be bound and fails at commit with
+    // "Unknown dashboard". Seeding it from TEMPLATES here means registering a
+    // dashboard stays ONE edit - add it to TEMPLATES and the row follows.
+    // Idempotent, and never fatal: a seeding failure must not stop the server.
+    try {
+      for (const template of TEMPLATES) {
+        await pool.query(
+          `INSERT INTO dashboards(template_key,name,description,is_system) VALUES($1,$2,$3,true)
+           ON CONFLICT(template_key) DO UPDATE SET name=EXCLUDED.name,
+             description=EXCLUDED.description, updated_at=now()`,
+          [template.id, template.name, template.description || null]);
+      }
+    } catch (error) {
+      console.error('WARN  dashboard registry seed skipped:', error?.message || error);
+    }
 
-  // Initialize Tableau if configured
-  await initializeTableauClient();
-  if (tableauClient) {
-    scheduleSync();
-    // Run first sync immediately if requested
-    if (process.env.SYNC_ON_STARTUP === 'true') {
-      console.log('🔄 Running initial sync...');
-      await syncAllWorksheets();
+    try {
+      await pool.query(`UPDATE data_sources SET status='needs_reload',updated_at=now()
+        WHERE source_type='file' AND status='loaded'`);
+    } catch (error) {
+      console.error('WARN  startup housekeeping skipped, database unreachable:', error?.message || error);
+      console.error('      The server is still serving. Check /api/health/database for the reason.');
     }
   }
 
+  try {
+    await initializeTableauClient();
+    if (tableauClient) {
+      scheduleSync();
+      if (process.env.SYNC_ON_STARTUP === 'true') {
+        console.log('Running initial sync...');
+        await syncAllWorksheets();
+      }
+    }
+  } catch (error) {
+    console.error('WARN  Tableau initialisation skipped:', error?.message || error);
+  }
   console.log('\n✅ Server ready\n');
+});
+
+// Last line of defence. Anything that still escapes gets logged rather than
+// killing a running server: a crashed process cannot report why it crashed.
+process.on('unhandledRejection', reason => {
+  console.error('WARN  unhandled promise rejection:', reason?.message || reason);
 });
 
 for (const signal of ['SIGINT', 'SIGTERM']) {

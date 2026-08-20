@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   authAttemptStatus, recordAuthFailure, clearAuthFailures, verifyPassword, passwordProblem, AUTH_LIMITS,
+  selfSignupAllowed, isAdminSession,
 } from '../services/authGuard.js';
 import bcrypt from 'bcryptjs';
 
@@ -72,4 +73,35 @@ test('password policy rejects short, single-class, common and self-referential p
 test('password policy accepts a long passphrase and a shorter mixed-class password', () => {
   assert.equal(passwordProblem('correct horse battery staple'), null);
   assert.equal(passwordProblem('Tr0ub4dor&3xyz'), null);
+});
+
+// ===== ACCOUNT CREATION AND ADMIN POLICY =====
+
+test('self-service signup is closed unless explicitly enabled', () => {
+  // The regression: an unverified address that merely ENDED in the allowed
+  // domain was handed a live session. Absent proof of ownership, the answer is
+  // no — and it stays no for every value that is not exactly "true", so a
+  // half-set or truthy-looking flag cannot quietly reopen it.
+  assert.equal(selfSignupAllowed({}), false, 'closed when the flag is absent');
+  assert.equal(selfSignupAllowed({ ALLOW_SELF_SIGNUP: 'false' }), false);
+  assert.equal(selfSignupAllowed({ ALLOW_SELF_SIGNUP: '1' }), false, '"1" is not opt-in');
+  assert.equal(selfSignupAllowed({ ALLOW_SELF_SIGNUP: 'TRUE' }), false, 'and neither is "TRUE"');
+  assert.equal(selfSignupAllowed({ ALLOW_SELF_SIGNUP: '' }), false);
+  assert.equal(selfSignupAllowed({ ALLOWED_DOMAIN: 'example.com' }), false,
+    'a domain allowlist is not consent to self-signup');
+  assert.equal(selfSignupAllowed({ ALLOW_SELF_SIGNUP: 'true' }), true, 'and yes only when asked for exactly');
+});
+
+test('admin is the role on the record, never an address in an env var', () => {
+  assert.equal(isAdminSession({ role: 'admin', email: 'a@example.com' }), true);
+  assert.equal(isAdminSession({ role: 'user', email: 'a@example.com' }), false);
+  // The escalation this closed: claim an ADMIN_EMAILS address that has not
+  // registered yet, and the session was privileged on the strength of the
+  // string alone. An email must never stand in for a role again.
+  assert.equal(isAdminSession({ role: 'user', email: process.env.ADMIN_EMAILS || 'admin@example.com' }), false,
+    'a listed address with a user role is NOT an admin');
+  assert.equal(isAdminSession({ email: 'a@example.com' }), false, 'a session with no role is not an admin');
+  assert.equal(isAdminSession({}), false);
+  assert.equal(isAdminSession(null), false);
+  assert.equal(isAdminSession(undefined), false);
 });
