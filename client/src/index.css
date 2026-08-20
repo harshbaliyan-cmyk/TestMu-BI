@@ -4425,12 +4425,24 @@ span.ae-leader-avatar { border-color: transparent; }
   .ae-leaderboard-leaders .ae-leader-avatar { width: 76px; height: 76px; flex-basis: 76px; font-size: 22px; }
 }
 
-/* TV shell: everything scales with the container. */
+/* TV shell: everything scales with the container.
+
+   The avatar track is `auto`, NOT the same clamp as the avatar, because the two
+   do not resolve alike. The ROW is `container-type: size`, so the avatar's cqh
+   measures the row (~101px of content) — but the row's own cqh has no container
+   above it and falls back to the viewport, where 56cqh is 605px and slams into
+   the 190px cap. One expression, two answers: a 56px photo sitting in a 190px
+   track with 134px of dead space before the name. `auto` just hugs whatever the
+   avatar actually computes to.
+
+   88cqh fills the row rather than floating in it, and stays inside the ~101px
+   of content height so it cannot overflow the way it did before. The 170px cap
+   keeps it under the 256px source on a 1x panel. */
 .win-board-tv-shell .ae-leaderboard-no-avatar.ae-leaderboard-leaders .ae-leaderboard-row {
-  grid-template-columns: clamp(30px, 4cqh, 52px) clamp(40px, 56cqh, 190px) minmax(0, 1fr) auto;
+  grid-template-columns: clamp(30px, 4cqh, 52px) auto minmax(0, 1fr) auto;
 }
 .win-board-tv-shell .ae-leaderboard-leaders .ae-leader-avatar {
-  width: clamp(40px, 56cqh, 190px); height: clamp(40px, 56cqh, 190px); flex-basis: clamp(40px, 56cqh, 190px);
+  width: clamp(48px, 88cqh, 170px); height: clamp(48px, 88cqh, 170px); flex-basis: clamp(48px, 88cqh, 170px);
   align-self: center;
 }
 .win-board-tv-shell .ae-leaderboard-leaders .ae-leaderboard-name strong { font-size: clamp(22px, 5cqh, 44px); }
