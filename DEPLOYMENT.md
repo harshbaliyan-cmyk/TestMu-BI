@@ -166,6 +166,13 @@ the dashboard updates within seconds.
    Tableau source. That registers the webhook with Tableau over its REST API —
    there is nothing to configure in Tableau by hand.
 
+Tableau subscribes per **event type for the whole site**, not per data source —
+its API rejects a per-resource filter outright. So one webhook appears in
+Tableau for "datasource refresh succeeded", it fires for every published
+source on the site, and this app discards the deliveries that are not about
+the source it is watching. Enabling it on several sources is still correct;
+each registers its own subscription and ignores the others' events.
+
 The callback is `POST /api/datasources/webhook/<source-id>/<secret>`, public by
 necessity: Tableau arrives with no session. The unguessable source-id + secret
 pair in the URL is what stands in for auth, and the handler answers 200

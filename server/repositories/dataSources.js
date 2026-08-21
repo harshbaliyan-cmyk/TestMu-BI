@@ -141,7 +141,8 @@ export async function listRefreshableSourceIds() {
 // session cookie stands in for auth on every other route.
 export async function findWebhookSource(sourceId, secret) {
   const {rows}=await query(`SELECT id,owner_user_id AS "userId",external_id AS "externalId",
-    source_type AS "sourceType",webhook_enabled AS "webhookEnabled"
+    source_type AS "sourceType",webhook_enabled AS "webhookEnabled",
+    webhook_resource_luid AS "webhookResourceLuid"
     FROM data_sources WHERE id=$1 AND webhook_secret=$2 AND deleted_at IS NULL`,[sourceId,secret]);
   return rows[0]||null;
 }
@@ -154,10 +155,10 @@ export async function getSourceWebhookState(userId,sourceId) {
   return rows[0]||null;
 }
 
-export async function saveSourceWebhook(sourceId,{webhookId,webhookSecret,webhookEvent,enabled}) {
+export async function saveSourceWebhook(sourceId,{webhookId,webhookSecret,webhookEvent,resourceLuid=null,enabled}) {
   await query(`UPDATE data_sources SET webhook_id=$2,webhook_secret=$3,webhook_event=$4,
-    webhook_enabled=$5,updated_at=now() WHERE id=$1`,
-    [sourceId,webhookId,webhookSecret,webhookEvent,enabled]);
+    webhook_resource_luid=$5,webhook_enabled=$6,updated_at=now() WHERE id=$1`,
+    [sourceId,webhookId,webhookSecret,webhookEvent,resourceLuid,enabled]);
 }
 
 export async function markWebhookEventReceived(sourceId) {

@@ -65,21 +65,26 @@ export function arrMetrics(rows){
   };
 }
 
+// A point change needs a defined rate at BOTH ends. Guarding only the previous
+// denominator let an empty current period report a fabricated collapse: a
+// filter whose current window has closed nothing produced "0% vs 42.3%" and a
+// headline drop of 42.3 points, when in truth no deal had closed yet to have a
+// rate at all. No baseline on either side means no comparison, not a plunge.
 export function compareArr(currentRows,previousRows,period){
   const current=arrMetrics(currentRows),previous=arrMetrics(previousRows);
   return {period,current,previous,
     arrChangePct:previous.arr ? (current.arr-previous.arr)/previous.arr*100 : null,
     wonArrGrowthPct:previous.wonArr ? (current.wonArr-previous.wonArr)/previous.wonArr*100 : null,
     closedArrGrowthPct:previous.closedArr ? (current.closedArr-previous.closedArr)/previous.closedArr*100 : null,
-    arrWinRatePointChange:previous.closedArr ? current.arrWinRate-previous.arrWinRate : null,
-    dealWinRatePointChange:previous.closedOpportunities
+    arrWinRatePointChange:previous.closedArr && current.closedArr ? current.arrWinRate-previous.arrWinRate : null,
+    dealWinRatePointChange:previous.closedOpportunities && current.closedOpportunities
       ? current.dealWinRate-previous.dealWinRate
       : null,
-    dealWinRateOfAllPointChange:previous.opportunities
+    dealWinRateOfAllPointChange:previous.opportunities && current.opportunities
       ? current.dealWinRateOfAll-previous.dealWinRateOfAll
       : null,
-    openArrPctPointChange:previous.arr ? current.openArrPct-previous.openArrPct : null,
-    openOppRatePointChange:previous.opportunities ? current.openOppRate-previous.openOppRate : null,
+    openArrPctPointChange:previous.arr && current.arr ? current.openArrPct-previous.openArrPct : null,
+    openOppRatePointChange:previous.opportunities && current.opportunities ? current.openOppRate-previous.openOppRate : null,
   };
 }
 

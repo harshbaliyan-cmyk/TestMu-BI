@@ -1,7 +1,13 @@
 import {previousEqualPeriod,compareArr} from './periodComparison.js';
 
 const sumArr = rows => rows.reduce((total, row) => total + (Number(row.arr) || 0), 0);
-const percent = (numerator, denominator) => denominator ? numerator / denominator * 100 : 0;
+// A zero denominator means the rate is undefined, not zero. Returning 0 here
+// claimed a real result: a month with opportunities created but none closed
+// yet rendered as a flat 0% win rate — "we won nothing" rather than "nothing
+// has closed". emptyYearSummary already made that distinction for periods with
+// no rows at all; the same reasoning applies whenever the denominator is empty.
+// fmtPercent renders null as an em dash and the trend line breaks at the gap.
+const percent = (numerator, denominator) => denominator ? numerator / denominator * 100 : null;
 
 export function summarizeWinRows(rows, label, totalWonArr) {
   const closedRows = rows.filter(row => row.isClosed);

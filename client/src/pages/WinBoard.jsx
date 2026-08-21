@@ -378,7 +378,7 @@ function selectedMetricDeltaText(comparison){
   if(!comparison?.hasPrevious)return 'New';
   const number=Number(comparison.changePoints);
   if(!Number.isFinite(number))return 'N/A';
-  return `${number>.005?'↑':number<-.005?'↓':'→'} ${Math.abs(number).toFixed(1)}%`;
+  return comparisonText(number);
 }
 
 function selectedMetricDeltaAriaText(comparison,metric){

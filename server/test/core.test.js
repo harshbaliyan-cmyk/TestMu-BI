@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {autoMap,applyMapping,resolveWebhookBaseUrl} from '../datasources.js';
+import {autoMap,applyMapping,resolveWebhookBaseUrl,WEBHOOK_EVENTS,webhookEventResourceLuid} from '../datasources.js';
 import {encryptCredential,decryptCredential} from '../services/credentialCipher.js';
 import {buildWinBoardMetrics,buildWinBoardComparisons,buildWinBoardSnapshot} from '../services/winBoardMetrics.js';
 import {buildLossBoardMetrics,buildLossBoardComparisons,buildLossBoardSnapshot} from '../services/lossBoardMetrics.js';
@@ -1299,4 +1299,84 @@ test('the webhook callback base accepts a public https address and normalises it
     'https://api.example.com');
   // 172.32 is OUTSIDE the private 172.16-31 range and must not be caught.
   assert.equal(resolveWebhookBaseUrl({ APP_BASE_URL: 'https://172.32.0.1' }).base, 'https://172.32.0.1');
+});
+
+// A month can hold opportunities that have not closed yet — early in a period,
+// or under a narrow filter. The win rate then has an empty denominator, and
+// reporting that as 0% claims a result nobody produced: on the live board it
+// read as "17 opportunities, won nothing" when the truth was "nothing has
+// closed yet". Only a genuine loss may pull a rate to zero.
+test('a rate with no denominator reports no data, never a real 0%',()=>{
+  const openOnly=buildWinBoardMetrics([
+    {id:'1',isClosed:false,isWon:false,arr:500,team:'AE East',industry:'Tech',orgType:'SMB',pod:'AE Corp',createdDate:'2026-08-03'},
+    {id:'2',isClosed:false,isWon:false,arr:300,team:'AE East',industry:'Tech',orgType:'SMB',pod:'AE Corp',createdDate:'2026-08-11'},
+  ]);
+  assert.equal(openOnly.overall.arrWinRate,null,'no closed ARR means no ARR win rate');
+  assert.equal(openOnly.overall.dealWinRate,null,'no closed deals means no deal win rate');
+  // Denominators that ARE populated still report normally.
+  assert.equal(openOnly.overall.dealWinRateOfAll,0,'0 of 2 opportunities won is a real zero');
+  assert.equal(openOnly.overall.openOppRate,100);
+
+  // A closed-and-lost deal is a real 0%, and must stay one.
+  const lost=buildWinBoardMetrics([
+    {id:'3',isClosed:true,isWon:false,arr:400,team:'AE East',industry:'Tech',orgType:'SMB',pod:'AE Corp',createdDate:'2026-08-04'},
+  ]);
+  assert.equal(lost.overall.arrWinRate,0,'a genuine loss is 0%, not "no data"');
+  assert.equal(lost.overall.dealWinRate,0);
+});
+
+test('a trend month with opportunities but nothing closed breaks the line instead of plotting zero',()=>{
+  const snapshot=buildWinBoardSnapshot([
+    {id:'1',isClosed:true,isWon:true,arr:1000,createdDate:'2026-01-15',team:'AE East',pod:'AE Corp',orgType:'SMB',industry:'Tech'},
+    {id:'2',isClosed:false,isWon:false,arr:900,createdDate:'2026-02-10',team:'AE East',pod:'AE Corp',orgType:'SMB',industry:'Tech'},
+  ],{createdFrom:'2026-01-01',createdTo:'2026-12-31'});
+  const [jan,feb,mar]=snapshot.metrics.trend.monthly;
+  assert.equal(jan.arrWinRate,100,'January closed and won everything');
+  assert.equal(feb.opportunities,1,'February has an opportunity...');
+  assert.equal(feb.closed,0,'...that has not closed');
+  assert.equal(feb.arrWinRate,null,'so February reports no data, not 0%');
+  assert.equal(mar.opportunities,0);
+  assert.equal(mar.arrWinRate,null,'an empty month stays empty');
+});
+
+test('an empty current period reports no comparison rather than a collapse to zero',()=>{
+  // Mirror of the previous-baseline test: this time the CURRENT window has
+  // closed nothing, which used to read as a fall to 0% against a healthy
+  // previous rate.
+  const result=compareArr(
+    [{arr:900,isClosed:false,isWon:false},{arr:500,isClosed:false,isWon:false}],
+    [{arr:100,isClosed:true,isWon:true},{arr:300,isClosed:true,isWon:false}],
+    previousEqualPeriod('2026-04-01','2026-04-01'),
+  );
+  assert.equal(result.previous.arrWinRate,25,'the previous period did have a rate');
+  assert.equal(result.arrWinRatePointChange,null,'but there is nothing to compare it against');
+  assert.equal(result.dealWinRatePointChange,null);
+  // Measures whose denominator IS populated on both sides still compare.
+  assert.equal(result.openOppRatePointChange,100,'0% open before, 100% open now');
+});
+
+// Tableau rejects an unknown event name with a generic "Payload is either
+// malformed or incomplete", which points at the JSON rather than at the one
+// word that is wrong. These names were "-success" and every Enable
+// auto-refresh click failed with exactly that message.
+test('Tableau webhook event names are the ones Tableau actually accepts',()=>{
+  assert.equal(WEBHOOK_EVENTS.tableau_datasource,'webhook-source-event-datasource-refresh-succeeded');
+  assert.equal(WEBHOOK_EVENTS.tableau_view,'webhook-source-event-workbook-refresh-succeeded');
+  for(const event of Object.values(WEBHOOK_EVENTS)){
+    assert.ok(event.endsWith('-succeeded'),`${event} must end in -succeeded, not -success`);
+    assert.equal(typeof event,'string','the event is sent as a bare key, with no resource filter beneath it');
+  }
+});
+
+test('a webhook delivery is matched to its own resource, and never silenced by an unknown shape',()=>{
+  const luid='05292f28-97b2-452a-aaff-3c12fbf4806c';
+  assert.equal(webhookEventResourceLuid({'resource-luid':luid}),luid);
+  assert.equal(webhookEventResourceLuid({'resource-luid':luid.toUpperCase()}),luid,'matching is case-insensitive');
+  assert.equal(webhookEventResourceLuid({resourceLuid:luid}),luid,'a camelCase rename still resolves');
+  // Anything we cannot read returns null, which the callback treats as
+  // "refresh anyway" — a missed refresh is worse than a redundant one.
+  assert.equal(webhookEventResourceLuid({}),null);
+  assert.equal(webhookEventResourceLuid(undefined),null);
+  assert.equal(webhookEventResourceLuid({'resource-luid':''}),null);
+  assert.equal(webhookEventResourceLuid({'resource-luid':{nested:true}}),null);
 });

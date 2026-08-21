@@ -682,12 +682,12 @@ export class TableauSession {
     return data.view;
   }
 
-  async createWebhook(name, { sourceKey, idField }, resourceId, url) {
+  async createWebhook(name, event, url) {
     await this.ensure();
     const { data } = await this.http.post(`/sites/${this.apiSiteId}/webhooks`, {
       webhook: {
         name,
-        'webhook-source': { [sourceKey]: { [idField]: resourceId } },
+        'webhook-source': { [event]: {} },
         'webhook-destination': { 'webhook-destination-http': { method: 'POST', url } },
       },
     });
@@ -704,9 +704,22 @@ export class TableauSession {
 // datasource or workbook level. A published datasource source watches its
 // own extract refresh directly; a view source watches the workbook that
 // contains it (resolved via TableauSession.getView at registration time).
-const WEBHOOK_EVENTS = {
-  tableau_datasource: { sourceKey: 'webhook-source-event-datasource-refresh-success', idField: 'datasource-id' },
-  tableau_view: { sourceKey: 'webhook-source-event-workbook-refresh-success', idField: 'workbook-id' },
+// Tableau's event names end in -succeeded, not -success, and the create
+// payload takes NO resource filter — including one is rejected outright with
+// "Payload is either malformed or incomplete", which is exactly what the
+// Enable auto-refresh button reported. A webhook is therefore registered per
+// event type for the whole SITE, and narrowing it to the source we actually
+// care about happens in the callback, against the LUID in the event body.
+export const WEBHOOK_EVENTS = {
+  tableau_datasource: 'webhook-source-event-datasource-refresh-succeeded',
+  tableau_view: 'webhook-source-event-workbook-refresh-succeeded',
+};
+
+// Tableau names this field "resource-luid" today; the alternatives cost
+// nothing to accept and keep a rename from silently disabling the filter.
+export const webhookEventResourceLuid = body => {
+  const value = body?.['resource-luid'] ?? body?.resourceLuid ?? body?.resource_luid;
+  return typeof value === 'string' && value.trim() ? value.trim().toLowerCase() : null;
 };
 
 const tableauSessions = new Map();
@@ -982,8 +995,8 @@ export function createDataSourceRouter({ store, requireAuth }) {
     if(callbackBase.error) return res.status(400).json({error:callbackBase.error});
     const state=await getSourceWebhookState(req.session.userId,req.params.sourceId);
     if(!state) return res.status(404).json({error:'Data source not found'});
-    const eventDef=WEBHOOK_EVENTS[state.sourceType];
-    if(!eventDef) return res.status(400).json({error:'Auto-refresh via webhook is only available for Tableau view and data source connections.'});
+    const webhookEvent=WEBHOOK_EVENTS[state.sourceType];
+    if(!webhookEvent) return res.status(400).json({error:'Auto-refresh via webhook is only available for Tableau view and data source connections.'});
     const spec=await getRefreshableSource(req.session.userId,req.params.sourceId);
     if(!spec) return res.status(404).json({error:'Tableau source not found'});
 
@@ -1001,8 +1014,11 @@ export function createDataSourceRouter({ store, requireAuth }) {
 
       const webhookSecret=randomUUID();
       const callbackUrl=`${callbackBase.base}/api/datasources/webhook/${req.params.sourceId}/${webhookSecret}`;
-      const webhook=await session.createWebhook(`TestMu BI — ${state.sourceType==='tableau_view'?'workbook':'datasource'} refresh`,eventDef,resourceId,callbackUrl);
-      await saveSourceWebhook(req.params.sourceId,{webhookId:webhook.id,webhookSecret,webhookEvent:eventDef.sourceKey,enabled:true});
+      const webhook=await session.createWebhook(`TestMu BI — ${state.sourceType==='tableau_view'?'workbook':'datasource'} refresh`,webhookEvent,callbackUrl);
+      // resourceId is stored rather than sent: Tableau will not scope the
+      // subscription, so the callback is where events for other resources
+      // get filtered out.
+      await saveSourceWebhook(req.params.sourceId,{webhookId:webhook.id,webhookSecret,webhookEvent,resourceLuid:resourceId,enabled:true});
       res.json({ok:true});
     } catch(error) {
       res.status(502).json({error:tableauError(error)});
@@ -1027,7 +1043,7 @@ export function createDataSourceRouter({ store, requireAuth }) {
         console.error(`[Tableau webhook] could not delete ${state.webhookId}:`,tableauError(error));
       }
     }
-    await saveSourceWebhook(req.params.sourceId,{webhookId:null,webhookSecret:null,webhookEvent:null,enabled:false});
+    await saveSourceWebhook(req.params.sourceId,{webhookId:null,webhookSecret:null,webhookEvent:null,resourceLuid:null,enabled:false});
     res.json({ok:true});
   });
 
@@ -1041,6 +1057,16 @@ export function createDataSourceRouter({ store, requireAuth }) {
     // actual re-pull (a live VizQL Data Service query) can take longer than
     // its delivery timeout allows.
     res.status(200).json({ok:true});
+    // The subscription covers the whole site, so most deliveries are about
+    // somebody else's extract. Without this every unrelated refresh on the
+    // site would re-pull this source in full.
+    //
+    // Deliberately fails OPEN: only a LUID we can read AND that disagrees is
+    // grounds to skip. An unfamiliar payload shape still refreshes, because
+    // guessing wrong in the other direction produces a webhook that silently
+    // never fires — the exact failure this feature is meant to avoid.
+    const eventLuid=webhookEventResourceLuid(req.body);
+    if(source.webhookResourceLuid&&eventLuid&&eventLuid!==String(source.webhookResourceLuid).toLowerCase())return;
     markWebhookEventReceived(source.id).catch(()=>{});
     const spec=await getRefreshableSource(source.userId,source.id).catch(()=>null);
     if(spec) refreshSource(spec,source.userId,'webhook').catch(error=>
