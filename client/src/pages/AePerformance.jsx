@@ -5,6 +5,7 @@ import {getAePerformanceSnapshot,getOptions,getDashboardState,saveDashboardState
 import {MultiSelect,ChartCard,fmtNumber,fmtPercent,ComparisonProvider} from '../components/charts';
 import ThemeToggle from '../components/ThemeToggle';
 import AppLoader from '../components/AppLoader';
+import RankBadge from '../components/RankBadge';
 import AdvancedDateRange, {rangeFor,isoDate} from '../components/AdvancedDateRange';
 import {useAuth} from '../hooks/useAuth';
 import {KpiDelta} from './WinBoard';
@@ -106,23 +107,32 @@ function LeaderAvatar({leader}){
     onError={()=>setFailed(true)} />;
 }
 
-export function RepLeaderboard({reps=[],comparisons=[],topN=5,showAvatar=true,leaders=null,emptyLabel='No AE-owned won opportunities in the selected scope.'}){
+// badges swaps the small rank disc on the left for the sculpted podium badge
+// on the right, beside the percentage. It is the presentation shell's shape:
+// on a TV the rank is read off the artwork, and the left column that carried
+// it is better spent on the name. The dashboard keeps the compact form, where
+// a 68px medal per row would crowd a card sharing the screen with three others.
+export function RepLeaderboard({reps=[],comparisons=[],topN=5,showAvatar=true,leaders=null,badges=false,emptyLabel='No AE-owned won opportunities in the selected scope.'}){
   const comparisonByLabel=useMemo(()=>new Map((comparisons||[]).map(item=>[item.label,item])),[comparisons]);
   const rows=topN>0?reps.slice(0,topN):reps;
   if(!rows.length)return <div className="ae-leaderboard-empty">{emptyLabel}</div>;
   // The row is a fixed grid, so a leader avatar adds a COLUMN. Without this
   // class the extra child overflowed the template and every row wrapped.
-  const cls=['ae-leaderboard', showAvatar?'':'ae-leaderboard-no-avatar', leaders?'ae-leaderboard-leaders':''].filter(Boolean).join(' ');
+  const cls=['ae-leaderboard', showAvatar?'':'ae-leaderboard-no-avatar', leaders?'ae-leaderboard-leaders':'', badges?'ae-leaderboard-badges':''].filter(Boolean).join(' ');
   return <div className={cls}>
     {rows.map((rep,index)=>{
       const rank=index+1;
       const comparison=comparisonByLabel.get(rep.label);
       const medal=MEDAL_CLASS[rank];
       const leader=leaders?leaders[rep.label]:null;
+      const delta=rep.priorAttainment!==null&&rep.priorAttainment!==undefined&&rep.attainment!==null&&rep.attainment!==undefined
+        ?<KpiDelta value={rep.attainment-rep.priorAttainment}/>:null;
       return <div key={rep.label} className={`ae-leaderboard-row${medal?` ae-rank-${rank}`:''}`}>
-        {medal
+        {/* One rank marker per row, never two: with badges on, the podium
+            badge in the value group IS the rank. */}
+        {!badges&&(medal
           ?<span className={`ae-rank-medal ${medal}`} aria-label={`Rank ${rank}`}>{rank}</span>
-          :<span className="ae-rank-number" aria-label={`Rank ${rank}`}>{rank}</span>}
+          :<span className="ae-rank-number" aria-label={`Rank ${rank}`}>{rank}</span>)}
         {showAvatar&&<span className="ae-avatar" style={{background:avatarColor(rep.label)}} aria-hidden="true">{repInitials(rep.label)}</span>}
         {/* A POD with no leader still needs to occupy the avatar COLUMN, or grid
             auto-placement slides its name left and it stops lining up with the
@@ -132,14 +142,21 @@ export function RepLeaderboard({reps=[],comparisons=[],topN=5,showAvatar=true,le
           {/* The POD is what is ranked, so it stays the primary label and the
               leader sits under it rather than replacing it. */}
           {leader&&<small className="ae-leader-name">{leader.name}</small>}</span>
-        <span className="ae-leaderboard-value">{attainmentLabel(rep)}
-          {/* Quarter-on-quarter movement in percentage points, shown ONLY when
-              the prior quarter had a real target. It used to fall back to the
-              contribution-share delta, which put a different metric in the same
-              pill next to a quota figure with nothing to distinguish them. No
-              prior quota now means no delta. */}
-          {rep.priorAttainment!==null&&rep.priorAttainment!==undefined&&rep.attainment!==null&&rep.attainment!==undefined
-            &&<KpiDelta value={rep.attainment-rep.priorAttainment}/>}</span>
+        {/* Quarter-on-quarter movement in percentage points, shown ONLY when
+            the prior quarter had a real target. It used to fall back to the
+            contribution-share delta, which put a different metric in the same
+            pill next to a quota figure with nothing to distinguish them. No
+            prior quota now means no delta. */}
+        {badges
+          ?<span className="ae-leaderboard-value">
+            <RankBadge rank={rank}/>
+            {/* The number leads and the unit sits under it, so a wall viewer
+                reads the figure before the caption explaining it. */}
+            <span className="ae-value-stack">{attainmentLabel(rep)}
+              <span className="ae-value-caption">
+                {rep.attainment!==null&&rep.attainment!==undefined&&<small>of quota</small>}
+                {delta}</span></span></span>
+          :<span className="ae-leaderboard-value">{attainmentLabel(rep)}{delta}</span>}
         {/* Attainment as form, not only as a number. A ranked list of
             percentages makes you read every value to compare two rows; a
             common baseline makes the gap between them visible at a glance,

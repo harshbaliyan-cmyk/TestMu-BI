@@ -138,12 +138,12 @@ export default function AePerformancePresentation() {
           : <span className="ae-top-empty">No POD carries a measurable target</span>}
       </div>
     </div>
-    <div className="presentation-slide ae-performance-slide">
+    <div className="presentation-slide ae-performance-slide ae-podium-slide">
       <PresentCard title="AE Quota Attainment" subtitle={`Won ARR closed in ${quarterLabel} ÷ each rep's quota · ${measured.length} of ${reps.length} carry a target`}>
-        <RepLeaderboard reps={reps} comparisons={groupComparisons.reps} topN={repTopN} />
+        <RepLeaderboard reps={reps} comparisons={groupComparisons.reps} topN={repTopN} badges />
       </PresentCard>
       <PresentCard title="AE POD Quota Attainment" subtitle={`A POD's quota is the sum of its reps' targets · ${quarterLabel}`}>
-        <RepLeaderboard reps={pods} comparisons={groupComparisons.pods} topN={podTopN} showAvatar={false} leaders={POD_LEADERS} />
+        <RepLeaderboard reps={pods} comparisons={groupComparisons.pods} topN={podTopN} showAvatar={false} leaders={POD_LEADERS} badges />
       </PresentCard>
     </div>
     <footer className={`presentation-controls${isFullscreen && !controlsVisible ? ' controls-hidden' : ''}`}>
