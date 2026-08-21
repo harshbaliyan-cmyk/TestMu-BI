@@ -4682,3 +4682,10 @@ html:not([data-theme="light"]) {
 .ae-podium-slide .ae-leaderboard-badges .ae-leaderboard-name strong {
   font-size: clamp(16px, 40cqh, 34px);
 }
+
+/* The cold-start notice under the sign-in button. Muted ink, not the error
+   red: the server waking up is a status, not a failure. */
+.login-waking {
+  margin: 10px 0 0; font-size: 12.5px; line-height: 1.45;
+  color: var(--txt-3); text-align: center;
+}

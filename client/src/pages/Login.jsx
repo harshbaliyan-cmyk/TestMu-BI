@@ -1,6 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
-import { getAuthConfig, loginWithPassword, signupWithPassword, verifyGoogleToken } from '../lib/api';
+import { getAuthConfig, loginWithPassword, onApiWaking, signupWithPassword, verifyGoogleToken } from '../lib/api';
 import ThemeToggle from '../components/ThemeToggle';
+
+// A failure with no response, or a gateway status, means the request never
+// got an answer from the application - the retry in api.js has already spent
+// its attempts waking the server. Saying "Sign in failed" there blames the
+// person's password for an outage, which is what sent this to support.
+function describeAuthError(requestError, mode) {
+  const served = requestError?.response?.data?.error;
+  if (served) return served;
+  const status = requestError?.response?.status;
+  if (!requestError?.response || [502, 503, 504].includes(status)) {
+    return 'The server is still starting up and did not answer in time. Wait a moment and try again.';
+  }
+  return `${mode === 'signup' ? 'Account creation' : 'Sign in'} failed.`;
+}
 
 export default function Login() {
   const googleButton = useRef(null);
@@ -9,9 +23,14 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState('login');
   const [form, setForm] = useState({ name: '', email: '', password: '' });
+  // The API sleeps on Render's free plan and takes most of a minute to wake.
+  // Without saying so, that wait looks like a hung button and the failure that
+  // follows looks like a wrong password.
+  const [waking, setWaking] = useState(false);
+  useEffect(() => onApiWaking(setWaking), []);
 
   useEffect(() => {
-    getAuthConfig().then(setConfig).catch(() => setError('The login service is unavailable.'));
+    getAuthConfig().then(setConfig).catch(() => setError('Could not reach the login service. Reload to try again.'));
   }, []);
 
   useEffect(() => {
@@ -25,7 +44,7 @@ export default function Login() {
             await verifyGoogleToken(credential, mode);
             window.location.assign('/gallery');
           } catch (requestError) {
-            setError(requestError.response?.data?.error || 'Google sign-in failed.');
+            setError(describeAuthError(requestError, 'login'));
             setBusy(false);
           }
         },
@@ -51,7 +70,7 @@ export default function Login() {
       else await loginWithPassword(form.email, form.password);
       window.location.assign('/gallery');
     } catch (requestError) {
-      setError(requestError.response?.data?.error || `${mode === 'signup' ? 'Account creation' : 'Sign in'} failed.`);
+      setError(describeAuthError(requestError, mode));
       setBusy(false);
     }
   };
@@ -82,8 +101,14 @@ export default function Login() {
             placeholder={mode === 'signup' ? 'Password (10+ characters)' : 'Password'} value={form.password}
             onChange={event => setForm({ ...form, password: event.target.value })} minLength={mode === 'signup' ? 10 : undefined} required />
           <button className="btn-primary" type="submit" disabled={busy}>
-            {busy ? 'Please wait…' : mode === 'signup' ? 'Create account' : 'Sign in'}
+            {waking ? 'Starting the server…' : busy ? 'Please wait…' : mode === 'signup' ? 'Create account' : 'Sign in'}
           </button>
+          {/* Named, not just spun at. The wait is real and up to a minute, and
+              a person who knows why will wait it out instead of retyping a
+              password that was never wrong. */}
+          {waking && <p className="login-waking" role="status">
+            The server sleeps when idle and is starting up. This takes up to a minute the first time.
+          </p>}
         </form>
         {config?.googleClientId && <div className="login-divider"><span>or</span></div>}
         {config?.googleClientId && <div ref={googleButton} aria-label="Sign in with Google" />}

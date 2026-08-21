@@ -5,6 +5,72 @@ const api = axios.create({
   withCredentials: true,
 });
 
+/* ---- Cold-start recovery -------------------------------------------------
+ *
+ * The API runs on Render's free plan, which stops the service after ~15
+ * minutes idle. The next request has to boot it, which measured at 38.8s, and
+ * Vercel's proxy gives up long before that and answers 502 with an HTML body.
+ *
+ * That HTML carries no `error` field, so every caller's
+ * `error.response?.data?.error` fallback fired. On the login form the fallback
+ * reads "Sign in failed." - which looks exactly like a rejected password. It
+ * never was one: the server's audit log holds no login attempt at all for
+ * those failures, because the request never reached the server.
+ *
+ * Retrying is the honest answer, since the request that failed is the one that
+ * started the boot. Only gateway-level failures qualify - a 401, 403 or 429
+ * from the application is an answer, not an outage, and replaying one would
+ * spend another of the five login attempts allowed per 15 minutes.
+ */
+const GATEWAY_STATUSES = new Set([502, 503, 504]);
+const MAX_RETRIES = 8;
+const RETRY_DELAY_MS = 5000;
+
+// Replaying is only safe where running twice is harmless. GETs always are. The
+// auth endpoints are listed because a gateway failure means no session was
+// established, so signing in "again" costs nothing. Every other write stays
+// off the list: a lost response is not proof the server did not act on it.
+const REPLAY_SAFE_PATHS = new Set(['/auth/login', '/auth/verify', '/auth/config']);
+const canReplay = config =>
+  String(config?.method || 'get').toLowerCase() === 'get'
+  || REPLAY_SAFE_PATHS.has(String(config?.url || ''));
+
+// So the UI can say what is actually happening rather than show a spinner for
+// the better part of a minute. Listeners get true when a wake starts and false
+// once it finishes, either way.
+const wakeListeners = new Set();
+export function onApiWaking(listener) {
+  wakeListeners.add(listener);
+  return () => wakeListeners.delete(listener);
+}
+const announceWaking = waking => { for (const listener of wakeListeners) listener(waking); };
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+api.interceptors.response.use(undefined, async error => {
+  const config = error?.config;
+  // No response at all is a dropped connection, which the same boot produces.
+  const isGatewayFailure = !error?.response || GATEWAY_STATUSES.has(error.response.status);
+  if (!config || !isGatewayFailure || !canReplay(config)) throw error;
+
+  const attempt = (config.__retryCount || 0) + 1;
+  config.__retryCount = attempt;
+  if (attempt > MAX_RETRIES) { announceWaking(false); throw error; }
+
+  announceWaking(true);
+  await sleep(RETRY_DELAY_MS);
+  try {
+    const response = await api(config);
+    announceWaking(false);
+    return response;
+  } catch (retryError) {
+    // Only the attempt that gives up clears the flag. The ones in between are
+    // still the same wake, still in progress.
+    if (attempt >= MAX_RETRIES) announceWaking(false);
+    throw retryError;
+  }
+});
+
 export default api;
 
 export async function verifyGoogleToken(credential, intent = 'login') {
