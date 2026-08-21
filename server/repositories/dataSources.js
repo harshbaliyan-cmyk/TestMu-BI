@@ -175,9 +175,16 @@ export async function startSyncRun(sourceId,userId,triggerType='manual') {
 export async function finishSyncRun(runId,sourceId,{status,rowCount=0,error=null}) {
   await query(`UPDATE sync_runs SET status=$2,finished_at=now(),rows_read=$3,rows_accepted=$3,
     rows_rejected=0,error_message=$4 WHERE id=$1`,[runId,status,rowCount,error]);
+  // $2 carries the data_sources status vocabulary ('loaded'/'error'), not the
+  // sync_runs one ('succeeded'/'failed'), so testing it against 'succeeded'
+  // was never true and last_successful_sync_at stayed null through every
+  // successful sync — the Data Sources table read "Last refreshed: Never" on
+  // sources that had just loaded 17,000 rows. The outcome is passed
+  // separately now rather than re-derived from the mapped column value.
+  const succeeded = status === 'succeeded';
   await query(`UPDATE data_sources SET status=$2,last_row_count=$3,last_sync_attempt_at=now(),
-    last_successful_sync_at=CASE WHEN $2='succeeded' THEN now() ELSE last_successful_sync_at END,updated_at=now()
-    WHERE id=$1`,[sourceId,status==='succeeded'?'loaded':'error',rowCount]);
+    last_successful_sync_at=CASE WHEN $4 THEN now() ELSE last_successful_sync_at END,updated_at=now()
+    WHERE id=$1`,[sourceId,succeeded?'loaded':'error',rowCount,succeeded]);
 }
 
 export async function softDeleteSource(userId, sourceId) {
