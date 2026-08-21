@@ -9,6 +9,7 @@ import cron from 'node-cron';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import { databaseEnabled, pool, closePool } from './db/pool.js';
+import { runMigrations } from './db/migrate.js';
 import { randomBytes } from 'node:crypto';
 import {
   upsertUser, findUserByEmail, createPasswordUser, markLogin,
@@ -1224,6 +1225,20 @@ app.listen(PORT, async () => {
   console.log(`Auth mode: ${GOOGLE_AUTH_ENABLED ? `Google SSO @${process.env.ALLOWED_DOMAIN || 'any'}` : 'Email and password'}`);
   console.log(`Database: ${databaseEnabled ? 'PostgreSQL' : 'not configured (memory-only development mode)'}`);
   if (databaseEnabled) {
+    // Before anything reads or writes, bring the schema up to date — the
+    // registry seed immediately below already assumes the tables exist.
+    // Non-fatal on purpose, like every other step in this callback: a schema
+    // that cannot be reached should surface through /api/health/database, not
+    // as a process that binds the port and then dies.
+    try {
+      const { applied, total } = await runMigrations(pool);
+      console.log(applied.length
+        ? `Schema: applied ${applied.length} new migration(s) — ${applied.join(', ')}`
+        : `Schema: up to date (${total} migrations)`);
+    } catch (error) {
+      console.error('WARN  database migrations did not run:', error?.message || error);
+    }
+
     // Every template needs a row in `dashboards`: it is the FK target that
     // dashboard_source_bindings joins against, so a template present in code
     // but absent from the table cannot be bound and fails at commit with
