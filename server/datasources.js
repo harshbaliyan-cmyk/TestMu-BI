@@ -634,7 +634,17 @@ export class TableauSession {
     return out;
   }
 
+  // ensure() before the path is built, not just before the request. The
+  // template literal below is evaluated when fetchAllPages is CALLED, so on a
+  // session that has not signed in yet apiSiteId is still null and the URL is
+  // baked as /sites/null/views — fetchAllPages' own ensure() then signs in too
+  // late to matter. Tableau answers "Site 'null' could not be found", which
+  // sends you looking for a bad Site ID that is in fact correct.
+  //
+  // restoreSession builds exactly such a session: it caches the credentials
+  // without signing in, so the first browse after any server restart hit this.
   async listViews() {
+    await this.ensure();
     const views = await this.fetchAllPages(
       `/sites/${this.apiSiteId}/views`,
       d => d.views?.view ?? d.view ?? []
@@ -643,6 +653,7 @@ export class TableauSession {
   }
 
   async listDatasources() {
+    await this.ensure();
     const sources = await this.fetchAllPages(
       `/sites/${this.apiSiteId}/datasources`,
       d => d.datasources?.datasource ?? d.datasource ?? []
