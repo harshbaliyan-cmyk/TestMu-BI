@@ -30,7 +30,7 @@ test('two charts land on one canvas through the builder loop', async ({ page }) 
 
   // Chart 1: horizontal currency bar, built with the dashboard preset.
   await page.goto(`${BASE}/charts/new?source=${sourceId}&dashboard=${dashboard.id}`, { waitUntil: 'networkidle' });
-  await expect(page.locator('.dashboard-switcher').first()).toBeVisible();
+  await expect(page.locator('.waffle-trigger').first()).toBeVisible();
   await page.locator('.builder-type', { hasText: 'Bar chart' }).click();
   await expect(page.locator('.builder-chart-canvas canvas')).toBeVisible({ timeout: 20000 });
   await page.locator('.builder-check', { hasText: 'Horizontal bars' }).locator('input').check();
@@ -62,10 +62,13 @@ test('two charts land on one canvas through the builder loop', async ({ page }) 
   expect(new Set(tileYs).size, `tiles overlap: ${tileYs}`).toBe(2);
   await page.screenshot({ path: '.playwright/baseline/canvas_two_charts.png', fullPage: true });
 
-  // The switcher jumps between boards.
-  await page.locator('.dashboard-switcher').first().selectOption('/dashboard/win-board');
+  // The waffle launcher jumps between boards: open the grid, hit a tile.
+  await page.locator('.waffle-trigger').first().click();
+  await expect(page.locator('.waffle-panel')).toBeVisible();
+  await page.screenshot({ path: '.playwright/baseline/waffle_menu.png' });
+  await page.locator('.waffle-tile', { hasText: 'Win Board' }).click();
   await page.waitForURL('**/dashboard/win-board');
-  await expect(page.locator('.dashboard-switcher').first()).toBeVisible();
+  await expect(page.locator('.waffle-trigger').first()).toBeVisible();
 
   console.log('console errors:', JSON.stringify(consoleErrors.slice(0, 5)));
   expect(consoleErrors).toEqual([]);
