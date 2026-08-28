@@ -1,10 +1,15 @@
-# TestMu BI — Project Documentation
+# TestMu BI — Project Documentation (historical snapshot)
 
-**Current implementation as of:** 14 August 2026  
-**Repository:** `saas-dashboard`  
-**Status:** Local full-stack application connected to Neon PostgreSQL; deployment is not currently in scope.
+**Snapshot of the implementation as of:** 14 August 2026 — **superseded on 27
+August 2026.**
 
-> This document is the current source of truth for the code in this workspace. The older `PROJECT_PRD.md` outside the repository is useful as historical context, but it no longer accurately describes the application, authentication, filters, database, mapping workflow, dashboards, or presentation layer.
+> ⚠️ **This file is no longer the source of truth.** The app has since been
+> deployed (Vercel + Render + Neon), the legacy worksheet sync it describes was
+> removed, and TV share links, webhook failure handling, and the chart builder
+> were added. Current documentation lives in [README.md](README.md),
+> [SPEC.md](SPEC.md), [ARCHITECTURE.md](ARCHITECTURE.md),
+> [DATA_MODEL.md](DATA_MODEL.md), [API.md](API.md) and
+> [DECISIONS.md](DECISIONS.md). Kept for historical context only.
 
 ## 1. Executive summary
 

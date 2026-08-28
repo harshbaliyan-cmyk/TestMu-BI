@@ -17,9 +17,11 @@ Tableau connection metadata and encrypted PAT secrets, source/file metadata, fie
 dashboard bindings, sync history, access logs, errors, and audit logs.
 
 Uploaded or Tableau business rows are deliberately not stored in PostgreSQL. They live only
-in the server runtime cache. File sources therefore become `needs_reload` after a server restart.
-Tableau sources can be restored with Refresh and are refreshed automatically every 12 hours by
-default. Override this using `TABLEAU_SOURCE_SYNC_CRON` with a standard cron expression.
+in the server runtime cache (mapped rows for the fixed boards, raw rows for the chart
+builder). File sources therefore become `needs_reload` after a server restart. Tableau
+sources are re-pulled at boot, on Tableau webhooks, and by a polling fallback every
+2 hours by default — override with `TABLEAU_SOURCE_SYNC_CRON` (standard cron expression).
+Per-column profiles captured at each sync ARE stored, in `data_sources.column_metadata`.
 
 ## Multiple sources
 

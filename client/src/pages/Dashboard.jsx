@@ -5,6 +5,7 @@ import Chart from 'chart.js/auto';
 import { getData, getOptions, getDashboardState, saveDashboardState, listSavedViews, createSavedView, createSavedReport } from '../lib/api';
 import { useAuth } from '../hooks/useAuth';
 import ThemeToggle from '../components/ThemeToggle';
+import DashboardSwitcher from '../components/DashboardSwitcher';
 import AppLoader from '../components/AppLoader';
 import {
   ChartCard, ChartScroll, MultiSelect, BarList, Heatmap, Donut, MetricGauges,
@@ -1014,6 +1015,7 @@ export default function Dashboard({ user }) {
         </div>
         <div className="user-pill">
           <ThemeToggle />
+          <DashboardSwitcher />
           <span>{user?.name || 'User'}</span>
           {user?.picture && <img src={user.picture} alt="" />}
           <button className="btn-secondary" onClick={signOut}>Sign out</button>

@@ -1,8 +1,8 @@
 # Render Blueprint for the TestMu BI API.
 #
-# A persistent Node process, not a serverless function: dashboard rows, the two
-# cron schedules and the rate-limit counters all live in this process's memory,
-# and every one of them needs the process to outlive a single request.
+# A persistent Node process, not a serverless function: dashboard rows, the
+# sync cron schedule and the rate-limit counters all live in this process's
+# memory, and every one of them needs the process to outlive a single request.
 #
 # Secrets are declared with `sync: false`, which makes Render prompt for them in
 # the dashboard instead of reading them from this file. Nothing secret belongs
@@ -84,9 +84,7 @@ services:
 
       - key: DATABASE_SSL
         value: true
-      - key: SYNC_ON_STARTUP
-        value: false
       - key: TABLEAU_SOURCE_SYNC_CRON
-        value: 0 */12 * * *
+        value: 0 */2 * * *
       - key: CRON_TZ_OFFSET
         value: UTC

@@ -4,6 +4,7 @@ import {getAmPerformanceSnapshot,getOptions,getDashboardState,saveDashboardState
 // No fmtCurrency: this board reports shares and counts, never ARR amounts.
 import {MultiSelect,ChartCard,fmtNumber,fmtPercent,ComparisonProvider} from '../components/charts';
 import ThemeToggle from '../components/ThemeToggle';
+import DashboardSwitcher from '../components/DashboardSwitcher';
 import AppLoader from '../components/AppLoader';
 import AdvancedDateRange, {rangeFor,isoDate} from '../components/AdvancedDateRange';
 import {useAuth} from '../hooks/useAuth';
@@ -144,7 +145,7 @@ export default function AmPerformance({user}){
 
   return <ComparisonProvider value={comparison}><div className="wrap win-board-wrap"><div className="top-nav" style={{margin:'-18px -18px 18px'}}>
     <div className="brand" onClick={()=>navigate('/gallery')} style={{cursor:'pointer'}}><img className="brand-logo" src="/testmu-bi-logo-v2.png" alt="TestMu BI"/><span>TestMu BI</span></div>
-    <div className="user-pill"><ThemeToggle/><span>{user?.name||'User'}</span><button className="btn-secondary" onClick={signOut}>Sign out</button></div></div>
+    <div className="user-pill"><ThemeToggle/><DashboardSwitcher/><span>{user?.name||'User'}</span><button className="btn-secondary" onClick={signOut}>Sign out</button></div></div>
     <header className="top"><div className="top-row"><div><h1>AM Performance</h1><div className="sub">Ranks AM reps by <strong>% of quota achieved</strong> for {quota?.currentQuarter||'the current quarter'}. <strong>Owned by an AM POD only.</strong></div><div className="board-scope-note">Opp type = New Business, New Business AM, Existing Business - Up-sell</div></div>
       <button type="button" className="present-button" onClick={startPresentation}>▶ Present</button></div>
       <div className="filters win-board-filter-shelf">{filterDefs.map(([key,label])=><MultiSelect key={key} label={label} options={options[key]||[]} value={filters[key]} onChange={value=>updateFilter(key,value)}/>) }

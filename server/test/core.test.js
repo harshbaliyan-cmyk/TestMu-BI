@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {autoMap,applyMapping,resolveWebhookBaseUrl,WEBHOOK_EVENTS,webhookEventResourceLuid} from '../datasources.js';
+import {autoMap,applyMapping,resolveWebhookBaseUrl,WEBHOOK_EVENTS,WEBHOOK_FAILURE_EVENTS,webhookEventResourceLuid,webhookEventIsFailure} from '../datasources.js';
 import {encryptCredential,decryptCredential} from '../services/credentialCipher.js';
 import {buildWinBoardMetrics,buildWinBoardComparisons,buildWinBoardSnapshot} from '../services/winBoardMetrics.js';
 import {buildLossBoardMetrics,buildLossBoardComparisons,buildLossBoardSnapshot} from '../services/lossBoardMetrics.js';
@@ -1366,6 +1366,28 @@ test('Tableau webhook event names are the ones Tableau actually accepts',()=>{
     assert.ok(event.endsWith('-succeeded'),`${event} must end in -succeeded, not -success`);
     assert.equal(typeof event,'string','the event is sent as a bare key, with no resource filter beneath it');
   }
+});
+
+test('the failure watch names mirror the success ones, per resource type',()=>{
+  assert.equal(WEBHOOK_FAILURE_EVENTS.tableau_datasource,'webhook-source-event-datasource-refresh-failed');
+  assert.equal(WEBHOOK_FAILURE_EVENTS.tableau_view,'webhook-source-event-workbook-refresh-failed');
+  assert.deepEqual(Object.keys(WEBHOOK_FAILURE_EVENTS).sort(),Object.keys(WEBHOOK_EVENTS).sort(),
+    'every source type that watches successes must also watch failures');
+});
+
+// A refresh-failed delivery must mark the source stale, never trigger a
+// re-pull — Tableau is still serving the last good extract, and re-reading it
+// would dress stale data up as fresh.
+test('failure deliveries are recognised across the spellings Tableau might use',()=>{
+  assert.equal(webhookEventIsFailure({event_type:'DatasourceRefreshFailed'}),true);
+  assert.equal(webhookEventIsFailure({event_type:'WorkbookRefreshFailed'}),true);
+  assert.equal(webhookEventIsFailure({event_type:'datasource-refresh-failed'}),true);
+  assert.equal(webhookEventIsFailure({eventType:'DatasourceRefreshFailed'}),true,'a camelCase rename still resolves');
+  assert.equal(webhookEventIsFailure({event_type:'DatasourceRefreshSucceeded'}),false);
+  // Unreadable shapes are NOT failures: the fail-open rule for deliveries
+  // means an unknown payload refreshes rather than silently flagging stale.
+  assert.equal(webhookEventIsFailure({}),false);
+  assert.equal(webhookEventIsFailure(undefined),false);
 });
 
 test('a webhook delivery is matched to its own resource, and never silenced by an unknown shape',()=>{

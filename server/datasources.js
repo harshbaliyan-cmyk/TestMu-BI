@@ -19,7 +19,9 @@ import {
   persistImportedSource, listUserSources, getRefreshableSource, listRefreshableSourceIds,
   startSyncRun, finishSyncRun, listSyncRuns, softDeleteSource,
   findWebhookSource, getSourceWebhookState, saveSourceWebhook, markWebhookEventReceived,
+  markSourceStale, updateSourceSchema, getSourceSchema,
 } from './repositories/dataSources.js';
+import { profileColumns } from './services/columnProfile.js';
 import { query } from './db/pool.js';
 import { logAudit, logSourceAccess } from './repositories/activityLogs.js';
 
@@ -726,6 +728,21 @@ export const WEBHOOK_EVENTS = {
   tableau_view: 'webhook-source-event-workbook-refresh-succeeded',
 };
 
+// One Tableau webhook watches exactly one event type, so failures need their
+// own registration. A failed extract refresh means Tableau is still serving
+// the LAST GOOD extract — re-pulling would dress stale data up as fresh, so
+// the callback marks the source 'stale' instead of syncing.
+export const WEBHOOK_FAILURE_EVENTS = {
+  tableau_datasource: 'webhook-source-event-datasource-refresh-failed',
+  tableau_view: 'webhook-source-event-workbook-refresh-failed',
+};
+
+// Tableau delivers event_type as e.g. "DatasourceRefreshFailed" /
+// "WorkbookRefreshFailed". Matched loosely (case, separators) so a cosmetic
+// rename cannot silently turn failure events back into full re-syncs.
+export const webhookEventIsFailure = body =>
+  /refresh[-_]?failed/i.test(String(body?.event_type ?? body?.eventType ?? ''));
+
 // Tableau names this field "resource-luid" today; the alternatives cost
 // nothing to accept and keep a rename from silently disabling the filter.
 export const webhookEventResourceLuid = body => {
@@ -815,7 +832,12 @@ export function createDataSourceRouter({ store, requireAuth }) {
     const runId=await startSyncRun(spec.id,userId,triggerType);
     try {
       const parsed=await fetchSourceData(spec);
-      const rows=applyMapping(parsed.rows,spec.mapping); store.setSourceRows(spec.id,spec.dashboards,rows,userId);
+      const rows=applyMapping(parsed.rows,spec.mapping);
+      // Raw rows ride along for the chart builder; profiles are recomputed so
+      // its schema always describes the pull that is actually loaded.
+      store.setSourceRows(spec.id,spec.dashboards,rows,userId,{headers:parsed.headers,rows:parsed.rows});
+      await updateSourceSchema(spec.id,profileColumns(parsed.headers,parsed.rows)).catch(error=>
+        console.error(`[schema] profile update failed for ${spec.id}:`,error?.message||error));
       await finishSyncRun(runId,spec.id,{status:'succeeded',rowCount:rows.length});
       return {ok:true,runId,rowCount:rows.length,refreshedAt:new Date().toISOString()};
     } catch(error) {
@@ -915,7 +937,8 @@ export function createDataSourceRouter({ store, requireAuth }) {
 
       const rows = applyMapping(pending.rows, finalMapping);
       const persisted = await persistImportedSource({
-        userId: req.session.userId, source: pending, dashboardKeys,
+        userId: req.session.userId, dashboardKeys,
+        source: { ...pending, columnProfiles: profileColumns(pending.headers, pending.rows) },
         mapping: finalMapping, rowCount: rows.length,
       });
       // Drop the superseded source's rows first: the runtime cache unions every
@@ -924,7 +947,8 @@ export function createDataSourceRouter({ store, requireAuth }) {
       for (const stale of persisted.superseded || []) {
         store.removeSourceRows(stale.sourceId, stale.dashboardKeys, req.session.userId);
       }
-      store.setSourceRows(persisted.sourceId, dashboardKeys, rows, req.session.userId);
+      store.setSourceRows(persisted.sourceId, dashboardKeys, rows, req.session.userId,
+        { headers: pending.headers, rows: pending.rows });
       await logAudit({ userId: req.session.userId, action: 'data_source.committed',
         entityType: 'data_source', entityId: persisted.sourceId,
         afterState: { filename: pending.filename, rowCount: rows.length, dashboards: dashboardKeys } });
@@ -971,6 +995,25 @@ export function createDataSourceRouter({ store, requireAuth }) {
   router.get('/sync-history', requireAuth, async (req,res) => {
     try { res.json({runs:await listSyncRuns(req.session.userId,req.query.sourceId||null)}); }
     catch { res.status(500).json({error:'Could not load sync history'}); }
+  });
+
+  // The chart builder's view of a source: per-column profiles captured at the
+  // last sync, plus whether the raw rows are actually loaded right now (`live`
+  // is false after a restart until the source is refreshed — the builder can
+  // still suggest fields from the stored profiles, but a preview needs rows).
+  router.get('/:sourceId/schema', requireAuth, async (req, res) => {
+    try {
+      const schema = await getSourceSchema(req.session.userId, req.params.sourceId);
+      if (!schema) return res.status(404).json({ error: 'Data source not found' });
+      const raw = store.getSourceRawData?.(req.params.sourceId, req.session.userId);
+      // Old sources carry a bare header-name array from before profiling
+      // existed; normalise them to profile shape with unknown type.
+      const columns = (Array.isArray(schema.columns) ? schema.columns : []).map(column =>
+        typeof column === 'string' ? { name: column, type: 'string', unprofiled: true } : column);
+      res.json({ ...schema, columns, live: Boolean(raw), liveRowCount: raw?.rows.length ?? null });
+    } catch (error) {
+      res.status(500).json({ error: 'Could not load the source schema' });
+    }
   });
 
   router.delete('/:sourceId', requireAuth, async (req,res) => {
@@ -1022,14 +1065,26 @@ export function createDataSourceRouter({ store, requireAuth }) {
       // A stale webhook from a previous enable (e.g. left registered after
       // a failed save) would otherwise keep double-delivering every event.
       if(state.webhookId) await session.deleteWebhook(state.webhookId).catch(()=>{});
+      if(state.webhookFailedId) await session.deleteWebhook(state.webhookFailedId).catch(()=>{});
 
       const webhookSecret=randomUUID();
       const callbackUrl=`${callbackBase.base}/api/datasources/webhook/${req.params.sourceId}/${webhookSecret}`;
-      const webhook=await session.createWebhook(`TestMu BI — ${state.sourceType==='tableau_view'?'workbook':'datasource'} refresh`,webhookEvent,callbackUrl);
+      const resourceLabel=state.sourceType==='tableau_view'?'workbook':'datasource';
+      const webhook=await session.createWebhook(`TestMu BI — ${resourceLabel} refresh`,webhookEvent,callbackUrl);
+      // The failure watch is best-effort: refresh-succeeded is what keeps the
+      // dashboard current, and losing it because the SECOND registration was
+      // refused would be backwards. Without it, failures simply surface later
+      // through the sync history instead of an immediate 'stale' flag.
+      const failedWebhook=await session.createWebhook(`TestMu BI — ${resourceLabel} refresh failed`,
+        WEBHOOK_FAILURE_EVENTS[state.sourceType],callbackUrl).catch(error=>{
+          console.warn(`[Tableau webhook] failure watch not registered for ${req.params.sourceId}:`,tableauError(error));
+          return null;
+        });
       // resourceId is stored rather than sent: Tableau will not scope the
       // subscription, so the callback is where events for other resources
       // get filtered out.
-      await saveSourceWebhook(req.params.sourceId,{webhookId:webhook.id,webhookSecret,webhookEvent,resourceLuid:resourceId,enabled:true});
+      await saveSourceWebhook(req.params.sourceId,{webhookId:webhook.id,webhookFailedId:failedWebhook?.id||null,
+        webhookSecret,webhookEvent,resourceLuid:resourceId,enabled:true});
       res.json({ok:true});
     } catch(error) {
       res.status(502).json({error:tableauError(error)});
@@ -1039,13 +1094,14 @@ export function createDataSourceRouter({ store, requireAuth }) {
   router.post('/:sourceId/webhook/disable', requireAuth, async (req,res) => {
     const state=await getSourceWebhookState(req.session.userId,req.params.sourceId);
     if(!state) return res.status(404).json({error:'Data source not found'});
-    if(state.webhookId) {
+    if(state.webhookId||state.webhookFailedId) {
       try {
         const spec=await getRefreshableSource(req.session.userId,req.params.sourceId);
         if(spec){
           const session=new TableauSession({server:spec.server,siteId:spec.siteId||'',patName:spec.patName,
             patSecret:decryptCredential(spec.encryptedPatSecret)});
-          await session.deleteWebhook(state.webhookId);
+          if(state.webhookId) await session.deleteWebhook(state.webhookId);
+          if(state.webhookFailedId) await session.deleteWebhook(state.webhookFailedId).catch(()=>{});
         }
       } catch(error) {
         // The webhook may already be gone on Tableau's side (e.g. deleted
@@ -1054,9 +1110,15 @@ export function createDataSourceRouter({ store, requireAuth }) {
         console.error(`[Tableau webhook] could not delete ${state.webhookId}:`,tableauError(error));
       }
     }
-    await saveSourceWebhook(req.params.sourceId,{webhookId:null,webhookSecret:null,webhookEvent:null,resourceLuid:null,enabled:false});
+    await saveSourceWebhook(req.params.sourceId,{webhookId:null,webhookFailedId:null,webhookSecret:null,webhookEvent:null,resourceLuid:null,enabled:false});
     res.json({ok:true});
   });
+
+  // Tableau retries undelivered events and both registrations share one
+  // callback URL, so overlapping deliveries for the same source are normal.
+  // A full VDS re-pull per duplicate is not: one refresh in flight per source
+  // is enough, and the next EVENT after it completes starts the next one.
+  const webhookRefreshInFlight = new Set();
 
   // Public — Tableau calls this directly, with no session. The source id +
   // random secret pair in the URL (neither guessable) stands in for auth,
@@ -1079,9 +1141,24 @@ export function createDataSourceRouter({ store, requireAuth }) {
     const eventLuid=webhookEventResourceLuid(req.body);
     if(source.webhookResourceLuid&&eventLuid&&eventLuid!==String(source.webhookResourceLuid).toLowerCase())return;
     markWebhookEventReceived(source.id).catch(()=>{});
+    // A failed extract refresh means Tableau still serves the LAST GOOD
+    // extract — re-pulling would only dress stale data up as fresh. Flag it
+    // instead; the next successful refresh writes 'loaded' over the flag.
+    if(webhookEventIsFailure(req.body)){
+      markSourceStale(source.id).catch(error=>
+        console.error(`[Tableau webhook] could not mark ${source.id} stale:`,error?.message||error));
+      return;
+    }
+    if(webhookRefreshInFlight.has(source.id))return;
+    webhookRefreshInFlight.add(source.id);
     const spec=await getRefreshableSource(source.userId,source.id).catch(()=>null);
-    if(spec) refreshSource(spec,source.userId,'webhook').catch(error=>
-      console.error(`[Tableau webhook] refresh failed for ${source.id}:`,tableauError(error)));
+    if(spec){
+      refreshSource(spec,source.userId,'webhook').catch(error=>
+        console.error(`[Tableau webhook] refresh failed for ${source.id}:`,tableauError(error)))
+        .finally(()=>webhookRefreshInFlight.delete(source.id));
+    } else {
+      webhookRefreshInFlight.delete(source.id);
+    }
   });
 
   const refreshAllTableauSources = async triggerType => {
@@ -1107,7 +1184,11 @@ export function createDataSourceRouter({ store, requireAuth }) {
     const runRefresh = trigger => refreshAllTableauSources(trigger)
       .catch(error=>console.error(`[Tableau sync] ${trigger} refresh failed:`,error?.message||error));
     setTimeout(()=>runRefresh('startup'),0);
-    cron.schedule(process.env.TABLEAU_SOURCE_SYNC_CRON||'0 */12 * * *',
+    // Every 2 hours by default: the webhook is the fast path, this cron is the
+    // safety net for the days webhook delivery silently breaks. 30-minute
+    // polling was considered and rejected — ~200 full VDS pulls a day across
+    // the connected sources, on free-tier compute, nearly all redundant.
+    cron.schedule(process.env.TABLEAU_SOURCE_SYNC_CRON||'0 */2 * * *',
       ()=>runRefresh('scheduled'),
       {timezone:process.env.CRON_TZ_OFFSET||'UTC'});
   }

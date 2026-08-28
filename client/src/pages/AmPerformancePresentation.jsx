@@ -1,6 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getAmPerformanceSnapshot, getDashboardState } from '../lib/api';
+import { usePresentationLiveness } from '../hooks/usePresentationLiveness';
+import DataFreshnessStamp from '../components/DataFreshnessStamp';
+import CopyTvLinkButton from '../components/CopyTvLinkButton';
+import { Hideable, HideableProvider, useHiddenTiles } from '../components/Hideable';
 import { RepLeaderboard, POD_LEADERS } from './AePerformance';
 import { fmtPercent } from '../components/charts';
 import AppLoader from '../components/AppLoader';
@@ -16,14 +20,18 @@ const DATE_PRESET_LABELS = {
   currentYear: 'Current year', previousYear: 'Previous year', last7: 'Last 7 days', last30: 'Last 30 days', last90: 'Last 90 days',
   previousN: 'Previous periods', custom: 'Custom range',
 };
-function PresentCard({ title, subtitle, children }) {
-  return <section className="present-card present-card-wide">
-    <header><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</header>
-    {children}
-  </section>;
+function PresentCard({ title, subtitle, hideKey, children }) {
+  return <Hideable k={`card:${hideKey || title}`} label={title}>
+    <section className="present-card present-card-wide">
+      <header><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</header>
+      {children}
+    </section>
+  </Hideable>;
 }
 
-export default function AmPerformancePresentation() {
+// `share` marks token-authenticated wall mode (rendered via TvDisplay):
+// controls that lead back into the logged-in app are hidden there.
+export default function AmPerformancePresentation({ share = false } = {}) {
   const navigate = useNavigate();
   const [now, setNow] = useState(new Date());
   const [loading, setLoading] = useState(true);
@@ -49,10 +57,17 @@ export default function AmPerformancePresentation() {
     return () => { cancelled = true; };
   }, []);
 
+  const { refreshTick, online, dataUpdatedAt, markFresh } = usePresentationLiveness();
+  const hideControl = useHiddenTiles(TEMPLATE, { share, refreshTick });
+  const loadedOnce = useRef(false);
   useEffect(() => {
     if (!configReady) return;
     let cancelled = false;
-    setLoading(true);
+    // Only the first load shows the loader; background refreshes swap the
+    // numbers in place, and a failed one keeps the last good numbers — the
+    // freshness stamp stopping is the honest signal. Same policy as
+    // WinBoardPresentation.jsx.
+    if (!loadedOnce.current) setLoading(true);
     getAmPerformanceSnapshot(config.filters || {}).then(snapshot => {
       if (cancelled) return;
       // The rankings read quotaMetrics, not metrics: attainment is only
@@ -61,12 +76,14 @@ export default function AmPerformancePresentation() {
       setQuotaMetrics(snapshot.quotaMetrics || EMPTY_METRICS);
       setQuota(snapshot.quota || null);
       setComparison(snapshot.comparison || { available: false });
+      loadedOnce.current = true;
+      markFresh();
     }).catch(() => {
-      if (cancelled) return;
+      if (cancelled || loadedOnce.current) return;
       setQuotaMetrics(EMPTY_METRICS); setQuota(null); setComparison({ available: false });
     }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [configReady, config.filters]);
+  }, [configReady, config.filters, refreshTick]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
@@ -108,7 +125,7 @@ export default function AmPerformancePresentation() {
   const topPod = (pods || []).find(pod => pod.attainment !== null && pod.attainment !== undefined) || null;
 
   if (loading) return <AppLoader fullscreen label="Preparing presentation…" />;
-  return <main className="presentation-shell win-board-wrap win-board-tv-shell">
+  return <HideableProvider value={hideControl}><main className="presentation-shell win-board-wrap win-board-tv-shell">
     <header className="presentation-header">
       <div className="presentation-brand"><img src="/testmu-bi-logo-v2.png" alt="" /><div><b>TestMu BI</b>
         <div className="presentation-brand-context">
@@ -118,37 +135,39 @@ export default function AmPerformancePresentation() {
         </div>
       </div></div>
       <div className="presentation-view-label"><b>AM Performance</b><small className="board-scope-note">Opp type = New Business, New Business AM, Existing Business - Up-sell</small></div>
-      <div className="presentation-clock"><b>{now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</b><span>{now.toLocaleDateString()}</span></div>
+      <div className="presentation-clock"><b>{now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</b><span>{now.toLocaleDateString()}</span><DataFreshnessStamp online={online} dataUpdatedAt={dataUpdatedAt} /></div>
     </header>
     {/* The two names lead the slide. On a wall display the question is who is
         winning, and the rankings below answer it only after you read them. */}
     <div className="ae-top-tiles ae-top-tiles-tv">
-      <div className="ae-top-tile">
+      <Hideable k="kpi:top-rep" label="Top AM performer"><div className="ae-top-tile">
         <span className="ae-quota-label">Top AM performer</span>
         {topRep
           ? <><span className="ae-top-name">{topRep.label}</span>
               <span className="ae-top-value">{fmtPercent(topRep.attainment)}<small> of quota</small></span></>
           : <span className="ae-top-empty">No rep carries a measurable target</span>}
-      </div>
-      <div className="ae-top-tile">
+      </div></Hideable>
+      <Hideable k="kpi:top-pod" label="Top POD"><div className="ae-top-tile">
         <span className="ae-quota-label">Top POD</span>
         {topPod
           ? <><span className="ae-top-name">{topPod.label}</span>
               <span className="ae-top-value">{fmtPercent(topPod.attainment)}<small> of quota</small></span></>
           : <span className="ae-top-empty">No POD carries a measurable target</span>}
-      </div>
+      </div></Hideable>
     </div>
     <div className="presentation-slide ae-performance-slide">
-      <PresentCard title="AM Quota Attainment" subtitle={`Won ARR closed in ${quarterLabel} ÷ each rep's quota · ${measured.length} of ${reps.length} carry a target`}>
+      <PresentCard hideKey="rep-leaderboard" title="AM Quota Attainment" subtitle={`Won ARR closed in ${quarterLabel} ÷ each rep's quota · ${measured.length} of ${reps.length} carry a target`}>
         <RepLeaderboard reps={reps} comparisons={groupComparisons.reps} topN={repTopN} />
       </PresentCard>
-      <PresentCard title="AM POD Quota Attainment" subtitle={`A POD's quota is the sum of its reps' targets · ${quarterLabel}`}>
+      <PresentCard hideKey="pod-leaderboard" title="AM POD Quota Attainment" subtitle={`A POD's quota is the sum of its reps' targets · ${quarterLabel}`}>
         <RepLeaderboard reps={pods} comparisons={groupComparisons.pods} topN={podTopN} showAvatar={false} leaders={POD_LEADERS} />
       </PresentCard>
     </div>
     <footer className={`presentation-controls${isFullscreen && !controlsVisible ? ' controls-hidden' : ''}`}>
+      {!share && <span className="hide-hint">Double-click any tile to hide it from the TV</span>}
       <button onClick={() => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()}>Fullscreen</button>
-      <button onClick={() => navigate('/dashboard/am-performance')}>Exit</button>
+      {!share && <CopyTvLinkButton templateId={TEMPLATE} />}
+      {!share && <button onClick={() => navigate('/dashboard/am-performance')}>Exit</button>}
     </footer>
-  </main>;
+  </main></HideableProvider>;
 }

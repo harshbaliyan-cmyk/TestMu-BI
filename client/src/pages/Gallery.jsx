@@ -1,7 +1,10 @@
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import ThemeToggle from '../components/ThemeToggle';
+import DashboardSwitcher from '../components/DashboardSwitcher';
 import { useTemplates } from '../hooks/useTemplates';
+import { listCustomDashboards, createCustomDashboard } from '../lib/api';
 
 // The gallery renders whatever the server registers. It used to keep its own
 // copy of this list, which meant a new dashboard had to be added in two places
@@ -11,6 +14,18 @@ export default function Gallery({ user }) {
   const { templates: TEMPLATES } = useTemplates();
   const navigate = useNavigate();
   const { signOut } = useAuth();
+  const [custom, setCustom] = useState([]);
+
+  useEffect(() => { listCustomDashboards().then(setCustom).catch(() => {}); }, []);
+
+  const newDashboard = async () => {
+    const name = window.prompt('Name the new dashboard');
+    if (!name?.trim()) return;
+    try {
+      const created = await createCustomDashboard(name.trim());
+      navigate(`/dashboards/custom/${created.id}`);
+    } catch { /* the gallery stays; nothing was created */ }
+  };
 
   return (
     <div className="wrap">
@@ -21,11 +36,38 @@ export default function Gallery({ user }) {
         </div>
         <div className="user-pill">
           <ThemeToggle />
+          <DashboardSwitcher />
           {user?.role === 'admin' && <button className="btn-secondary" onClick={() => navigate('/admin/logs')}>Logs</button>}
           <button className="btn-secondary" onClick={() => navigate('/account')}>Account</button>
           <span>{user?.name || 'User'}</span>
           <button className="btn-secondary" onClick={signOut}>Sign out</button>
         </div>
+      </div>
+
+      <div className="gallery-header">
+        <h2>My Dashboards</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button className="btn-secondary" onClick={() => navigate('/charts/new')}>Build a chart</button>
+          <button className="btn-primary" onClick={newDashboard}>New dashboard</button>
+        </div>
+      </div>
+
+      <div className="template-grid">
+        {custom.map(dashboard => (
+          <div key={dashboard.id} className="template-card" onClick={() => navigate(`/dashboards/custom/${dashboard.id}`)}>
+            <div className="template-info">
+              <h3>{dashboard.name}</h3>
+              <p>{(dashboard.layout || []).length} chart{(dashboard.layout || []).length === 1 ? '' : 's'}</p>
+              <div className="tags"><span className="tag">Custom</span></div>
+            </div>
+          </div>
+        ))}
+        {!custom.length && <div className="template-card gallery-empty-card" onClick={newDashboard}>
+          <div className="template-info">
+            <h3>Assemble your own</h3>
+            <p>Pick a dataset, build charts, and arrange them on a grid — no blank canvas, the fields suggest themselves.</p>
+          </div>
+        </div>}
       </div>
 
       <div className="gallery-header">

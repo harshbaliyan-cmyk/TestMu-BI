@@ -6,7 +6,7 @@ import ThemeToggle from '../components/ThemeToggle';
 export default function AdminLogs(){
   const navigate=useNavigate(); const [type,setType]=useState('audit'); const [items,setItems]=useState([]); const [error,setError]=useState('');
   const load=()=>api.get('/admin/logs',{params:{type,limit:200}}).then(({data})=>setItems(data.items||[])).catch(e=>setError(e.response?.data?.error||e.message));
-  useEffect(load,[type]);
+  useEffect(()=>{load();},[type]);
   return <div className="wrap"><div className="top-nav" style={{margin:'-18px -18px 18px'}}>
     <div className="brand"><img className="brand-logo" src="/testmu-bi-logo-v2.png" alt="TestMu BI"/><span>Administration</span></div>
     <div className="user-pill"><ThemeToggle/><button className="btn-secondary" onClick={()=>navigate('/gallery')}>Back</button></div></div>

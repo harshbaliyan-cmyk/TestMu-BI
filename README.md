@@ -1,68 +1,56 @@
 # TestMu BI
 
-Sales analytics dashboards (Win Board, Loss Board, AE Performance, Opportunity
-Analytics) built on live Tableau data. React 18 + Vite client, Express + Node
-server, PostgreSQL (Neon).
+Sales analytics for a small internal team, built on live Tableau data. Five
+hand-built dashboards (Opportunity Analytics, Win Board, Loss Board, AE
+Performance, AM Performance), a chart builder for assembling custom dashboards
+from any connected dataset's raw columns, TV presentation modes with revocable
+no-login share links, and webhook-driven auto-refresh from Tableau Cloud.
 
-Each dashboard has two layers: an **interaction layer** for filtering and
-exploration, and a **presentation layer** built for a fixed 16:9 TV display.
-
----
-
-## ⚠️ Before you deploy or push this code
-
-**Rotate every credential in `server/.env` first.** The database password,
-Tableau PAT, PAT encryption key and session secret are all live values today.
-Full instructions and the reasoning are in **[SECURITY.md](SECURITY.md)**.
-
-This is not yet a git repository. The moment you run `git init`, whatever is in
-`server/.env` at that point can end up in history permanently — and history is
-not fixed by deleting the file later. Rotate first, then commit.
-
----
+React 18 + Vite client (`client/`), Express server (`server/`, plain ESM
+JavaScript, raw `pg`), PostgreSQL on Neon. Deployed as a static client on
+Vercel proxying `/api/*` to a persistent Node process on Render — see
+[ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Setup
 
 ```bash
-npm run install:all
+npm run install:all                     # server and client dependencies
 
 cp server/.env.example server/.env      # then fill in real values
 cp client/.env.example client/.env      # optional, public values only
 
-cd server && npm run db:migrate
-
 npm run dev                             # client :5173, server :3001
 ```
 
-`server/.env.example` documents every variable, how to generate the secret ones,
-and which are required in production.
-
-## Configuration rules
-
-| | |
-|---|---|
-| Server secrets | `server/.env` only, read via `process.env` |
-| Client config | `client/.env`, `VITE_`-prefixed — **public**, inlined into the browser bundle |
-| Committed | `*.env.example` files only, placeholders only |
-
-Vite ships every `VITE_` variable to the browser. Nothing sensitive may carry
-that prefix.
-
-## Production requirements
-
-The server refuses to start in production unless:
-
-- `SESSION_SECRET` is at least 32 characters and not a placeholder
-- `CLIENT_ORIGIN` names the exact browser origin (permissive CORS plus cookie
-  auth is a cross-site data-theft primitive)
-
-Also set `TRUSTED_PROXY_HOPS` to the real number of proxies in front of the
-process — secure cookies and per-IP rate limiting both depend on seeing the true
-client address, and over-counting lets clients spoof `X-Forwarded-For`.
+Migrations run automatically when the server boots (`server/db/migrate.js`);
+`cd server && npm run db:migrate` runs them standalone. The first administrator
+is created with `cd server && node scripts/create-admin.mjs` — self-signup is
+off by design.
 
 ## Testing
 
 ```bash
-cd server && npm test        # formula, mapping, isolation and auth-guard tests
-cd client && npm run build   # production build
+cd server && npm test                   # unit tests (node --test, no DB needed)
+cd client && npm run build              # production build
+
+# Browser suites (need a running app and a login):
+$env:AUDIT_EMAIL='<test account email>'; $env:AUDIT_PASSWORD='<password>'
+npx playwright test tests/ --reporter=list
 ```
+
+`tests/baseline.spec.ts` walks every route recording console errors and
+screenshots into `.playwright/baseline/` — run it before and after any removal
+and diff the reports.
+
+## More documentation
+
+| | |
+|---|---|
+| [SPEC.md](SPEC.md) | What exists today, and explicit non-goals |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Components, request flow, where state lives |
+| [DATA_MODEL.md](DATA_MODEL.md) | Every table, as defined in `server/db/migrations/` |
+| [API.md](API.md) | Every endpoint with auth requirements |
+| [DECISIONS.md](DECISIONS.md) | Why things are the way they are |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Vercel + Render + Neon runbook |
+| [SECURITY.md](SECURITY.md) | Credential rotation |
+| [CLAUDE.md](CLAUDE.md) | Operating instructions for AI coding sessions |

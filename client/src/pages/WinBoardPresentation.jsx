@@ -1,6 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getWinBoardSnapshot, getDashboardState } from '../lib/api';
+import { usePresentationLiveness } from '../hooks/usePresentationLiveness';
+import DataFreshnessStamp from '../components/DataFreshnessStamp';
+import CopyTvLinkButton from '../components/CopyTvLinkButton';
+import { Hideable, HideableProvider, useHiddenTiles } from '../components/Hideable';
 import {
   TrendChart, TeamContributionDonut, OrgTypeFillBars, PodRadialScorecards, RankFunnel, PercentChart,
   WinRateSummary, percentageView, sortMetricRows, shortDate, DEFAULT_PERCENTAGE_VIEW,
@@ -35,14 +39,18 @@ function describeTimeRange(filters) {
   return 'All dates';
 }
 
-function PresentCard({ title, subtitle, children }) {
-  return <section className="present-card present-card-wide">
-    <header><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</header>
-    {children}
-  </section>;
+function PresentCard({ title, subtitle, hideKey, children }) {
+  return <Hideable k={`card:${hideKey || title}`} label={title}>
+    <section className="present-card present-card-wide">
+      <header><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</header>
+      {children}
+    </section>
+  </Hideable>;
 }
 
-export default function WinBoardPresentation() {
+// `share` marks token-authenticated wall mode (rendered via TvDisplay):
+// controls that lead back into the logged-in app are hidden there.
+export default function WinBoardPresentation({ share = false } = {}) {
   const navigate = useNavigate();
   const [now, setNow] = useState(new Date());
   const [loading, setLoading] = useState(true);
@@ -72,20 +80,30 @@ export default function WinBoardPresentation() {
     return () => { cancelled = true; };
   }, []);
 
+  const { refreshTick, online, dataUpdatedAt, markFresh } = usePresentationLiveness();
+  const hideControl = useHiddenTiles(TEMPLATE, { share, refreshTick });
+  const loadedOnce = useRef(false);
   useEffect(() => {
     if (!configReady) return;
     let cancelled = false;
-    setLoading(true);
+    // Only the first load shows the full-screen loader. Background refreshes
+    // (the liveness tick) swap the numbers in place — a wall display must
+    // never flash a spinner once a minute.
+    if (!loadedOnce.current) setLoading(true);
     getWinBoardSnapshot(config.filters || {}).then(snapshot => {
       if (cancelled) return;
       setMetrics(snapshot.metrics || EMPTY_METRICS);
       setComparison(snapshot.comparison || { available: false });
+      loadedOnce.current = true;
+      markFresh();
     }).catch(() => {
-      if (cancelled) return;
+      if (cancelled || loadedOnce.current) return;
+      // A failed BACKGROUND refresh keeps the last good numbers on screen —
+      // the freshness stamp stops advancing, which is the honest signal.
       setMetrics(EMPTY_METRICS); setComparison({ available: false });
     }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [configReady, config.filters]);
+  }, [configReady, config.filters, refreshTick]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
@@ -129,7 +147,7 @@ export default function WinBoardPresentation() {
   // rail, so every graph is visible at once and horizontal TV space is used
   // instead of stacking a third chart row below the fold.
   if (loading) return <AppLoader fullscreen label="Preparing presentation…" />;
-  return <main className="presentation-shell win-board-wrap win-board-tv-shell">
+  return <HideableProvider value={hideControl}><main className="presentation-shell win-board-wrap win-board-tv-shell">
     <header className="presentation-header">
       <div className="presentation-brand"><img src="/testmu-bi-logo-v2.png" alt="" /><div><b>TestMu BI</b>
         <div className="presentation-brand-context">
@@ -144,38 +162,40 @@ export default function WinBoardPresentation() {
       <div className="presentation-view-label"><b>Win Board</b>
         <small>Contribution % = each slice&rsquo;s share of all Won ARR shown — the slices add up to 100%</small>
       </div>
-      <div className="presentation-clock"><b>{now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</b><span>{now.toLocaleDateString()}</span></div>
+      <div className="presentation-clock"><b>{now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</b><span>{now.toLocaleDateString()}</span><DataFreshnessStamp online={online} dataUpdatedAt={dataUpdatedAt} /></div>
     </header>
     <div className="presentation-slide win-board-tv-layout">
       <section className="win-board-tv-main" aria-label="Win Board charts and KPIs">
         <div className="presentation-kpi-strip"><WinRateSummary overall={overall} comparison={comparison}/></div>
         <div className="win-board-tv-chart-grid">
-          <PresentCard title={`${definition.label} trend`} subtitle={`${metrics.trendYear||''} vs ${comparison.previousTrendYear||'prior year'} · month or quarter view`}>
+          <PresentCard hideKey="trend" title={`${definition.label} trend`} subtitle={`${metrics.trendYear||''} vs ${comparison.previousTrendYear||'prior year'} · month or quarter view`}>
             <TrendChart trend={metrics.trend} previousTrend={comparison.previousTrend} metric={percentageMetric} year={metrics.trendYear} previousYear={comparison.previousTrendYear} fill/>
           </PresentCard>
-          <PresentCard title={`${definition.label} by team`}>
+          <PresentCard hideKey="by-team" title={`${definition.label} by team`}>
             <TeamContributionDonut items={metrics.teams} comparisons={groupComparisons.teams} metric={percentageMetric} showCallouts />
           </PresentCard>
-          <PresentCard title={`Top industries by ${definition.label}`}>
+          <PresentCard hideKey="industries" title={`Top industries by ${definition.label}`}>
             {topN === 5
               ? <RankFunnel items={industries} comparisons={groupComparisons.industries} metric={percentageMetric} />
               : <PercentChart items={industries} comparisons={groupComparisons.industries} metric={percentageMetric} label={definition.shortLabel} heading="Industry performance" fill/>}
           </PresentCard>
-          <PresentCard title={`${definition.label} by org type`}>
+          <PresentCard hideKey="org-type" title={`${definition.label} by org type`}>
             <OrgTypeFillBars items={metrics.orgTypes} comparisons={groupComparisons.orgTypes} metric={percentageMetric} />
           </PresentCard>
         </div>
       </section>
       <aside className="win-board-tv-pod-rail" aria-label="Won ARR contribution by POD">
-        <PresentCard title="Won ARR contribution % by POD" subtitle={`${timeRangeSummary} · Top 5 · gauge = current, dot = previous`}>
+        <PresentCard hideKey="pod-rail" title="Won ARR contribution % by POD" subtitle={`${timeRangeSummary} · Top 5 · gauge = current, dot = previous`}>
           <PodRadialScorecards items={metrics.pods} comparisons={groupComparisons.pods} metric="contribution" topN={5}
             showCenterLabel={false} previousPeriodLabel="Previous period Contribution" showContext comparisonBesideGauge/>
         </PresentCard>
       </aside>
     </div>
     <footer className={`presentation-controls${isFullscreen && !controlsVisible ? ' controls-hidden' : ''}`}>
+      {!share && <span className="hide-hint">Double-click any tile to hide it from the TV</span>}
       <button onClick={() => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()}>Fullscreen</button>
-      <button onClick={() => navigate('/dashboard/win-board')}>Exit</button>
+      {!share && <CopyTvLinkButton templateId={TEMPLATE} />}
+      {!share && <button onClick={() => navigate('/dashboard/win-board')}>Exit</button>}
     </footer>
-  </main>;
+  </main></HideableProvider>;
 }

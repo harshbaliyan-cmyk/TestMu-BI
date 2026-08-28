@@ -8,12 +8,12 @@ compromised, because you cannot un-share them. **Rotating is the only fix.**
 Deleting a value from a file does not help: if the file was ever committed, the
 old value stays in git history forever and is recoverable with one command.
 
-This repository is **not currently a git repository**, so there is no history to
-purge today. That changes the moment you run `git init`. Rotate first, commit
-second — otherwise the very first commit bakes today's live credentials into
-history permanently.
+This repository IS a git repository. `.gitignore` and the CI secret scan keep
+`.env` files and credential-shaped strings out of commits — but that only
+protects the future. Any value that has ever appeared in a chat, screenshot,
+or shared file still needs rotating.
 
-Rotate all four before this app is deployed or the code is pushed anywhere:
+Rotate all four before this app is deployed or the code is pushed anywhere new:
 
 | Credential | Where it lives | How to rotate |
 |---|---|---|

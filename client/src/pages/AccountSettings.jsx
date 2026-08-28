@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   changePassword, listUsers, inviteUser, updateUserAccess, resetUserPassword,
-  deleteMyAccount, deleteUser,
+  deleteMyAccount, deleteUser, listTvLinks, revokeTvLink,
 } from '../lib/api';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuth } from '../hooks/useAuth';
@@ -193,6 +193,58 @@ function UsersCard({ me }) {
   </section>;
 }
 
+// TV share links are minted from a board's Present view ("Copy TV link");
+// this card is where they come to die. The link itself is never shown here —
+// the server stores only a hash, so a token that leaves the clipboard is
+// unrecoverable by design and revocation is the only remedy for a leak.
+function TvLinksCard() {
+  const [links, setLinks] = useState([]);
+  const [error, setError] = useState('');
+  const [busyId, setBusyId] = useState('');
+
+  const load = () => listTvLinks().then(setLinks).catch(e => setError(e.response?.data?.error || 'Could not load TV links'));
+  useEffect(() => { load(); }, []);
+
+  const revoke = async id => {
+    setBusyId(id); setError('');
+    try { await revokeTvLink(id); await load(); }
+    catch (e) { setError(e.response?.data?.error || 'Could not revoke that link'); }
+    finally { setBusyId(''); }
+  };
+
+  if (!links.length && !error) return null;
+  return <section className="card account-card">
+    <div className="account-card-head"><div>
+      <h3>TV share links</h3>
+      <p className="hint">
+        Links that open a dashboard on a wall display with no sign-in. Each one shows only the
+        dashboard it was created for, with your data. Revoking takes effect on the display within a
+        minute — at its next auto-refresh.
+      </p>
+    </div></div>
+    {error && <div className="account-error" role="alert">{error}</div>}
+    <div className="account-table-scroll">
+      <table className="account-table">
+        <thead><tr><th>Dashboard</th><th>Created</th><th>Last used</th><th>Status</th><th aria-label="Actions" /></tr></thead>
+        <tbody>
+          {links.map(link => <tr key={link.id} className={link.revokedAt ? 'is-disabled' : ''}>
+            <td><b>{link.dashboardName || link.templateKey}</b>{link.label && <span>{link.label}</span>}</td>
+            <td>{shortDate(link.createdAt)}</td>
+            <td>{shortDate(link.lastUsedAt)}</td>
+            <td><span className={`account-pill ${link.revokedAt ? 'disabled' : 'active'}`}>
+              {link.revokedAt ? 'revoked' : link.expiresAt && new Date(link.expiresAt) <= new Date() ? 'expired' : 'active'}
+            </span></td>
+            <td className="account-row-actions">
+              {!link.revokedAt && <button type="button" className="btn-danger" disabled={busyId === link.id}
+                onClick={() => revoke(link.id)}>Revoke</button>}
+            </td>
+          </tr>)}
+        </tbody>
+      </table>
+    </div>
+  </section>;
+}
+
 // Deliberately slow to trigger: typing the address is a conscious act in a way
 // that clicking "yes" is not, and the password check means a hijacked session
 // cannot destroy the account.
@@ -266,6 +318,7 @@ export default function AccountSettings({ user }) {
 
     <ChangePasswordCard user={user} forced={forced} />
     {user?.role === 'admin' && !forced && <UsersCard me={user} />}
+    {!forced && <TvLinksCard />}
     {!forced && <DeleteAccountCard user={user} />}
   </div>;
 }

@@ -520,6 +520,12 @@ tbody tr:hover { background: var(--line-2); }
   display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--txt-2);
 }
 .user-pill img { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; }
+/* Jump-anywhere dashboard select, styled to sit among the pill's buttons. */
+.dashboard-switcher {
+  max-width: 190px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--card); color: var(--txt-2); font-size: 12.5px; cursor: pointer;
+}
+.dashboard-switcher:hover { border-color: var(--blue); color: var(--blue); }
 
 /* Misc */
 .loading { text-align: center; padding: 60px; color: var(--txt-3); }
@@ -1198,6 +1204,99 @@ html[data-theme="light"] .present-button { color: #fff; }
 .presentation-brand { display: flex; align-items: center; gap: 12px; }.presentation-brand img { width: 50px; height: 50px; object-fit: contain; }
 .presentation-brand > div, .presentation-clock { display: grid; }.presentation-brand b { font-size: 17px; }.presentation-brand span { color: var(--txt-2); font-size: 12px; }
 .presentation-clock { text-align: right; }.presentation-clock b { font-size: 18px; }.presentation-clock span { color: var(--txt-3); font-size: 11px; }
+/* A tile hidden from the TV collapses to this chip (owner view only — on the
+   wall it renders as nothing). One click restores it. */
+.hidden-tile-ghost {
+  align-self: start; justify-self: start; margin: 4px; padding: 7px 14px;
+  border: 1px dashed var(--line); border-radius: 999px; background: transparent;
+  color: var(--txt-3); font-size: 11.5px; cursor: pointer; white-space: nowrap;
+}
+.hidden-tile-ghost:hover { color: var(--txt); border-color: var(--txt-3); }
+.presentation-controls .hide-hint { color: var(--txt-3); font-size: 11px; margin-right: 6px; }
+
+/* Freshness stamp: quiet while healthy, loud the moment the wall is stale. */
+.presentation-data-stamp { color: var(--txt-3); font-size: 10px; letter-spacing: .3px; }
+.presentation-data-stamp.is-offline { color: var(--red); font-weight: 700; }
+/* Dead share link on a wall: large type, no chrome, explains nothing sensitive. */
+.tv-share-error { min-height: 100vh; display: grid; place-content: center; gap: 10px; text-align: center; padding: 40px; background: var(--bg); }
+.tv-share-error img { width: 64px; margin: 0 auto 6px; }
+.tv-share-error h1 { font-size: 28px; letter-spacing: -.3px; }
+.tv-share-error p { color: var(--txt-2); font-size: 15px; max-width: 52ch; }
+
+/* ===== Chart builder ===== */
+.builder-toolbar { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 16px; }
+.builder-toolbar label { display: grid; gap: 5px; min-width: 220px; }
+.builder-toolbar label > span, .builder-slot > label > span, .builder-slot span { color: var(--txt-3); font-size: 11px; letter-spacing: .4px; }
+/* Three panes: chart-type rail, config panel, preview. The preview gets every
+   spare pixel — it is the thing being designed. */
+.builder-layout { display: grid; grid-template-columns: 230px 320px minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 1200px) { .builder-layout { grid-template-columns: 230px minmax(0, 1fr); } .builder-preview { grid-column: 1 / -1; } }
+@media (max-width: 900px) { .builder-layout { grid-template-columns: 1fr; } .builder-preview { grid-column: auto; } }
+.builder-rail { display: grid; gap: 16px; position: sticky; top: 12px; }
+.builder-side { display: grid; gap: 16px; }
+.builder-check { display: flex; align-items: center; gap: 8px; margin-top: 12px; cursor: pointer; }
+.builder-check span { color: var(--txt-2); font-size: 12.5px; }
+.builder-check input { accent-color: var(--blue); width: 15px; height: 15px; }
+.builder-type-list { display: grid; gap: 8px; margin-top: 10px; }
+.builder-type { text-align: left; display: grid; gap: 3px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; background: transparent; cursor: pointer; color: inherit; }
+.builder-type:hover { border-color: var(--blue); }
+.builder-type.is-active { border-color: var(--blue); background: color-mix(in srgb, var(--blue) 9%, transparent); }
+.builder-type.is-unavailable { opacity: .5; cursor: not-allowed; }
+.builder-type b { font-size: 13px; }
+.builder-type span { color: var(--txt-3); font-size: 11.5px; line-height: 1.35; }
+.builder-slot { display: grid; gap: 8px; margin-top: 12px; }
+.builder-slot label { display: grid; gap: 5px; }
+.builder-preview { min-height: 480px; display: grid; grid-template-rows: auto 1fr; }
+.builder-chart-canvas { position: relative; min-height: 380px; height: 100%; }
+.builder-chart-empty { display: grid; place-content: center; gap: 10px; min-height: 240px; color: var(--txt-3); text-align: center; }
+.builder-kpi { display: grid; place-content: center; text-align: center; height: 100%; gap: 6px; }
+.builder-kpi b { font-size: clamp(34px, 6vw, 64px); letter-spacing: -1px; }
+.builder-kpi span { color: var(--txt-3); font-size: 12px; }
+.builder-table table { width: 100%; }
+.gallery-empty-card .template-info p { max-width: 34ch; }
+
+/* ===== Custom dashboard grid ===== */
+.custom-grid .react-grid-item.react-grid-placeholder { background: var(--blue); opacity: .18; border-radius: 11px; }
+.custom-tile { display: grid; grid-template-rows: auto 1fr; padding: 0; overflow: hidden; }
+/* react-grid-layout positions tiles with INLINE transforms. The .card entrance
+   animation fills 'both', and a filled animation's transform outranks inline
+   styles in the cascade — with it on, every tile pins to the grid origin and
+   the whole dashboard stacks into one spot. Tiles therefore opt out of the
+   entrance animation and of the transform transition that would drag against
+   RGL's own move/resize updates. */
+.custom-grid .custom-tile { animation: none; transform-style: flat; transition: border-color .3s ease, box-shadow .35s ease; }
+.tile-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 13px; border-bottom: 1px solid var(--line); }
+.tile-head b { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.custom-grid.is-editing .tile-drag-handle { cursor: grab; }
+.tile-actions { display: flex; gap: 6px; }
+.tile-actions button { border: 1px solid var(--line); background: transparent; color: var(--txt-2); border-radius: 6px; font-size: 11px; padding: 2px 8px; cursor: pointer; }
+.tile-actions button:hover { border-color: var(--blue); color: var(--blue); }
+.tile-body { min-height: 0; padding: 10px; position: relative; }
+.tile-body .builder-chart-canvas { min-height: 0; position: absolute; inset: 10px; }
+
+/* ===== Builder filters ===== */
+.builder-filter { display: grid; gap: 6px; margin: 10px 0; padding: 10px; border: 1px solid var(--line); border-radius: 9px; }
+.builder-filter-head { display: flex; justify-content: space-between; align-items: center; }
+.builder-filter-head b { font-size: 12.5px; }
+.builder-filter-head button { border: none; background: transparent; color: var(--txt-3); cursor: pointer; font-size: 13px; }
+.builder-filter-head button:hover { color: var(--red); }
+.builder-filter-range { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: center; }
+.builder-filter-range span { color: var(--txt-3); font-size: 11px; }
+
+/* ===== Custom dashboard on a TV: the saved grid reprojected full-screen ===== */
+.tv-custom-shell { display: grid; grid-template-rows: auto 1fr; height: 100vh; }
+.tv-custom-canvas { position: relative; margin: 6px 14px 14px; min-height: 0; }
+.tv-custom-tile { position: absolute; display: grid; grid-template-rows: auto 1fr; padding: 0; overflow: hidden; }
+
+/* ===== Drill-down modal ===== */
+.modal-overlay { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.55); display: grid; place-items: center; padding: 30px; }
+.modal-card { width: min(1100px, 94vw); max-height: 84vh; display: grid; grid-template-rows: auto 1fr auto; gap: 10px; }
+.modal-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.modal-head b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modal-head-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.modal-table { min-height: 0; overflow: auto; }
+.modal-table table { width: 100%; }
+.modal-table th { position: sticky; top: 0; background: var(--card); }
 .presentation-view-label { position: absolute; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; white-space: nowrap; }
 .presentation-view-label span { padding: 4px 8px; border: 1px solid color-mix(in srgb, var(--teal) 55%, var(--line)); border-radius: 999px; color: var(--teal); background: color-mix(in srgb, var(--teal) 10%, transparent); font-size: 9px; font-weight: 700; letter-spacing: .7px; }
 .presentation-view-label b { font-size: 16px; letter-spacing: -.2px; }

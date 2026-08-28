@@ -73,6 +73,39 @@ api.interceptors.response.use(undefined, async error => {
 
 export default api;
 
+// ===== TV share links =====
+// The /tv/:token wall route has no login session. Setting the token here makes
+// every API call carry it in a header (never the query string — URLs end up in
+// proxy logs), and the server scopes what it can read to one dashboard.
+export function setShareToken(token) {
+  if (token) api.defaults.headers.common['X-Share-Token'] = token;
+  else delete api.defaults.headers.common['X-Share-Token'];
+}
+
+export const resolveShareToken = () => api.get('/share/resolve').then(r => r.data);
+
+// ===== Chart builder =====
+export const listDataSources = () => api.get('/datasources').then(r => r.data.sources);
+export const getChartOptions = sourceId => api.get(`/charts/options/${sourceId}`).then(r => r.data);
+export const previewChart = (sourceId, config) => api.post('/charts/preview', { sourceId, config }).then(r => r.data);
+export const createChart = body => api.post('/charts', body).then(r => r.data);
+export const inspectChart = body => api.post('/charts/inspect', body).then(r => r.data);
+export const listCharts = () => api.get('/charts').then(r => r.data.items);
+export const getChart = id => api.get(`/charts/${id}`).then(r => r.data);
+export const getChartData = id => api.get(`/charts/${id}/data`).then(r => r.data);
+export const updateChart = (id, body) => api.put(`/charts/${id}`, body).then(r => r.data);
+export const deleteChart = id => api.delete(`/charts/${id}`).then(r => r.data);
+export const createCustomDashboard = name => api.post('/custom-dashboards', { name }).then(r => r.data);
+export const listCustomDashboards = () => api.get('/custom-dashboards').then(r => r.data.items);
+export const getCustomDashboard = id => api.get(`/custom-dashboards/${id}`).then(r => r.data);
+export const updateCustomDashboard = (id, body) => api.put(`/custom-dashboards/${id}`, body).then(r => r.data);
+export const deleteCustomDashboard = id => api.delete(`/custom-dashboards/${id}`).then(r => r.data);
+// target: a template key string, or { customDashboardId } for a custom board.
+export const createTvLink = (target, options = {}) => api.post('/share-tokens',
+  { ...(typeof target === 'string' ? { templateId: target } : target), ...options }).then(r => r.data);
+export const listTvLinks = () => api.get('/share-tokens').then(r => r.data.items);
+export const revokeTvLink = id => api.delete(`/share-tokens/${id}`).then(r => r.data);
+
 export async function verifyGoogleToken(credential, intent = 'login') {
   const { data } = await api.post('/auth/verify', { credential, intent });
   return data;

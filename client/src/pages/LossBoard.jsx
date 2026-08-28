@@ -3,6 +3,8 @@ import {useNavigate} from 'react-router-dom';
 import {getLossBoardSnapshot,getOptions,getDashboardState,saveDashboardState} from '../lib/api';
 import {MultiSelect,ChartCard,fmtNumber,fmtPercent,ComparisonProvider} from '../components/charts';
 import ThemeToggle from '../components/ThemeToggle';
+import DashboardSwitcher from '../components/DashboardSwitcher';
+import { Hideable } from '../components/Hideable';
 import AppLoader from '../components/AppLoader';
 import AdvancedDateRange, {rangeFor,isoDate} from '../components/AdvancedDateRange';
 import {useAuth} from '../hooks/useAuth';
@@ -66,10 +68,10 @@ export function LossRateSummary({overall,comparison}){
       Comparing <b>{shortDate(comparison.period.currentFrom)} – {shortDate(comparison.period.currentTo)}</b> against the previous period <b>{shortDate(comparison.period.previousFrom)} – {shortDate(comparison.period.previousTo)}</b>
     </div>}
     <div className="win-rate-summary-metrics">
-      <div className="win-rate-summary-metric arr-rate"><span>ARR lost rate</span><strong>{fmtPercent(overall.arrLostRate)}</strong><small>Lost ARR ÷ Closed ARR</small><KpiDelta value={comparison.arrLostRatePointChange} lowerIsBetter/></div>
-      <div className="win-rate-summary-metric deal-rate"><span>Opportunity loss rate</span><strong>{fmtPercent(overall.lossOppRateOfAll)}</strong><small>Lost ÷ all opportunities, open + closed</small><KpiDelta value={comparison.lossOppRateOfAllPointChange} lowerIsBetter/></div>
-      <div className="win-rate-summary-metric open-opp-rate"><span>Open opportunity %</span><strong>{fmtPercent(overall.openOppRate)}</strong><small>Open ÷ all opportunities, by count</small></div>
-      <div className="win-rate-summary-counts"><span>Opportunities</span>
+      <Hideable k="kpi:arr-lost-rate" label="ARR lost rate"><div className="win-rate-summary-metric arr-rate"><span>ARR lost rate</span><strong>{fmtPercent(overall.arrLostRate)}</strong><small>Lost ARR ÷ Closed ARR</small><KpiDelta value={comparison.arrLostRatePointChange} lowerIsBetter/></div></Hideable>
+      <Hideable k="kpi:opportunity-loss-rate" label="Opportunity loss rate"><div className="win-rate-summary-metric deal-rate"><span>Opportunity loss rate</span><strong>{fmtPercent(overall.lossOppRateOfAll)}</strong><small>Lost ÷ all opportunities, open + closed</small><KpiDelta value={comparison.lossOppRateOfAllPointChange} lowerIsBetter/></div></Hideable>
+      <Hideable k="kpi:open-opportunity-rate" label="Open opportunity %"><div className="win-rate-summary-metric open-opp-rate"><span>Open opportunity %</span><strong>{fmtPercent(overall.openOppRate)}</strong><small>Open ÷ all opportunities, by count</small></div></Hideable>
+      <Hideable k="kpi:opportunity-counts" label="Opportunities"><div className="win-rate-summary-counts"><span>Opportunities</span>
         <div className="win-rate-summary-counts-grid">
           <div className="count-total"><b>{fmtNumber(overall.opportunities)}</b><small>Total</small></div>
           <div className="count-open"><b>{fmtNumber(overall.open)}</b><small>Open</small></div>
@@ -77,8 +79,8 @@ export function LossRateSummary({overall,comparison}){
           <div className="count-won"><b>{fmtNumber(overall.wins)}</b><small>Won</small></div>
           <div className="count-lost"><b>{fmtNumber(overall.losses)}</b><small>Lost</small></div>
         </div>
-      </div>
-      <div className="win-rate-summary-metric open-arr-rate"><span>Open ARR %</span><strong>{fmtPercent(overall.openArrPct)}</strong><small>Open ARR ÷ Total ARR</small></div>
+      </div></Hideable>
+      <Hideable k="kpi:open-arr-rate" label="Open ARR %"><div className="win-rate-summary-metric open-arr-rate"><span>Open ARR %</span><strong>{fmtPercent(overall.openArrPct)}</strong><small>Open ARR ÷ Total ARR</small></div></Hideable>
     </div>
   </section>;
 }
@@ -190,7 +192,7 @@ export default function LossBoard({user}){
 
   return <ComparisonProvider value={comparison}><div className="wrap win-board-wrap"><div className="top-nav" style={{margin:'-18px -18px 18px'}}>
     <div className="brand" onClick={()=>navigate('/gallery')} style={{cursor:'pointer'}}><img className="brand-logo" src="/testmu-bi-logo-v2.png" alt="TestMu BI"/><span>TestMu BI</span></div>
-    <div className="user-pill"><ThemeToggle/><span>{user?.name||'User'}</span><button className="btn-secondary" onClick={signOut}>Sign out</button></div></div>
+    <div className="user-pill"><ThemeToggle/><DashboardSwitcher/><span>{user?.name||'User'}</span><button className="btn-secondary" onClick={signOut}>Sign out</button></div></div>
     <header className="top"><div className="top-row"><div><h1>Loss Board</h1><div className="sub">Where business is being lost. Lost ARR is the primary measure; opportunity loss rate is supporting context.</div>
       {/* Mirrors the Win Board note, against Lost ARR — the two boards use the
           same word for the same shape of calculation on opposite outcomes. */}

@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getData, getDashboardState } from '../lib/api';
+import { usePresentationLiveness } from '../hooks/usePresentationLiveness';
+import DataFreshnessStamp from '../components/DataFreshnessStamp';
+import CopyTvLinkButton from '../components/CopyTvLinkButton';
+import { Hideable, HideableProvider, useHiddenTiles } from '../components/Hideable';
 import { BarList, Donut, MetricGauges, NeonColumns, Pill,
   fmtCurrency, fmtNumber, fmtPercent, seriesColor, STATUS_COLORS } from '../components/charts';
 import AppLoader from '../components/AppLoader';
@@ -16,17 +20,25 @@ const VIEW_LABELS = {
 const VIEW_ORDER = Object.keys(VIEW_LABELS);
 
 function PresentCard({ title, subtitle, wide = false, children }) {
-  return <section className={`present-card${wide ? ' present-card-wide' : ''}`}>
-    <header><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</header>{children}
-  </section>;
+  return <Hideable k={`card:${title}`} label={title}>
+    <section className={`present-card${wide ? ' present-card-wide' : ''}`}>
+      <header><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</header>{children}
+    </section>
+  </Hideable>;
 }
 
 function PresentKpi({ label, value, note, tone = 'cyan' }) {
-  return <div className={`present-kpi present-${tone}`}><span>{label}</span><b>{value}</b><small>{note}</small></div>;
+  return <Hideable k={`kpi:${label}`} label={label}>
+    <div className={`present-kpi present-${tone}`}><span>{label}</span><b>{value}</b><small>{note}</small></div>
+  </Hideable>;
 }
 
-export default function Presentation() {
-  const { templateId } = useParams();
+// `share` marks token-authenticated wall mode (rendered via TvDisplay): the
+// template comes as a prop instead of the URL, and controls that lead back
+// into the logged-in app are hidden — a wall has nobody signed in to use them.
+export default function Presentation({ share = false, templateId: templateIdProp } = {}) {
+  const { templateId: templateIdParam } = useParams();
+  const templateId = templateIdProp || templateIdParam;
   const navigate = useNavigate();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -64,11 +76,21 @@ export default function Presentation() {
     return () => { cancelled = true; };
   }, [templateId]);
 
+  const { refreshTick, online, dataUpdatedAt, markFresh } = usePresentationLiveness();
+  const hideControl = useHiddenTiles(templateId, { share, refreshTick });
+  const loadedOnce = useRef(false);
   useEffect(() => {
     if (!configReady) return;
-    setLoading(true);
-    getData(templateId, filters).then(setData).finally(() => setLoading(false));
-  }, [templateId, filters, configReady]);
+    // Only the first load shows the loader; background refreshes swap the
+    // numbers in place, and a failed one keeps the last good rows — the
+    // freshness stamp stopping is the honest signal. Same policy as
+    // WinBoardPresentation.jsx.
+    if (!loadedOnce.current) setLoading(true);
+    getData(templateId, filters)
+      .then(rows => { setData(rows); loadedOnce.current = true; markFresh(); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [templateId, filters, configReady, refreshTick]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
@@ -320,10 +342,10 @@ export default function Presentation() {
   const changeSeconds = value => { setSeconds(value); localStorage.setItem('present-seconds', value); };
 
   if (loading) return <AppLoader fullscreen label="Preparing presentation…" />;
-  return <main className="presentation-shell">
+  return <HideableProvider value={hideControl}><main className="presentation-shell">
     <header className="presentation-header"><div className="presentation-brand"><img src="/testmu-bi-logo-v2.png" alt="" /><div><b>TestMu BI</b><span>Dashboard presentation</span></div></div>
       <div className="presentation-view-label"><span>VIEW {activeViewNumber} OF {VIEW_ORDER.length}</span><b>{VIEW_LABELS[activeSlide?.view] || activeSlide?.title}</b></div>
-      <div className="presentation-clock"><b>{now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</b><span>{now.toLocaleDateString()}</span></div>
+      <div className="presentation-clock"><b>{now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</b><span>{now.toLocaleDateString()}</span><DataFreshnessStamp online={online} dataUpdatedAt={dataUpdatedAt} /></div>
     </header>
     <div className="presentation-kpi-strip">
       {activeKpis.map(kpi => <PresentKpi key={kpi.label} {...kpi} />)}
@@ -335,8 +357,10 @@ export default function Presentation() {
       <span>{Math.min(slide + 1, slides.length)} / {slides.length}</span>
       <button onClick={() => move(1)} aria-label="Next slide">›</button>
       <label>Change every <select value={seconds} onChange={e => changeSeconds(+e.target.value)}><option value="10">10 sec</option><option value="15">15 sec</option><option value="30">30 sec</option><option value="60">1 min</option><option value="120">2 min</option></select></label>
+      {!share && <span className="hide-hint">Double-click any tile to hide it from the TV</span>}
       <button onClick={() => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()}>Fullscreen</button>
-      <button onClick={() => navigate(`/dashboard/${templateId}`)}>Exit</button>
+      {!share && <CopyTvLinkButton templateId={templateId} />}
+      {!share && <button onClick={() => navigate(`/dashboard/${templateId}`)}>Exit</button>}
     </footer>
-  </main>;
+  </main></HideableProvider>;
 }

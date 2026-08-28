@@ -7,7 +7,9 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        // Overridable so a second dev stack (tests, parallel work) can point
+        // at its own API instance without fighting the default ports.
+        target: process.env.VITE_API_PROXY || 'http://localhost:3001',
         changeOrigin: true,
       }
     }

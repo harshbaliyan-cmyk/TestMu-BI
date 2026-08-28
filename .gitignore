@@ -60,3 +60,10 @@ skills-lock.json
 
 # Full-resolution source assets, kept locally for re-export.
 .asset-originals/
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/

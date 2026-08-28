@@ -4,8 +4,7 @@ import session from 'express-session';
 import connectPgSimple from 'connect-pg-simple';
 import { OAuth2Client } from 'google-auth-library';
 import { createDataSourceRouter , DASHBOARD_FIELD_SETS } from './datasources.js';
-import axios from 'axios';
-import cron from 'node-cron';
+import { createChartRouter, createCustomDashboardRouter } from './chartRoutes.js';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import { databaseEnabled, pool, closePool } from './db/pool.js';
@@ -24,6 +23,7 @@ import {
 } from './services/authGuard.js';
 import { sendSecurityNotification } from './services/mailer.js';
 import { listSavedContent, createSavedContent, deleteSavedContent } from './repositories/savedContent.js';
+import { createShareToken, listShareTokens, revokeShareToken, resolveShareToken } from './repositories/shareTokens.js';
 import { listAdminLogs, cleanupOldRecords } from './repositories/adminLogs.js';
 import { buildWinBoardSnapshot } from './services/winBoardMetrics.js';
 import { buildLossBoardSnapshot } from './services/lossBoardMetrics.js';
@@ -42,10 +42,6 @@ const GOOGLE_AUTH_ENABLED = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.
 const cache = new Map();
 const runtimeSourceRows = new Map();
 const runtimeDashboardSources = new Map();
-let lastSyncTime = null;
-let nextSyncTime = null;
-let syncStatus = 'idle'; // idle | syncing | success | failed
-let syncError = null;
 
 const CACHE_TTL = 12 * 60 * 60 * 1000; // 12 hours (longer than 1-day sync interval)
 
@@ -75,10 +71,6 @@ function cacheSet(key, data) {
 // session's userId, and a user with no sources of their own sees an empty
 // dashboard rather than somebody else's.
 const userScope = (userId, templateId) => `u:${userId ?? 'anonymous'}:${templateId}`;
-// The legacy WORKSHEET_CONFIG sync is server-wide (it has no owner) and feeds
-// only the deprecated /api/dashboard-data endpoint. It is kept in its own
-// namespace so it can never collide with, or leak into, a user's rows.
-const systemScope = templateId => `sys:${templateId}`;
 
 // Win Board and Loss Board both read live Tableau opportunity data that may
 // be mapped independently of (and more sparsely than) the Opportunity
@@ -105,13 +97,21 @@ function dashboardRows(userId, key) {
   });
 }
 
+// The RAW rows behind each source, exactly as parsed — before field mapping
+// coerces them into the canonical opportunity shape. The chart builder binds
+// to raw columns, so it reads these; the fixed dashboards keep reading the
+// mapped rows. Same lifecycle as the mapped cache: filled on commit/refresh,
+// gone on restart, rehydrated by the startup Tableau sweep.
+const runtimeSourceRawData = new Map(); // sourceId -> { ownerUserId, headers, rows }
+
 // ownerUserId is required, not optional: a source whose owner we cannot name
 // has no scope to live in, and defaulting it to a shared bucket is exactly the
 // bug this replaced. Callers all know the owner — the commit and delete routes
 // from the session, the refresh path from the source's own record.
-function setSourceRows(sourceId, dashboardKeys, rows, ownerUserId) {
+function setSourceRows(sourceId, dashboardKeys, rows, ownerUserId, raw = null) {
   if (!ownerUserId) throw new Error('setSourceRows requires the owning userId');
   runtimeSourceRows.set(sourceId, rows);
+  if (raw) runtimeSourceRawData.set(sourceId, { ownerUserId, headers: raw.headers || [], rows: raw.rows || [] });
   dashboardKeys.forEach(key => {
     const scope = userScope(ownerUserId, key);
     if (!runtimeDashboardSources.has(scope)) runtimeDashboardSources.set(scope, new Set());
@@ -123,6 +123,7 @@ function setSourceRows(sourceId, dashboardKeys, rows, ownerUserId) {
 function removeSourceRows(sourceId, dashboardKeys, ownerUserId) {
   if (!ownerUserId) throw new Error('removeSourceRows requires the owning userId');
   runtimeSourceRows.delete(sourceId);
+  runtimeSourceRawData.delete(sourceId);
   dashboardKeys.forEach(key => {
     const bound = runtimeDashboardSources.get(userScope(ownerUserId, key));
     if (!bound) return;
@@ -131,232 +132,13 @@ function removeSourceRows(sourceId, dashboardKeys, ownerUserId) {
   });
 }
 
-function getCacheAge(key) {
-  const entry = cache.get(key);
-  if (!entry) return null;
-  return Math.floor((Date.now() - entry.fetchedAt) / 60000); // minutes
-}
-
-// ===== TABLEAU API CLIENT =====
-class TableauClient {
-  constructor(serverUrl, siteId, patName, patSecret) {
-    this.serverUrl = serverUrl;
-    this.siteId = siteId;
-    this.patName = patName;
-    this.patSecret = patSecret;
-    this.token = null;
-    this.tokenExpiry = null;
-    this.axios = axios.create({
-      baseURL: `${serverUrl}/api/3.19`,
-      timeout: 30000,
-    });
-  }
-
-  async signin() {
-    try {
-      const response = await this.axios.post('/auth/signin', {
-        credentials: {
-          personalAccessTokenName: this.patName,
-          personalAccessTokenSecret: this.patSecret,
-          site: { contentUrl: this.siteId },
-        },
-      });
-
-      this.token = response.data.credentials.token;
-      this.tokenExpiry = Date.now() + 12 * 60 * 60 * 1000; // 12 hours
-      this.axios.defaults.headers.common['X-Tableau-Auth'] = this.token;
-
-      console.log('[Tableau] Signed in successfully');
-      return true;
-    } catch (err) {
-      console.error('[Tableau] Signin failed:', err.response?.data || err.message);
-      throw err;
-    }
-  }
-
-  async ensureAuth() {
-    if (!this.token || Date.now() > this.tokenExpiry - 60000) {
-      await this.signin();
-    }
-  }
-
-  async listViews() {
-    try {
-      await this.ensureAuth();
-      const response = await this.axios.get(
-        `/sites/${this.siteId}/views?includeUsageStatistics=true`
-      );
-      return response.data.view || [];
-    } catch (err) {
-      console.error('[Tableau] List views failed:', err.message);
-      throw err;
-    }
-  }
-
-  async getViewData(viewId) {
-    try {
-      await this.ensureAuth();
-      const response = await this.axios.get(
-        `/sites/${this.siteId}/views/${viewId}/data`,
-        { responseType: 'text' } // CSV as text
-      );
-      return response.data; // Raw CSV string
-    } catch (err) {
-      console.error(`[Tableau] Get view data failed (${viewId}):`, err.message);
-      throw err;
-    }
-  }
-
-  async signout() {
-    try {
-      await this.ensureAuth();
-      await this.axios.post('/auth/signout');
-      this.token = null;
-      console.log('[Tableau] Signed out');
-    } catch (err) {
-      console.warn('[Tableau] Signout failed (non-fatal):', err.message);
-    }
-  }
-}
-
-// ===== CSV TO JSON CONVERTER =====
-function csvToJson(csvText) {
-  const lines = csvText.trim().split('\n');
-  if (lines.length < 2) return [];
-
-  const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/[^a-z0-9_]/g, ''));
-  const rows = [];
-
-  for (let i = 1; i < lines.length; i++) {
-    const values = lines[i].split(',').map(v => v.trim());
-    const row = {};
-    headers.forEach((header, idx) => {
-      let val = values[idx] || '';
-      // Try to parse as number
-      if (val && !isNaN(val) && val !== '') {
-        val = parseFloat(val);
-      }
-      // Parse booleans
-      if (val === 'true') val = true;
-      if (val === 'false') val = false;
-      row[header] = val;
-    });
-    rows.push(row);
-  }
-
-  return rows;
-}
-
-// ===== WORKSHEET CONFIGURATION =====
-// Define which worksheets to fetch. Map Tableau view IDs to dashboard keys.
-const WORKSHEET_CONFIG = [
-  {
-    key: 'opportunity-analytics',
-    name: 'Opportunity Analytics',
-    tableauViewId: process.env.TABLEAU_VIEW_ID_OPPORTUNITIES || '',
-    description: 'Opportunity funnel, win rates, rep performance',
-  },
-  {
-    key: 'event-analytics',
-    name: 'Event Analytics',
-    tableauViewId: process.env.TABLEAU_VIEW_ID_EVENTS || '',
-    description: 'Feature adoption, churn signals',
-  },
-  {
-    key: 'tenant-health',
-    name: 'Tenant Health',
-    tableauViewId: process.env.TABLEAU_VIEW_ID_HEALTH || '',
-    description: 'Account whitespace, expansion candidates',
-  },
-];
-
-// ===== SYNC ENGINE =====
-let tableauClient = null;
-
-async function initializeTableauClient() {
-  if (!process.env.TABLEAU_SERVER || !process.env.TABLEAU_SITE_ID) {
-    console.warn('[Tableau] Not configured. Set TABLEAU_SERVER, TABLEAU_SITE_ID, TABLEAU_PAT_NAME, TABLEAU_PAT_SECRET in .env');
-    return null;
-  }
-
-  tableauClient = new TableauClient(
-    process.env.TABLEAU_SERVER,
-    process.env.TABLEAU_SITE_ID,
-    process.env.TABLEAU_PAT_NAME,
-    process.env.TABLEAU_PAT_SECRET
-  );
-
-  return tableauClient;
-}
-
-async function syncAllWorksheets(retries = 3) {
-  if (!tableauClient) {
-    console.log('[Sync] Tableau not configured. Skipping sync.');
-    return { success: false, error: 'Tableau not configured' };
-  }
-
-  syncStatus = 'syncing';
-  syncError = null;
-
-  try {
-    console.log('[Sync] Starting data sync...');
-
-    for (const worksheet of WORKSHEET_CONFIG) {
-      if (!worksheet.tableauViewId) {
-        console.warn(`[Sync] Skipping ${worksheet.key}: no view ID configured`);
-        continue;
-      }
-
-      let attempt = 0;
-      while (attempt < retries) {
-        try {
-          console.log(`[Sync] Fetching ${worksheet.key} (attempt ${attempt + 1}/${retries})...`);
-
-          const csvData = await tableauClient.getViewData(worksheet.tableauViewId);
-          const jsonData = csvToJson(csvData);
-
-          cacheSet(systemScope(worksheet.key), jsonData);
-          console.log(`[Sync] ✓ Cached ${worksheet.key}: ${jsonData.length} rows`);
-          break;
-        } catch (err) {
-          attempt++;
-          if (attempt >= retries) {
-            throw err;
-          }
-          // Exponential backoff: 2s, 4s, 8s
-          const backoffMs = Math.pow(2, attempt) * 1000;
-          console.log(`[Sync] Retrying in ${backoffMs}ms...`);
-          await new Promise(resolve => setTimeout(resolve, backoffMs));
-        }
-      }
-    }
-
-    lastSyncTime = new Date().toISOString();
-    syncStatus = 'success';
-    console.log(`[Sync] Completed at ${lastSyncTime}`);
-
-    return { success: true, syncedAt: lastSyncTime };
-  } catch (err) {
-    syncStatus = 'failed';
-    syncError = err.message;
-    console.error('[Sync] Failed:', err.message);
-    return { success: false, error: syncError };
-  }
-}
-
-// ===== CRON SCHEDULER =====
-// Runs daily at 11:35 PM UTC (adjust TZ_OFFSET for your timezone)
-const TZ_OFFSET = process.env.CRON_TZ_OFFSET || 'UTC';
-const SYNC_TIME = '35 23 * * *'; // 11:35 PM every day
-
-function scheduleSync() {
-  cron.schedule(SYNC_TIME, async () => {
-    console.log(`[Cron] Sync job triggered at ${new Date().toISOString()}`);
-    await syncAllWorksheets();
-    nextSyncTime = new Date(new Date().getTime() + 24 * 60 * 60 * 1000).toISOString();
-  }, { timezone: TZ_OFFSET });
-
-  console.log(`[Cron] Scheduled daily sync at 23:35 ${TZ_OFFSET}`);
+// Ownership is checked HERE, not left to the caller: raw rows are the most
+// sensitive thing in this process, and every read path must prove the
+// requesting user owns the source.
+function getSourceRawData(sourceId, ownerUserId) {
+  const entry = runtimeSourceRawData.get(sourceId);
+  if (!entry || entry.ownerUserId !== ownerUserId) return null;
+  return entry;
 }
 
 // ===== MIDDLEWARE =====
@@ -476,6 +258,34 @@ function requireAdmin(req, res, next) {
   if (!isAdminSession(req.session)) return res.status(403).json({ error: 'Admin access required' });
   next();
 }
+
+// ===== TV SHARE TOKENS =====
+// A wall display has nobody to log in, so the /tv/:token route authenticates
+// its READ calls with a share token in the X-Share-Token header instead of a
+// session. A token is scoped to exactly one dashboard and one owner's data —
+// requests for any other template are refused, and a revoked or expired token
+// answers identically to a token that never existed. The grant deliberately
+// lives on req.shareAuth, NEVER on req.session: writing to the session would
+// mark it dirty and mint a real signed login cookie for the wall's browser,
+// which is exactly the general-purpose bypass a share token must not become.
+//
+// Header, not query string, for the API calls: URLs end up in proxy and access
+// logs, headers do not. (The /tv/:token page URL itself is the shareable
+// artefact and carries the token by design.)
+const allowShareToken = templateOf => async (req, res, next) => {
+  if (req.session?.email) return requireAuth(req, res, next);
+  try {
+    const grant = await resolveShareToken(req.get('x-share-token'));
+    if (!grant || grant.templateKey !== templateOf(req)) {
+      return res.status(401).json({ error: 'This share link is invalid, revoked, or expired.' });
+    }
+    req.shareAuth = { userId: grant.userId, templateKey: grant.templateKey };
+    next();
+  } catch (error) { next(error); }
+};
+// Who the request reads data AS: the token's owner on a wall display, the
+// signed-in user everywhere else. Only ever used on read paths.
+const requesterId = req => req.shareAuth?.userId ?? req.session?.userId;
 
 app.post('/api/auth/verify', async (req, res) => {
   try {
@@ -672,8 +482,61 @@ app.get('/api/templates', requireAuth, (req, res) => {
   res.json(TEMPLATES);
 });
 
-app.get('/api/dashboards/:templateId/state', requireAuth, async (req, res, next) => {
-  try { res.json(await getDashboardState(req.session.userId, req.params.templateId)); }
+// Create/list/revoke are session-only: the token IS the wall's credential, so
+// managing tokens must never be possible with one. The raw token is returned
+// exactly once, at creation — only its hash is stored.
+app.post('/api/share-tokens', requireAuth, async (req, res, next) => {
+  try {
+    const templateKey = String(req.body?.templateId || '') || null;
+    const customDashboardId = String(req.body?.customDashboardId || '') || null;
+    if (templateKey && !TEMPLATES.some(t => t.id === templateKey)) {
+      return res.status(400).json({ error: 'Unknown dashboard' });
+    }
+    if (Boolean(templateKey) === Boolean(customDashboardId)) {
+      return res.status(400).json({ error: 'Pass exactly one of templateId or customDashboardId' });
+    }
+    const label = String(req.body?.label || '').slice(0, 100) || null;
+    const days = Number(req.body?.expiresDays);
+    const expiresAt = Number.isFinite(days) && days > 0
+      ? new Date(Date.now() + days * 86_400_000).toISOString() : null;
+    // Ownership of a custom dashboard is enforced inside createShareToken —
+    // its INSERT only matches the caller's own, undeleted dashboard.
+    const created = await createShareToken({ userId: req.session.userId, templateKey, customDashboardId, label, expiresAt });
+    await logAudit({ userId: req.session.userId, action: 'share_token.created', entityType: 'share_token',
+      entityId: created.id, afterState: { templateKey, customDashboardId, label, expiresAt } });
+    res.status(201).json(created);
+  } catch (error) {
+    if (error.status === 400) return res.status(400).json({ error: error.message });
+    next(error);
+  }
+});
+
+app.get('/api/share-tokens', requireAuth, async (req, res, next) => {
+  try { res.json({ items: await listShareTokens(req.session.userId) }); } catch (error) { next(error); }
+});
+
+app.delete('/api/share-tokens/:id', requireAuth, async (req, res, next) => {
+  try {
+    const revoked = await revokeShareToken(req.session.userId, req.params.id);
+    if (!revoked) return res.status(404).json({ error: 'No such active share link' });
+    await logAudit({ userId: req.session.userId, action: 'share_token.revoked', entityType: 'share_token',
+      entityId: req.params.id });
+    res.json({ ok: true });
+  } catch (error) { next(error); }
+});
+
+// Public: tells the /tv/:token page which dashboard to render. A valid token
+// learns its own target and nothing else; an invalid one learns nothing.
+app.get('/api/share/resolve', async (req, res, next) => {
+  try {
+    const grant = await resolveShareToken(req.get('x-share-token'));
+    if (!grant) return res.status(401).json({ error: 'This share link is invalid, revoked, or expired.' });
+    res.json({ templateKey: grant.templateKey, customDashboardId: grant.customDashboardId });
+  } catch (error) { next(error); }
+});
+
+app.get('/api/dashboards/:templateId/state', allowShareToken(req => req.params.templateId), async (req, res, next) => {
+  try { res.json(await getDashboardState(requesterId(req), req.params.templateId)); }
   catch (error) { next(error); }
 });
 
@@ -956,64 +819,14 @@ app.get('/api/health/database', async (req,res) => {
 
 // ===== DATA ENDPOINTS =====
 
-// Main endpoint: fetch cached worksheet data
-app.get('/api/dashboard-data', requireAuth, (req, res) => {
-  const { worksheetKey } = req.query;
-
-  if (syncStatus === 'syncing') {
-    return res.status(503).json({
-      error: 'Data sync in progress',
-      status: 'syncing',
-      lastUpdated: lastSyncTime,
-    });
-  }
-
-  let data = {};
-
-  if (worksheetKey) {
-    // Single worksheet
-    const cached = cacheGet(systemScope(worksheetKey));
-    if (cached === null) {
-      return res.status(503).json({
-        error: 'Data not available',
-        status: 'not_synced',
-      });
-    }
-    data[worksheetKey] = cached;
-  } else {
-    // All worksheets
-    for (const ws of WORKSHEET_CONFIG) {
-      const cached = cacheGet(systemScope(ws.key));
-      if (cached !== null) {
-        data[ws.key] = cached;
-      }
-    }
-
-    if (Object.keys(data).length === 0) {
-      return res.status(503).json({
-        error: 'No data available. Run sync first.',
-        status: 'not_synced',
-      });
-    }
-  }
-
-  res.json({
-    status: 'success',
-    data,
-    lastUpdated: lastSyncTime,
-    cacheAgeMins: Math.min(...Object.keys(data).map(k => getCacheAge(k) || 0)),
-  });
-});
-
-// Opportunity-specific endpoint (maps to opportunity-analytics worksheet)
-app.get('/api/data/:templateId', requireAuth, (req, res) => {
+app.get('/api/data/:templateId', allowShareToken(req => req.params.templateId), (req, res) => {
   const { templateId } = req.params;
   const {
     region, orgType, stage, owner, source, type, industry, pod, team,
     createdFrom, createdTo, closeFrom, closeTo,
   } = req.query;
 
-  let data = cacheGet(userScope(req.session.userId, templateId)) || [];
+  let data = cacheGet(userScope(requesterId(req), templateId)) || [];
 
   const asList = value => (Array.isArray(value) ? value : value ? [value] : []).filter(Boolean);
   const selections = { region, orgType, stage, owner, source, type, industry, pod, team };
@@ -1044,44 +857,11 @@ app.get('/api/data/:templateId', requireAuth, (req, res) => {
   });
 
   res.json(data);
-  logSourceAccess({ userId: req.session.userId, dashboardKey: templateId,
-    action: 'dashboard.data.read', rowCount: data.length, details: { filtered: Object.keys(req.query).length > 0 } })
+  logSourceAccess({ userId: requesterId(req), dashboardKey: templateId,
+    action: 'dashboard.data.read', rowCount: data.length,
+    details: { filtered: Object.keys(req.query).length > 0, viaShareToken: Boolean(req.shareAuth) } })
     .catch(error => console.error('access log', error.message));
 });
-// Manual refresh (admin only)
-app.post('/api/refresh-now', requireAdmin, async (req, res) => {
-  if (syncStatus === 'syncing') {
-    return res.status(409).json({
-      error: 'Sync already in progress',
-      status: 'syncing',
-    });
-  }
-
-  res.status(202).json({
-    message: 'Refresh queued',
-    jobId: `refresh-${Date.now()}`,
-  });
-
-  // Run sync in background (non-blocking)
-  await syncAllWorksheets();
-});
-
-// Sync status endpoint
-app.get('/api/sync-status', requireAuth, (req, res) => {
-  res.json({
-    status: syncStatus,
-    lastSync: lastSyncTime,
-    nextSync: nextSyncTime,
-    error: syncError,
-    worksheetCount: WORKSHEET_CONFIG.length,
-    // Only this caller's own cache entries. Returning every key listed each
-    // signed-in user's dashboards — and their user IDs — to anybody who asked.
-    cachedWorksheets: Array.from(cache.keys())
-      .filter(key => key.startsWith(userScope(req.session.userId, '')))
-      .map(key => key.slice(userScope(req.session.userId, '').length)),
-  });
-});
-
 // Dev helper: load mock data
 app.post('/api/data/:templateId/load', requireAdmin, (req, res) => {
   const { templateId } = req.params;
@@ -1110,23 +890,27 @@ app.use('/api/datasources', createDataSourceRouter({
   store: {
     setSourceRows,
     removeSourceRows,
+    getSourceRawData,
   },
 }));
 
-app.get('/api/win-board/metrics', requireAuth, (req, res) => {
-  res.json(buildWinBoardSnapshot(dashboardRows(req.session.userId,'win-board'),req.query).metrics);
+app.use('/api/charts', createChartRouter({ requireAuth, store: { getSourceRawData } }));
+app.use('/api/custom-dashboards', createCustomDashboardRouter({ requireAuth }));
+
+app.get('/api/win-board/metrics', allowShareToken(() => 'win-board'), (req, res) => {
+  res.json(buildWinBoardSnapshot(dashboardRows(requesterId(req),'win-board'),req.query).metrics);
 });
 
-app.get('/api/win-board/snapshot', requireAuth, (req,res) => {
-  res.json(buildWinBoardSnapshot(dashboardRows(req.session.userId,'win-board'),req.query));
+app.get('/api/win-board/snapshot', allowShareToken(() => 'win-board'), (req,res) => {
+  res.json(buildWinBoardSnapshot(dashboardRows(requesterId(req),'win-board'),req.query));
 });
 
-app.get('/api/loss-board/metrics', requireAuth, (req, res) => {
-  res.json(buildLossBoardSnapshot(dashboardRows(req.session.userId,'loss-board'),req.query).metrics);
+app.get('/api/loss-board/metrics', allowShareToken(() => 'loss-board'), (req, res) => {
+  res.json(buildLossBoardSnapshot(dashboardRows(requesterId(req),'loss-board'),req.query).metrics);
 });
 
-app.get('/api/loss-board/snapshot', requireAuth, (req,res) => {
-  res.json(buildLossBoardSnapshot(dashboardRows(req.session.userId,'loss-board'),req.query));
+app.get('/api/loss-board/snapshot', allowShareToken(() => 'loss-board'), (req,res) => {
+  res.json(buildLossBoardSnapshot(dashboardRows(requesterId(req),'loss-board'),req.query));
 });
 
 // AE Performance is its own connectable data source (see DataSources.jsx's
@@ -1135,54 +919,54 @@ app.get('/api/loss-board/snapshot', requireAuth, (req,res) => {
 // AM Performance is the AE board with one different scope rule. It shares the
 // metric code entirely, so a fix to quota, attainment or rep status lands on
 // both boards at once and they cannot drift apart.
-app.get('/api/am-performance/metrics', requireAuth, (req, res) => {
-  res.json(buildAePerformanceSnapshot(dashboardRows(req.session.userId,'am-performance'),req.query,{scope:isAmRow}).metrics);
+app.get('/api/am-performance/metrics', allowShareToken(() => 'am-performance'), (req, res) => {
+  res.json(buildAePerformanceSnapshot(dashboardRows(requesterId(req),'am-performance'),req.query,{scope:isAmRow}).metrics);
 });
 
-app.get('/api/am-performance/snapshot', requireAuth, async (req,res,next) => {
+app.get('/api/am-performance/snapshot', allowShareToken(() => 'am-performance'), async (req,res,next) => {
   try {
     const [quotaSourceColumn, quotaPriorSourceColumn] = await Promise.all([
-      getMappedSourceColumn(req.session.userId,'am-performance','quotaCurrent').catch(()=>null),
-      getMappedSourceColumn(req.session.userId,'am-performance','quotaPrior').catch(()=>null),
+      getMappedSourceColumn(requesterId(req),'am-performance','quotaCurrent').catch(()=>null),
+      getMappedSourceColumn(requesterId(req),'am-performance','quotaPrior').catch(()=>null),
     ]);
-    res.json(buildAePerformanceSnapshot(dashboardRows(req.session.userId,'am-performance'),req.query,
+    res.json(buildAePerformanceSnapshot(dashboardRows(requesterId(req),'am-performance'),req.query,
       {quotaSourceColumn, quotaPriorSourceColumn, scope:isAmRow}));
   } catch(error){ next(error); }
 });
 
-app.get('/api/ae-performance/metrics', requireAuth, (req, res) => {
-  res.json(buildAePerformanceSnapshot(dashboardRows(req.session.userId,'ae-performance'),req.query).metrics);
+app.get('/api/ae-performance/metrics', allowShareToken(() => 'ae-performance'), (req, res) => {
+  res.json(buildAePerformanceSnapshot(dashboardRows(requesterId(req),'ae-performance'),req.query).metrics);
 });
 
-app.get('/api/ae-performance/snapshot', requireAuth, async (req,res,next) => {
+app.get('/api/ae-performance/snapshot', allowShareToken(() => 'ae-performance'), async (req,res,next) => {
   try {
     // The mapped column NAMES are read alongside the rows so the board can
     // warn when a quota column is named for a different quarter than the one
     // being reported. Failing to read them must not fail the board, so a
     // lookup error degrades to "no warning" rather than to no dashboard.
     const [quotaSourceColumn, quotaPriorSourceColumn] = await Promise.all([
-      getMappedSourceColumn(req.session.userId,'ae-performance','quotaCurrent').catch(()=>null),
-      getMappedSourceColumn(req.session.userId,'ae-performance','quotaPrior').catch(()=>null),
+      getMappedSourceColumn(requesterId(req),'ae-performance','quotaCurrent').catch(()=>null),
+      getMappedSourceColumn(requesterId(req),'ae-performance','quotaPrior').catch(()=>null),
     ]);
-    res.json(buildAePerformanceSnapshot(dashboardRows(req.session.userId,'ae-performance'),req.query,
+    res.json(buildAePerformanceSnapshot(dashboardRows(requesterId(req),'ae-performance'),req.query,
       {quotaSourceColumn, quotaPriorSourceColumn}));
   } catch(error){ next(error); }
 });
 
-app.get('/api/comparison/:templateId', requireAuth, (req,res) => {
+app.get('/api/comparison/:templateId', allowShareToken(req => req.params.templateId), (req,res) => {
   if(req.params.templateId==='win-board'){
-    return res.json(buildWinBoardSnapshot(dashboardRows(req.session.userId,'win-board'),req.query).comparison);
+    return res.json(buildWinBoardSnapshot(dashboardRows(requesterId(req),'win-board'),req.query).comparison);
   }
   if(req.params.templateId==='loss-board'){
-    return res.json(buildLossBoardSnapshot(dashboardRows(req.session.userId,'loss-board'),req.query).comparison);
+    return res.json(buildLossBoardSnapshot(dashboardRows(requesterId(req),'loss-board'),req.query).comparison);
   }
   if(req.params.templateId==='ae-performance'){
-    return res.json(buildAePerformanceSnapshot(dashboardRows(req.session.userId,'ae-performance'),req.query).comparison);
+    return res.json(buildAePerformanceSnapshot(dashboardRows(requesterId(req),'ae-performance'),req.query).comparison);
   }
   if(req.params.templateId==='am-performance'){
-    return res.json(buildAePerformanceSnapshot(dashboardRows(req.session.userId,'am-performance'),req.query,{scope:isAmRow}).comparison);
+    return res.json(buildAePerformanceSnapshot(dashboardRows(requesterId(req),'am-performance'),req.query,{scope:isAmRow}).comparison);
   }
-  res.json(buildGenericComparison(dashboardRows(req.session.userId,req.params.templateId),req.query));
+  res.json(buildGenericComparison(dashboardRows(requesterId(req),req.params.templateId),req.query));
 });
 
 // Error-handling middleware must stay last: Express only routes thrown/next(error)
@@ -1266,18 +1050,6 @@ app.listen(PORT, async () => {
     }
   }
 
-  try {
-    await initializeTableauClient();
-    if (tableauClient) {
-      scheduleSync();
-      if (process.env.SYNC_ON_STARTUP === 'true') {
-        console.log('Running initial sync...');
-        await syncAllWorksheets();
-      }
-    }
-  } catch (error) {
-    console.error('WARN  Tableau initialisation skipped:', error?.message || error);
-  }
   console.log('\n✅ Server ready\n');
 });
 

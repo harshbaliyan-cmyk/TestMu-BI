@@ -16,6 +16,9 @@ import AmPerformance from './pages/AmPerformance';
 import AePerformancePresentation from './pages/AePerformancePresentation';
 import AmPerformancePresentation from './pages/AmPerformancePresentation';
 import AccountSettings from './pages/AccountSettings';
+import TvDisplay from './pages/TvDisplay';
+import ChartBuilder from './pages/ChartBuilder';
+import CustomDashboard from './pages/CustomDashboard';
 
 function App() {
   const { user, isLoading } = useAuth();
@@ -31,6 +34,11 @@ function App() {
         <AppLoader fullscreen label="Initializing TestMu BI…" />
       ) : (
         <Routes>
+          {/* The TV wall route authenticates with the share token in the URL,
+              not a session — it must stay reachable with nobody signed in,
+              and it outranks the must-change-password catch-all because a
+              wall display cannot change anyone's password. */}
+          <Route path="/tv/:token" element={<TvDisplay />} />
           {mustChangePassword && <Route path="*" element={<AccountSettings user={user} />} />}
           <Route path="/" element={user ? <Navigate to="/gallery" /> : <Login />} />
           <Route path="/gallery" element={user ? <Gallery user={user} /> : <Navigate to="/" />} />
@@ -41,6 +49,9 @@ function App() {
           <Route path="/dashboard/ae-performance" element={user ? <AePerformance user={user} /> : <Navigate to="/" />} />
           <Route path="/dashboard/am-performance" element={user ? <AmPerformance user={user} /> : <Navigate to="/" />} />
           <Route path="/dashboard/:templateId" element={user ? <Dashboard user={user} /> : <Navigate to="/" />} />
+          <Route path="/charts/new" element={user ? <ChartBuilder /> : <Navigate to="/" />} />
+          <Route path="/charts/:chartId/edit" element={user ? <ChartBuilder /> : <Navigate to="/" />} />
+          <Route path="/dashboards/custom/:dashboardId" element={user ? <CustomDashboard /> : <Navigate to="/" />} />
           <Route path="/present/win-board" element={user ? <WinBoardPresentation /> : <Navigate to="/" />} />
           <Route path="/present/loss-board" element={user ? <LossBoardPresentation /> : <Navigate to="/" />} />
           <Route path="/present/ae-performance" element={user ? <AePerformancePresentation /> : <Navigate to="/" />} />

@@ -34,7 +34,9 @@ export async function persistImportedSource({ userId, source, dashboardKeys, map
       VALUES ($1,$2,$3,$4,$5,$6,$7,'loaded',$8,$9,now()) RETURNING id`, [
       userId, source.tableauConnectionId || null, source.sourceType, source.externalId || null,
       source.workbookName || null, source.projectName || null, source.filename,
-      JSON.stringify(source.headers || []), rowCount,
+      // Full per-column profiles when the caller computed them (the chart
+      // builder's schema), falling back to the old bare header list.
+      JSON.stringify(source.columnProfiles || source.headers || []), rowCount,
     ]);
     const sourceId = inserted.rows[0].id;
 
@@ -149,16 +151,24 @@ export async function findWebhookSource(sourceId, secret) {
 
 export async function getSourceWebhookState(userId,sourceId) {
   const {rows}=await query(`SELECT id,external_id AS "externalId",source_type AS "sourceType",
-    webhook_id AS "webhookId",webhook_secret AS "webhookSecret",webhook_event AS "webhookEvent",
+    webhook_id AS "webhookId",webhook_failed_id AS "webhookFailedId",
+    webhook_secret AS "webhookSecret",webhook_event AS "webhookEvent",
     webhook_enabled AS "webhookEnabled",tableau_connection_id AS "connectionId"
     FROM data_sources WHERE id=$1 AND owner_user_id=$2 AND deleted_at IS NULL`,[sourceId,userId]);
   return rows[0]||null;
 }
 
-export async function saveSourceWebhook(sourceId,{webhookId,webhookSecret,webhookEvent,resourceLuid=null,enabled}) {
-  await query(`UPDATE data_sources SET webhook_id=$2,webhook_secret=$3,webhook_event=$4,
-    webhook_resource_luid=$5,webhook_enabled=$6,updated_at=now() WHERE id=$1`,
-    [sourceId,webhookId,webhookSecret,webhookEvent,resourceLuid,enabled]);
+export async function saveSourceWebhook(sourceId,{webhookId,webhookFailedId=null,webhookSecret,webhookEvent,resourceLuid=null,enabled}) {
+  await query(`UPDATE data_sources SET webhook_id=$2,webhook_failed_id=$3,webhook_secret=$4,webhook_event=$5,
+    webhook_resource_luid=$6,webhook_enabled=$7,updated_at=now() WHERE id=$1`,
+    [sourceId,webhookId,webhookFailedId,webhookSecret,webhookEvent,resourceLuid,enabled]);
+}
+
+// The extract failed on Tableau's side: what this app holds is the LAST GOOD
+// pull, and pretending otherwise is how a wall display lies. 'stale' clears on
+// the next successful sync (finishSyncRun writes 'loaded' over it).
+export async function markSourceStale(sourceId) {
+  await query(`UPDATE data_sources SET status='stale',updated_at=now() WHERE id=$1`,[sourceId]);
 }
 
 export async function markWebhookEventReceived(sourceId) {
@@ -185,6 +195,22 @@ export async function finishSyncRun(runId,sourceId,{status,rowCount=0,error=null
   await query(`UPDATE data_sources SET status=$2,last_row_count=$3,last_sync_attempt_at=now(),
     last_successful_sync_at=CASE WHEN $4 THEN now() ELSE last_successful_sync_at END,updated_at=now()
     WHERE id=$1`,[sourceId,succeeded?'loaded':'error',rowCount,succeeded]);
+}
+
+// Column profiles are recomputed on every refresh — the upstream Tableau
+// source can gain, lose, or retype columns between pulls, and the chart
+// builder's suggestions must describe the data that is actually loaded.
+export async function updateSourceSchema(sourceId, columnProfiles) {
+  await query(`UPDATE data_sources SET column_metadata=$2::jsonb, updated_at=now() WHERE id=$1`,
+    [sourceId, JSON.stringify(columnProfiles || [])]);
+}
+
+export async function getSourceSchema(userId, sourceId) {
+  const { rows } = await query(`SELECT id, source_name AS "name", source_type AS "sourceType", status,
+      column_metadata AS "columns", last_row_count AS "rowCount",
+      last_successful_sync_at AS "lastSync"
+    FROM data_sources WHERE id=$1 AND owner_user_id=$2 AND deleted_at IS NULL`, [sourceId, userId]);
+  return rows[0] || null;
 }
 
 export async function softDeleteSource(userId, sourceId) {

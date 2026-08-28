@@ -1,0 +1,26 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "design-system-color",
+        "value": "#126bff",
+        "createdAt": "2026-08-27T07:24:24.938Z",
+        "reason": "user confirmed: intentional WinBoard color, leave as-is (chat 2026-08-27)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgba(18,107,255,.16)",
+        "createdAt": "2026-08-27T07:24:25.026Z",
+        "reason": "user confirmed: intentional WinBoard color, leave as-is (chat 2026-08-27)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#dc2626",
+        "createdAt": "2026-08-27T07:24:25.110Z",
+        "reason": "user confirmed: intentional WinBoard color, leave as-is (chat 2026-08-27)"
+      }
+    ]
+  }
+}

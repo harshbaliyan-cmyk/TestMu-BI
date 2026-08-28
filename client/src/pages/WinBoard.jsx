@@ -5,6 +5,8 @@ import Chart from 'chart.js/auto';
 import {getWinBoardSnapshot,getOptions,getDashboardState,saveDashboardState} from '../lib/api';
 import {MultiSelect,ChartCard,ChartScroll,fmtNumber,fmtPercent,valueLabels,baseOptions,ComparisonProvider} from '../components/charts';
 import ThemeToggle from '../components/ThemeToggle';
+import DashboardSwitcher from '../components/DashboardSwitcher';
+import { Hideable } from '../components/Hideable';
 import AppLoader from '../components/AppLoader';
 import AdvancedDateRange, {rangeFor,isoDate} from '../components/AdvancedDateRange';
 import {useAuth} from '../hooks/useAuth';
@@ -1172,10 +1174,10 @@ export function WinRateSummary({overall,comparison}){
       Comparing <b>{shortDate(comparison.period.currentFrom)} – {shortDate(comparison.period.currentTo)}</b> against the previous period <b>{shortDate(comparison.period.previousFrom)} – {shortDate(comparison.period.previousTo)}</b>
     </div>}
     <div className="win-rate-summary-metrics">
-      <div className="win-rate-summary-metric arr-rate"><span>ARR win rate</span><strong>{fmtPercent(overall.arrWinRate)}</strong><small>Won ARR ÷ Closed ARR</small><KpiDelta value={comparison.arrWinRatePointChange}/></div>
-      <div className="win-rate-summary-metric deal-rate"><span>Opportunity win rate</span><strong>{fmtPercent(overall.dealWinRateOfAll)}</strong><small>Won ÷ all opportunities, open + closed</small><KpiDelta value={comparison.dealWinRateOfAllPointChange}/></div>
-      <div className="win-rate-summary-metric open-opp-rate"><span>Open opportunity %</span><strong>{fmtPercent(overall.openOppRate)}</strong><small>Open ÷ all opportunities, by count</small><KpiDelta value={comparison.openOppRatePointChange}/></div>
-      <div className="win-rate-summary-counts"><span>Opportunities</span>
+      <Hideable k="kpi:arr-win-rate" label="ARR win rate"><div className="win-rate-summary-metric arr-rate"><span>ARR win rate</span><strong>{fmtPercent(overall.arrWinRate)}</strong><small>Won ARR ÷ Closed ARR</small><KpiDelta value={comparison.arrWinRatePointChange}/></div></Hideable>
+      <Hideable k="kpi:opportunity-win-rate" label="Opportunity win rate"><div className="win-rate-summary-metric deal-rate"><span>Opportunity win rate</span><strong>{fmtPercent(overall.dealWinRateOfAll)}</strong><small>Won ÷ all opportunities, open + closed</small><KpiDelta value={comparison.dealWinRateOfAllPointChange}/></div></Hideable>
+      <Hideable k="kpi:open-opportunity-rate" label="Open opportunity %"><div className="win-rate-summary-metric open-opp-rate"><span>Open opportunity %</span><strong>{fmtPercent(overall.openOppRate)}</strong><small>Open ÷ all opportunities, by count</small><KpiDelta value={comparison.openOppRatePointChange}/></div></Hideable>
+      <Hideable k="kpi:opportunity-counts" label="Opportunities"><div className="win-rate-summary-counts"><span>Opportunities</span>
         <div className="win-rate-summary-counts-grid">
           <div className="count-total"><b>{fmtNumber(overall.opportunities)}</b><small>Total</small></div>
           <div className="count-open"><b>{fmtNumber(overall.open)}</b><small>Open</small></div>
@@ -1183,8 +1185,8 @@ export function WinRateSummary({overall,comparison}){
           <div className="count-won"><b>{fmtNumber(overall.wins)}</b><small>Won</small></div>
           <div className="count-lost"><b>{fmtNumber(overall.losses)}</b><small>Lost</small></div>
         </div>
-      </div>
-      <div className="win-rate-summary-metric open-arr-rate"><span>Open ARR %</span><strong>{fmtPercent(overall.openArrPct)}</strong><small>Open ARR ÷ Total ARR</small><KpiDelta value={comparison.openArrPctPointChange}/></div>
+      </div></Hideable>
+      <Hideable k="kpi:open-arr-rate" label="Open ARR %"><div className="win-rate-summary-metric open-arr-rate"><span>Open ARR %</span><strong>{fmtPercent(overall.openArrPct)}</strong><small>Open ARR ÷ Total ARR</small><KpiDelta value={comparison.openArrPctPointChange}/></div></Hideable>
     </div>
   </section>;
 }
@@ -1299,7 +1301,7 @@ export default function WinBoard({user}){
 
   return <ComparisonProvider value={comparison}><div className="wrap win-board-wrap"><div className="top-nav" style={{margin:'-18px -18px 18px'}}>
     <div className="brand" onClick={()=>navigate('/gallery')} style={{cursor:'pointer'}}><img className="brand-logo" src="/testmu-bi-logo-v2.png" alt="TestMu BI"/><span>TestMu BI</span></div>
-    <div className="user-pill"><ThemeToggle/><span>{user?.name||'User'}</span><button className="btn-secondary" onClick={signOut}>Sign out</button></div></div>
+    <div className="user-pill"><ThemeToggle/><DashboardSwitcher/><span>{user?.name||'User'}</span><button className="btn-secondary" onClick={signOut}>Sign out</button></div></div>
     <header className="top"><div className="top-row"><div><h1>Win Board</h1><div className="sub">Won ARR is the primary measure; deal win rate is supporting context. <strong>Opportunity type = New Business, New Business AM and Existing Business Up-Sell.</strong></div>
       {/* Spelled out on the board itself: "contribution" reads like a rate to
           anyone who has not been told otherwise, and the share-of-total
