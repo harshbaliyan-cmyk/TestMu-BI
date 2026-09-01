@@ -26,6 +26,7 @@ import { listSavedContent, createSavedContent, deleteSavedContent } from './repo
 import { createShareToken, listShareTokens, revokeShareToken, resolveShareToken } from './repositories/shareTokens.js';
 import { listAdminLogs, cleanupOldRecords } from './repositories/adminLogs.js';
 import { buildWinBoardSnapshot } from './services/winBoardMetrics.js';
+import { buildProductPipelineSnapshot, buildProductWonSnapshot } from './services/productViewMetrics.js';
 import { buildLossBoardSnapshot } from './services/lossBoardMetrics.js';
 import { buildAePerformanceSnapshot, isAmRow } from './services/aePerformanceMetrics.js';
 import { getMappedSourceColumn } from './repositories/dataSources.js';
@@ -463,6 +464,13 @@ const TEMPLATES = [
     fields: DASHBOARD_FIELD_SETS.lossBoard,
   },
   {
+    id: 'product-view',
+    name: 'Product View',
+    description: 'Pipeline by created date and Won ARR by close date, split by product',
+    tags: ['Tableau', '2 views'],
+    fields: DASHBOARD_FIELD_SETS.productView,
+  },
+  {
     id: 'am-performance',
     name: 'AM Performance',
     description: 'AM rep ranking by % of quota achieved, with POD attainment',
@@ -875,7 +883,7 @@ app.post('/api/data/:templateId/load', requireAdmin, (req, res) => {
 // Filter menus always describe the complete uploaded dataset. Active filters
 // affect dashboard rows, but do not hide valid choices from another menu.
 app.get('/api/options/:templateId', requireAuth, (req, res) => {
-  const FIELDS = ['region', 'orgType', 'stage', 'owner', 'source', 'type', 'industry', 'pod', 'team'];
+  const FIELDS = ['region', 'orgType', 'stage', 'owner', 'source', 'type', 'industry', 'pod', 'team', 'product', 'productGroup', 'continentGroup'];
   const all = dashboardRows(req.session.userId,req.params.templateId);
   const out = {};
   FIELDS.forEach(field => {
@@ -903,6 +911,15 @@ app.get('/api/win-board/metrics', allowShareToken(() => 'win-board'), (req, res)
 
 app.get('/api/win-board/snapshot', allowShareToken(() => 'win-board'), (req,res) => {
   res.json(buildWinBoardSnapshot(dashboardRows(requesterId(req),'win-board'),req.query));
+});
+
+// Product View: one template, two date-scoped views. Each has its own
+// snapshot so the client's per-view filters stay independent server-side too.
+app.get('/api/product-view/pipeline/snapshot', allowShareToken(() => 'product-view'), (req, res) => {
+  res.json(buildProductPipelineSnapshot(dashboardRows(requesterId(req), 'product-view'), req.query));
+});
+app.get('/api/product-view/won/snapshot', allowShareToken(() => 'product-view'), (req, res) => {
+  res.json(buildProductWonSnapshot(dashboardRows(requesterId(req), 'product-view'), req.query));
 });
 
 app.get('/api/loss-board/metrics', allowShareToken(() => 'loss-board'), (req, res) => {

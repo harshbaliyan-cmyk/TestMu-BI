@@ -520,6 +520,15 @@ tbody tr:hover { background: var(--line-2); }
   display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--txt-2);
 }
 .user-pill img { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; }
+/* Board-header refresh: the icon spins while the re-pull runs so a
+   tens-of-seconds Tableau refresh reads as working, not hung. */
+.refresh-data-button { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.refresh-data-icon { display: inline-block; font-size: 14px; line-height: 1; }
+.refresh-data-button.busy .refresh-data-icon { animation: refresh-spin 1s linear infinite; }
+.refresh-data-button.done { border-color: #16A34A; color: #16A34A; }
+.refresh-data-button.error { border-color: #DC2626; color: #DC2626; }
+@keyframes refresh-spin { to { transform: rotate(360deg); } }
+
 /* Jump-anywhere dashboard launcher: a 9-dot waffle button opening a tile
    grid. Sized to sit among the user pill's buttons on every board header. */
 .waffle-trigger {
@@ -557,6 +566,97 @@ tbody tr:hover { background: var(--line-2); }
   font-size: 11.5px; line-height: 1.25; text-align: center;
   display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
+
+/* ===== Product View (two date-scoped views on one board) ===== */
+.pv-tabs { display: flex; gap: 8px; margin-top: 10px; }
+.pv-tabs button {
+  padding: 7px 14px; border: 1px solid var(--line); border-radius: 999px;
+  background: var(--card); color: var(--txt-2); font-size: 12.5px; cursor: pointer;
+}
+.pv-tabs button.on { border-color: var(--blue); color: var(--blue); font-weight: 600; }
+.pv-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
+@media (max-width: 1100px) { .pv-grid { grid-template-columns: 1fr; } }
+/* Trend cards span the whole row: 12 monthly points plus end-of-line labels
+   need the full horizontal run, half a row squeezed them illegible. */
+.pv-card-full { grid-column: 1 / -1; }
+.pv-chart { position: relative; height: 300px; }
+.pv-card-full .pv-chart { height: 340px; }
+.pv-chart-fill { height: 100%; min-height: 120px; flex: 1; }
+.pv-toggle { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.pv-toggle button { padding: 4px 10px; border: none; background: var(--card); color: var(--txt-2); font-size: 11.5px; cursor: pointer; }
+.pv-toggle button.on { background: var(--blue); color: #FFFFFF; }
+.pv-topn { padding: 4px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--txt-2); font-size: 11.5px; }
+.pv-kpi-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 16px; }
+@media (max-width: 900px) { .pv-kpi-strip { grid-template-columns: repeat(2, 1fr); } }
+.pv-kpi {
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; min-width: 0;
+}
+.pv-kpi span { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--txt-3); }
+.pv-kpi strong { font-size: 24px; line-height: 1.15; color: var(--txt); }
+.pv-kpi small { font-size: 11.5px; color: var(--txt-2); }
+.pv-kpi-delta { font-size: 11px; }
+.pv-kpi-delta.up { color: #16A34A; }
+.pv-kpi-delta.down { color: #DC2626; }
+.pv-kpi-delta.muted { color: var(--txt-3); }
+.pv-table-scroll { overflow: auto; max-height: 420px; }
+.pv-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.pv-table th, .pv-table td { padding: 7px 10px; border-bottom: 1px solid var(--line-2); text-align: left; white-space: nowrap; }
+.pv-table th { position: sticky; top: 0; background: var(--card); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--txt-3); z-index: 1; }
+.pv-table .num, .pv-table th.n { text-align: right; }
+.pv-table th .sort-arrow { display: inline-block; }
+.pv-table tfoot td { border-top: 2px solid var(--line); font-weight: 700; }
+.pv-na { color: var(--txt-3); }
+/* Custom chart tooltip — the app's card language instead of the Chart.js
+   default box. Positioned by renderPvTooltip inside the .pv-chart card. */
+.pv-tooltip {
+  position: absolute; z-index: 30; pointer-events: none; opacity: 0;
+  min-width: 190px; max-width: 320px; padding: 10px 12px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .28);
+  font-size: 12px; transition: opacity .12s ease, left .06s ease-out, top .06s ease-out;
+}
+.pv-tooltip-title {
+  font-weight: 700; font-size: 12.5px; color: var(--txt);
+  padding-bottom: 6px; margin-bottom: 6px; border-bottom: 1px solid var(--line-2);
+}
+.pv-tooltip-row { display: flex; align-items: baseline; gap: 7px; padding: 2.5px 0; }
+.pv-tooltip-row i { width: 8px; height: 8px; border-radius: 50%; flex: none; align-self: center; }
+.pv-tooltip-row span {
+  color: var(--txt-2); flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 10px;
+}
+.pv-tooltip-row b { color: var(--txt); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pv-tooltip-row small { color: var(--txt-3); font-size: 11px; white-space: nowrap; }
+.pv-tooltip-sub { color: var(--txt-3); font-size: 11px; padding: 0 0 3px 15px; }
+.pv-tooltip-footer {
+  margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line-2);
+  font-weight: 700; color: var(--txt); text-align: right; font-variant-numeric: tabular-nums;
+}
+/* Group × Stage heatmap — the stacked bars' replacement. Cell colors are
+   inline (sequential ramp); the frame stays token-driven for both themes. */
+.pv-heatmap-wrap { overflow-x: auto; }
+.pv-heatmap { width: 100%; border-collapse: separate; border-spacing: 2px; font-size: 12px; }
+.pv-heatmap th {
+  padding: 6px 8px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--txt-3); text-align: center; white-space: nowrap;
+}
+.pv-heatmap th:first-child { text-align: left; }
+.pv-heatmap td {
+  padding: 12px 8px; text-align: center; border-radius: 6px; font-weight: 600;
+  font-variant-numeric: tabular-nums; background: var(--line-2); color: var(--txt-3);
+  min-width: 72px; white-space: nowrap;
+}
+/* width:1% + nowrap = shrink-to-fit, so few-stage datasets don't hand the
+   label column half the row while the stage cells share what's left. */
+.pv-heatmap-label { background: none !important; color: var(--txt-2) !important; text-align: left !important; font-weight: 600; width: 1%; padding-right: 18px; }
+.pv-heatmap-total { background: none !important; color: var(--txt) !important; font-weight: 700; }
+.pv-heatmap-hint { display: block; margin-top: 8px; font-size: 11px; color: var(--txt-3); }
+/* TV shell: our KPI strip lives inside the shared presentation strip, and
+   the rail's table gets the full rail height instead of the page cap. */
+.pv-tv-kpis .pv-kpi-strip { margin-bottom: 0; }
+.win-board-tv-pod-rail .pv-table-scroll { max-height: 100%; }
+.win-board-tv-chart-grid .present-card .pv-chart-fill { height: 100%; }
 
 /* Misc */
 .loading { text-align: center; padding: 60px; color: var(--txt-3); }
@@ -1178,6 +1278,14 @@ html[data-theme="light"] .void-particles > i { opacity: .32; }
 html[data-theme="light"] .card::after {  }
 html[data-theme="light"] .kpi .vl, html[data-theme="light"] .card-head h3 { color: #0F172A; text-shadow: none; }
 html[data-theme="light"] nav.tabs { background: #FFFFFF; }
+/* The sheet is dark-first and the dark pill colors (pale text on a
+   translucent wash) leak into light mode unreadably — every rate pill on a
+   white table row. Light gets dense ink on a soft tint instead. */
+html[data-theme="light"] .pill-good, html[data-theme="light"] .pg { background: #D3F2DF; color: #10633A; }
+html[data-theme="light"] .pill-warn, html[data-theme="light"] .py { background: #FCEBC3; color: #7A4E00; }
+html[data-theme="light"] .pill-bad, html[data-theme="light"] .pr { background: #FADBDB; color: #A31D1D; }
+html[data-theme="light"] .pill-info, html[data-theme="light"] .pb { background: #D8E8FD; color: #1D4FA8; }
+html[data-theme="light"] .tag, html[data-theme="light"] .pill-neutral { background: var(--line-2); color: var(--txt-2); }
 html[data-theme="light"] nav.tabs button.on { color: #fff; }
 html[data-theme="light"] .btn-secondary, html[data-theme="light"] .theme-toggle { background: #F4F7FB; color: #334155; }
 html[data-theme="light"] .ms-trigger, html[data-theme="light"] .fg select { background: #FFFFFF; color: #1E293B; border-color: #CBD5E1; }

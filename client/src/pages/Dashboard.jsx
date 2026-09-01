@@ -6,6 +6,7 @@ import { getData, getOptions, getDashboardState, saveDashboardState, listSavedVi
 import { useAuth } from '../hooks/useAuth';
 import ThemeToggle from '../components/ThemeToggle';
 import DashboardSwitcher from '../components/DashboardSwitcher';
+import RefreshDataButton from '../components/RefreshDataButton';
 import AppLoader from '../components/AppLoader';
 import {
   ChartCard, ChartScroll, MultiSelect, BarList, Heatmap, Donut, MetricGauges,
@@ -140,12 +141,15 @@ export default function Dashboard({ user }) {
 
   useEffect(()=>{ listSavedViews(templateId).then(setSavedViews).catch(()=>{}); },[templateId]);
 
+  // Bumped by the header's Refresh-data button after a source re-pull, so
+  // the rows refetch without pretending the filters changed.
+  const [reloadTick, setReloadTick] = useState(0);
   useEffect(() => {
     setLoading(true);
     getData(templateId, filters)
       .then(rows => { setData(rows); setLoading(false); })
       .catch(err => { console.error(err); setData([]); setLoading(false); });
-  }, [templateId, filters]);
+  }, [templateId, filters, reloadTick]);
 
   const [options, setOptions] = useState({
     region: [], orgType: [], stage: [], owner: [], source: [], type: [],
@@ -1016,6 +1020,7 @@ export default function Dashboard({ user }) {
         <div className="user-pill">
           <ThemeToggle />
           <DashboardSwitcher />
+          <RefreshDataButton templateId={templateId} onRefreshed={() => setReloadTick(tick => tick + 1)} />
           <span>{user?.name || 'User'}</span>
           {user?.picture && <img src={user.picture} alt="" />}
           <button className="btn-secondary" onClick={signOut}>Sign out</button>

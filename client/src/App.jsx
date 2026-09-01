@@ -18,6 +18,9 @@ import AmPerformancePresentation from './pages/AmPerformancePresentation';
 import AccountSettings from './pages/AccountSettings';
 import TvDisplay from './pages/TvDisplay';
 import ChartBuilder from './pages/ChartBuilder';
+import ProductView from './pages/ProductView';
+import ProductPipelinePresentation from './pages/ProductPipelinePresentation';
+import ProductWonPresentation from './pages/ProductWonPresentation';
 import CustomDashboard from './pages/CustomDashboard';
 
 function App() {
@@ -46,6 +49,7 @@ function App() {
           <Route path="/win-board" element={<Navigate to="/dashboard/win-board" replace />} />
           <Route path="/dashboard/loss-board" element={user ? <LossBoard user={user} /> : <Navigate to="/" />} />
           <Route path="/loss-board" element={<Navigate to="/dashboard/loss-board" replace />} />
+          <Route path="/dashboard/product-view" element={user ? <ProductView user={user} /> : <Navigate to="/" />} />
           <Route path="/dashboard/ae-performance" element={user ? <AePerformance user={user} /> : <Navigate to="/" />} />
           <Route path="/dashboard/am-performance" element={user ? <AmPerformance user={user} /> : <Navigate to="/" />} />
           <Route path="/dashboard/:templateId" element={user ? <Dashboard user={user} /> : <Navigate to="/" />} />
@@ -54,6 +58,8 @@ function App() {
           <Route path="/dashboards/custom/:dashboardId" element={user ? <CustomDashboard /> : <Navigate to="/" />} />
           <Route path="/present/win-board" element={user ? <WinBoardPresentation /> : <Navigate to="/" />} />
           <Route path="/present/loss-board" element={user ? <LossBoardPresentation /> : <Navigate to="/" />} />
+          <Route path="/present/product-pipeline" element={user ? <ProductPipelinePresentation /> : <Navigate to="/" />} />
+          <Route path="/present/product-won" element={user ? <ProductWonPresentation /> : <Navigate to="/" />} />
           <Route path="/present/ae-performance" element={user ? <AePerformancePresentation /> : <Navigate to="/" />} />
           <Route path="/present/am-performance" element={user ? <AmPerformancePresentation /> : <Navigate to="/" />} />
           <Route path="/present/:templateId" element={user ? <Presentation /> : <Navigate to="/" />} />

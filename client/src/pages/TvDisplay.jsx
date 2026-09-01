@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { setShareToken, resolveShareToken } from '../lib/api';
+import { setShareToken, resolveShareToken, getDashboardState } from '../lib/api';
 import AppLoader from '../components/AppLoader';
 import Presentation from './Presentation';
 import TvCustomDashboard from './TvCustomDashboard';
@@ -8,12 +8,29 @@ import WinBoardPresentation from './WinBoardPresentation';
 import LossBoardPresentation from './LossBoardPresentation';
 import AePerformancePresentation from './AePerformancePresentation';
 import AmPerformancePresentation from './AmPerformancePresentation';
+import ProductPipelinePresentation from './ProductPipelinePresentation';
+import ProductWonPresentation from './ProductWonPresentation';
+
+// Product View is ONE template with TWO presentations. A share token only
+// names the template, so the wall shows whichever view the owner last
+// launched (saved in presentationSettings.view), defaulting to Pipeline.
+function ProductViewTv() {
+  const [view, setView] = useState(null);
+  useEffect(() => {
+    getDashboardState('product-view')
+      .then(state => setView(state?.presentationSettings?.view === 'product-won' ? 'won' : 'pipeline'))
+      .catch(() => setView('pipeline'));
+  }, []);
+  if (!view) return <AppLoader fullscreen label="Opening display…" />;
+  return view === 'won' ? <ProductWonPresentation share /> : <ProductPipelinePresentation share />;
+}
 
 const BOARDS = {
   'win-board': WinBoardPresentation,
   'loss-board': LossBoardPresentation,
   'ae-performance': AePerformancePresentation,
   'am-performance': AmPerformancePresentation,
+  'product-view': ProductViewTv,
 };
 
 // The wall display's front door. No session, no nav: the token in the URL is

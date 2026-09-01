@@ -1,0 +1,135 @@
+# Calculated fields — the canonical formula reference
+
+Every derived field the dashboards depend on, with its exact business rule and
+**where it is computed**. Two places exist:
+
+- **In-app** — computed by this codebase at import/refresh time
+  ([server/datasources.js](server/datasources.js) `applyMapping`, rules in
+  [server/services/productDerivations.js](server/services/productDerivations.js)).
+  The source only needs its **raw** columns. This is required whenever the rule
+  was a Tableau ad-hoc group or worksheet calculation, because neither travels
+  through a published data source / VizQL Data Service.
+- **In Tableau** — a row-level calculated field on the published data source;
+  it arrives in the app as a normal column.
+
+A directly mapped column **always wins** over an in-app derivation — the app
+only fills what the mapping left empty.
+
+---
+
+## Product View source (in-app derivations)
+
+### Product ARR — in-app
+Inputs: `Total Price`, `Subscription Duration` (months).
+
+```
+Product ARR = ([Total Price] / [Subscription Duration]) * 12
+```
+
+Null (not 0) when either input is missing or the duration is ≤ 0 — a missing
+price must not deflate averages as a fake $0. The opp-level ARR field is never
+used on product rows: it repeats the whole deal's value on every line, so a
+multi-product opp would be counted once per product.
+
+### Actual Product Name — in-app
+Input: raw `Product Name` (SKU).
+
+The full SKU → display-name ladder (65 branches):
+
+| Display name | Raw SKUs |
+|---|---|
+| Virtual Cloud | Virtual Cloud (VMs & Virtual Devices) · LambdaTest Virtual Cloud · Virtual Live · Virtual & Real Device Plus Automation Cloud · ChromeOS Live |
+| Private Devices | Private Real Device Cloud · Private Real Device |
+| Test Manager | Test Manager · Test Manager Premium |
+| HyperExecute | HyperExecute MultiOS · TestMuOne · HyperExecute - Public Cloud · HyperExecute OnPrem (Including Lums + Oauth) · HyperExecute OnPrem (Excluding LUMS + Oauth) · LambdaTestOne · HyperExecute (Dedicated Account On LT) · HyperExecute On Premise · LambdaTest One Plus · HyperExecute - Public Cloud (Linux Only) · TestMuOne - Lite · LambdaTest One Lite |
+| Smart UI | SmartUI Visual Regression |
+| Accessibility | Accessibility · Accessibility Scheduling · Accessibility Automation · Native App Accessibility |
+| Kane AI | Kane AI (Web) · Kane AI (Mobile + Web) · Kane AI Web · KaneAI Desktop & Mobile Essentials · KaneAI Web & App |
+| Kane CLI | Kane CLI · Kane CLI Pro · Kane CLI Starter |
+| Automation | Web Automation on Desktop · App Automation - Virtual Device · Virtual Automation Cloud · Web & Mobile Browser Automation · Native App Automation - Virtual Devices · Web and Mobile App automation on Virtual Devices · Web Automation on Desktop - Linux · Private Cloud Web Automation Desktop- Dedicated VM |
+| Automation - RD | Web & Mobile Browser Automation - Real Devices · Native App Automation · Real Device Plus Automation Cloud · Web & Mobile Browser Automation on Real Devices Plus · Real Device Automation Cloud · Virtual & Real Device Automation Cloud · Native App Automation Plus · Add-on: Real Mobile Device - Automation |
+| Manual - RD | Real Device Live · Real Device Plus Live · Add-on: Real Mobile Device - Manual |
+| A2A | Agent to Agent Testing |
+| PS | Professional Services |
+| Others | Others · Enterprise Plan · Additional Users · IP Whitelisting · SSO Support · SSO Add-On · Dedicated Proxy · Advanced App Performance Analytics · Enterprise Security |
+
+> **Deliberate deviation from the original Tableau formula**: its `ELSE ""`
+> blanks unrecognised SKUs, which makes a brand-new SKU silently vanish from
+> every per-product split. The app instead passes the raw name through —
+> visible, filterable, and obviously un-renamed, which is the signal to add a
+> new branch to `PRODUCT_NAME_MAP`.
+
+### Product Group — in-app
+Input: raw `Product Name` (SKU). Buckets:
+
+- **Agentic AI** — Kane AI (Mobile + Web) · Agent to Agent Testing · Test Manager · Accessibility Scheduling · SmartUI Visual Regression · Kane AI (Web) · Test Manager Premium · Accessibility · Accessibility Automation · Kane AI Web · Native App Accessibility · KaneAI Web & App · KaneAI Desktop & Mobile Essentials · Kane CLI · Kane CLI Pro · Kane CLI Starter
+- **Agentic cloud: Hyperexecute** — HyperExecute - Public Cloud (Linux Only) · HyperExecute MultiOS · HyperExecute - Public Cloud · TestMuOne · LambdaTestOne · LambdaTest One Plus · LambdaTest One Lite · HyperExecute OnPrem (Including Lums + Oauth) · HyperExecute OnPrem (Excluding LUMS + Oauth) · HyperExecute On Premise · TestMuOne - Lite · HyperExecute (Dedicated Account On LT)
+- **Browser And App** — Private Real Device Cloud · Private Real Device · Native App Automation Plus · Professional Services · Virtual Automation Cloud · Real Device Plus Automation Cloud · Web Automation on Desktop · Real Device Plus Live · Virtual Cloud (VMs & Virtual Devices) · Dedicated Proxy · Native App Automation · Real Device Live · Virtual Live · Web & Mobile Browser Automation - Real Devices · SSO Add-On · Enterprise Plan · Real Device Automation Cloud · Virtual & Real Device Automation Cloud · Web & Mobile Browser Automation · SSO Support · Advanced App Performance Analytics · Web & Mobile Browser Automation on Real Devices Plus · Native App Automation - Virtual Devices · Enterprise Security · LambdaTest Virtual Cloud · App Automation - Virtual Device · Web Automation on Desktop - Linux · ChromeOS Live · Add-on: Real Mobile Device - Automation · Add-on: Real Mobile Device - Manual · Web and Mobile App automation on Virtual Devices · Virtual & Real Device Plus Automation Cloud · Private Cloud Web Automation Desktop- Dedicated VM · Web and App Automation on Virtual Device
+- **Others** — Others · IP Whitelisting · Additional Users · Test at Scale · Test At Scale: Lite · Data Center Region Reservation · Data Retention · GDPR · Unbound · Performance Testing - Basic — **and every unrecognised SKU** (the `ELSE` branch). Others growing unexpectedly means a new SKU needs sorting into a real group.
+
+### Continent Group — in-app
+Input: raw `Acc Continent`.
+
+```
+Asia | Australia | Oceania            → APAC
+North America | South America        → Americas
+Europe | Africa | Middle East        → EMEA
+anything else                        → "" (blank)
+```
+
+Already-grouped values (APAC / Americas / EMEA) pass through untouched, so a
+source publishing the grouped column also works. Note this is the
+**customer's** geography; the Region field derives from the owning **rep's**
+role — the two need not agree, and this one says "Americas" where Region says
+"AMER".
+
+### Opportunity Forecast buckets — in-app (metrics layer)
+Input: raw `Opportunity Forecast`. The Tableau side merged these with an
+ad-hoc group, which does not survive the published-datasource pull, so
+[productViewMetrics.js](server/services/productViewMetrics.js) applies it:
+
+```
+Best Case     ← Best Case, High
+Commit        ← Commit
+No Projection ← Low, No Projection
+null / blank  ← NO bucket  (an explicit "No Projection" is a rep's call;
+                            a blank is the absence of one)
+```
+
+### Org Type — in-app when raw inputs are mapped, in Tableau on the Opportunity source
+Inputs: `Free Domain` (boolean), `Employees`.
+
+```
+IF [Free Domain] THEN "SMB"
+ELSEIF [Employees] >= 2000 THEN "Enterprise"
+ELSEIF [Employees] >= 100 THEN "Mid-Market"
+ELSE "SMB"
+END
+```
+
+The app derives this only when Org type is unmapped **and** at least one raw
+input is mapped — otherwise a source with no org information would mislabel
+every row as SMB.
+
+---
+
+## Opportunity source (calculated in Tableau, arrive as columns)
+
+Documented in full on each field in [server/datasources.js](server/datasources.js) `OPP_SCHEMA`:
+
+- **ARR** = `([Amount] / [Subscription Duration]) * 12`
+- **Org type** = the Free Domain / Employees rule above
+- **Region** = `AMER*` role prefixes collapsed to AMER, else the region detail
+- **Region (detail)** = AMER I / II / III / EMEA / APAC pattern-matched from Role Name (test order is load-bearing)
+- **POD** = AE Corp / AE Enterprise / AM / Others pattern-matched from Role Name
+  *(on the Product source POD arrives as a raw column instead)*
+- **BDR Owner Name** = `IF NOT ISNULL([BDR Owner]) THEN [Full Name] END`
+- **Cycle days** = `DATEDIFF('day', [Created Date], [Close Date])` for closed deals, ≥ 0 guard
+- **Stale threshold** = 90 / 30 / 15 days by org type
+- **Is stalled** = open AND days-in-stage ≥ stale threshold
+
+## Derived in-app for every source (gap-fills in `applyMapping`)
+
+- **Is closed / Is won** — from Stage when unmapped: contains "Closed" → closed; "Closed Won" → won; "Closed Lost" → lost. The Product source maps its raw `Closed` / `Won` columns directly.
+- **Cycle days / Stale threshold / Is stalled** — recomputed from arriving columns because they are worksheet-level calcs in Tableau (worksheet calcs, like ad-hoc groups, are not exposed to the data source API).
+- **Industry** — blanks become the explicit "No Industry" category so fully-selected filters don't silently drop them.

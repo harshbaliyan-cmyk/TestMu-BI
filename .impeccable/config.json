@@ -1,7 +1,14 @@
 {
   "detector": {
     "ignoreRules": [],
-    "ignoreFiles": [],
+    "ignoreFiles": [
+      {
+        "file": "client/src/pages/Dashboard.jsx",
+        "rule": "design-system-color",
+        "createdAt": "2026-08-28T13:00:00.000Z",
+        "reason": "pre-existing chart palette literals throughout this legacy chart-heavy page; user's standing decision is to leave board chart colors as-is (chat 2026-08-27/28)"
+      }
+    ],
     "ignoreValues": [
       {
         "rule": "design-system-color",

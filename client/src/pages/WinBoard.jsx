@@ -1,4 +1,4 @@
-import {useCallback,useEffect,useId,useLayoutEffect,useMemo,useRef,useState} from 'react';
+﻿import {useCallback,useEffect,useId,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {useNavigate} from 'react-router-dom';
 import Chart from 'chart.js/auto';
@@ -6,6 +6,7 @@ import {getWinBoardSnapshot,getOptions,getDashboardState,saveDashboardState} fro
 import {MultiSelect,ChartCard,ChartScroll,fmtNumber,fmtPercent,valueLabels,baseOptions,ComparisonProvider} from '../components/charts';
 import ThemeToggle from '../components/ThemeToggle';
 import DashboardSwitcher from '../components/DashboardSwitcher';
+import RefreshDataButton from '../components/RefreshDataButton';
 import { Hideable } from '../components/Hideable';
 import AppLoader from '../components/AppLoader';
 import AdvancedDateRange, {rangeFor,isoDate} from '../components/AdvancedDateRange';
@@ -1238,6 +1239,9 @@ export default function WinBoard({user}){
     localStorage.setItem(`testmu-dashboard-state-${TEMPLATE}`,JSON.stringify(state));
     saveDashboardState(TEMPLATE,state).catch(()=>{});
   },500);return()=>clearTimeout(timer);},[filters,topN,podTopN,percentageMetric,hydrated]);
+  // Bumped by the header's Refresh-data button after a source re-pull, so
+  // the snapshot refetches without pretending the filters changed.
+  const [reloadTick,setReloadTick]=useState(0);
   useEffect(()=>{
     let cancelled=false;
     setLoading(true);setLoadError('');setComparison({available:false});
@@ -1251,7 +1255,7 @@ export default function WinBoard({user}){
       setLoadError(error.response?.data?.error||error.message||'Could not load Win Board data');
     }).finally(()=>{if(!cancelled)setLoading(false);});
     return()=>{cancelled=true;};
-  },[filters]);
+  },[filters,reloadTick]);
   useEffect(()=>{let cancelled=false;getOptions(TEMPLATE).then(value=>{
     if(!cancelled){setOptions(value);setOptionsReady(true);}
   }).catch(()=>{if(!cancelled)setOptionsReady(true);});return()=>{cancelled=true;};},[]);
@@ -1301,7 +1305,7 @@ export default function WinBoard({user}){
 
   return <ComparisonProvider value={comparison}><div className="wrap win-board-wrap"><div className="top-nav" style={{margin:'-18px -18px 18px'}}>
     <div className="brand" onClick={()=>navigate('/gallery')} style={{cursor:'pointer'}}><img className="brand-logo" src="/testmu-bi-logo-v2.png" alt="TestMu BI"/><span>TestMu BI</span></div>
-    <div className="user-pill"><ThemeToggle/><DashboardSwitcher/><span>{user?.name||'User'}</span><button className="btn-secondary" onClick={signOut}>Sign out</button></div></div>
+    <div className="user-pill"><ThemeToggle/><DashboardSwitcher/><RefreshDataButton templateId={TEMPLATE} onRefreshed={()=>setReloadTick(tick=>tick+1)}/><span>{user?.name||'User'}</span><button className="btn-secondary" onClick={signOut}>Sign out</button></div></div>
     <header className="top"><div className="top-row"><div><h1>Win Board</h1><div className="sub">Won ARR is the primary measure; deal win rate is supporting context. <strong>Opportunity type = New Business, New Business AM and Existing Business Up-Sell.</strong></div>
       {/* Spelled out on the board itself: "contribution" reads like a rate to
           anyone who has not been told otherwise, and the share-of-total

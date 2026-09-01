@@ -4,6 +4,7 @@ import {getLossBoardSnapshot,getOptions,getDashboardState,saveDashboardState} fr
 import {MultiSelect,ChartCard,fmtNumber,fmtPercent,ComparisonProvider} from '../components/charts';
 import ThemeToggle from '../components/ThemeToggle';
 import DashboardSwitcher from '../components/DashboardSwitcher';
+import RefreshDataButton from '../components/RefreshDataButton';
 import { Hideable } from '../components/Hideable';
 import AppLoader from '../components/AppLoader';
 import AdvancedDateRange, {rangeFor,isoDate} from '../components/AdvancedDateRange';
@@ -129,6 +130,9 @@ export default function LossBoard({user}){
     localStorage.setItem(`testmu-dashboard-state-${TEMPLATE}`,JSON.stringify(state));
     saveDashboardState(TEMPLATE,state).catch(()=>{});
   },500);return()=>clearTimeout(timer);},[filters,reasonTopN,podTopN,percentageMetric,hydrated]);
+  // Bumped by the header's Refresh-data button after a source re-pull, so
+  // the snapshot refetches without pretending the filters changed.
+  const [reloadTick,setReloadTick]=useState(0);
   useEffect(()=>{
     let cancelled=false;
     setLoading(true);setLoadError('');setComparison({available:false});
@@ -142,7 +146,7 @@ export default function LossBoard({user}){
       setLoadError(error.response?.data?.error||error.message||'Could not load Loss Board data');
     }).finally(()=>{if(!cancelled)setLoading(false);});
     return()=>{cancelled=true;};
-  },[filters]);
+  },[filters,reloadTick]);
   useEffect(()=>{let cancelled=false;getOptions(TEMPLATE).then(value=>{
     if(!cancelled){setOptions(value);setOptionsReady(true);}
   }).catch(()=>{if(!cancelled)setOptionsReady(true);});return()=>{cancelled=true;};},[]);
@@ -192,7 +196,7 @@ export default function LossBoard({user}){
 
   return <ComparisonProvider value={comparison}><div className="wrap win-board-wrap"><div className="top-nav" style={{margin:'-18px -18px 18px'}}>
     <div className="brand" onClick={()=>navigate('/gallery')} style={{cursor:'pointer'}}><img className="brand-logo" src="/testmu-bi-logo-v2.png" alt="TestMu BI"/><span>TestMu BI</span></div>
-    <div className="user-pill"><ThemeToggle/><DashboardSwitcher/><span>{user?.name||'User'}</span><button className="btn-secondary" onClick={signOut}>Sign out</button></div></div>
+    <div className="user-pill"><ThemeToggle/><DashboardSwitcher/><RefreshDataButton templateId={TEMPLATE} onRefreshed={()=>setReloadTick(tick=>tick+1)}/><span>{user?.name||'User'}</span><button className="btn-secondary" onClick={signOut}>Sign out</button></div></div>
     <header className="top"><div className="top-row"><div><h1>Loss Board</h1><div className="sub">Where business is being lost. Lost ARR is the primary measure; opportunity loss rate is supporting context.</div>
       {/* Mirrors the Win Board note, against Lost ARR — the two boards use the
           same word for the same shape of calculation on opposite outcomes. */}

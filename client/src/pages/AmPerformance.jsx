@@ -5,6 +5,7 @@ import {getAmPerformanceSnapshot,getOptions,getDashboardState,saveDashboardState
 import {MultiSelect,ChartCard,fmtNumber,fmtPercent,ComparisonProvider} from '../components/charts';
 import ThemeToggle from '../components/ThemeToggle';
 import DashboardSwitcher from '../components/DashboardSwitcher';
+import RefreshDataButton from '../components/RefreshDataButton';
 import AppLoader from '../components/AppLoader';
 import AdvancedDateRange, {rangeFor,isoDate} from '../components/AdvancedDateRange';
 import {useAuth} from '../hooks/useAuth';
@@ -70,6 +71,9 @@ export default function AmPerformance({user}){
     localStorage.setItem(`testmu-dashboard-state-${TEMPLATE}`,JSON.stringify(state));
     saveDashboardState(TEMPLATE,state).catch(()=>{});
   },500);return()=>clearTimeout(timer);},[filters,repTopN,podTopN,hydrated]);
+  // Bumped by the header's Refresh-data button after a source re-pull, so
+  // the snapshot refetches without pretending the filters changed.
+  const [reloadTick,setReloadTick]=useState(0);
   useEffect(()=>{
     let cancelled=false;
     setLoading(true);setLoadError('');setComparison({available:false});
@@ -85,7 +89,7 @@ export default function AmPerformance({user}){
       setLoadError(error.response?.data?.error||error.message||'Could not load AM Performance data');
     }).finally(()=>{if(!cancelled)setLoading(false);});
     return()=>{cancelled=true;};
-  },[filters]);
+  },[filters,reloadTick]);
   useEffect(()=>{let cancelled=false;getOptions(TEMPLATE).then(value=>{
     if(!cancelled){setOptions(value);setOptionsReady(true);}
   }).catch(()=>{if(!cancelled)setOptionsReady(true);});return()=>{cancelled=true;};},[]);
@@ -145,7 +149,7 @@ export default function AmPerformance({user}){
 
   return <ComparisonProvider value={comparison}><div className="wrap win-board-wrap"><div className="top-nav" style={{margin:'-18px -18px 18px'}}>
     <div className="brand" onClick={()=>navigate('/gallery')} style={{cursor:'pointer'}}><img className="brand-logo" src="/testmu-bi-logo-v2.png" alt="TestMu BI"/><span>TestMu BI</span></div>
-    <div className="user-pill"><ThemeToggle/><DashboardSwitcher/><span>{user?.name||'User'}</span><button className="btn-secondary" onClick={signOut}>Sign out</button></div></div>
+    <div className="user-pill"><ThemeToggle/><DashboardSwitcher/><RefreshDataButton templateId={TEMPLATE} onRefreshed={()=>setReloadTick(tick=>tick+1)}/><span>{user?.name||'User'}</span><button className="btn-secondary" onClick={signOut}>Sign out</button></div></div>
     <header className="top"><div className="top-row"><div><h1>AM Performance</h1><div className="sub">Ranks AM reps by <strong>% of quota achieved</strong> for {quota?.currentQuarter||'the current quarter'}. <strong>Owned by an AM POD only.</strong></div><div className="board-scope-note">Opp type = New Business, New Business AM, Existing Business - Up-sell</div></div>
       <button type="button" className="present-button" onClick={startPresentation}>▶ Present</button></div>
       <div className="filters win-board-filter-shelf">{filterDefs.map(([key,label])=><MultiSelect key={key} label={label} options={options[key]||[]} value={filters[key]} onChange={value=>updateFilter(key,value)}/>) }

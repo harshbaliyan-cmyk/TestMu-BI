@@ -22,6 +22,7 @@ import {
   markSourceStale, updateSourceSchema, getSourceSchema,
 } from './repositories/dataSources.js';
 import { profileColumns } from './services/columnProfile.js';
+import { actualProductName, productGroupFor, continentGroupFor, productArrFrom, orgTypeFrom } from './services/productDerivations.js';
 import { query } from './db/pool.js';
 import { logAudit, logSourceAccess } from './repositories/activityLogs.js';
 
@@ -48,7 +49,7 @@ export const OPP_SCHEMA = {
                       preferredHeaders: ['accountid'],
                       aliases: ['accountid', 'accountidentifier', 'acctid', 'salesforceaccountid'] },
   owner:            { type: 'string',  group: 'essential', label: 'Owner Name', hint: 'AE/AM rep performance tab, global filter',
-                      desc: 'Owner NAME, not ID. Resolved by joining the User table on Owner = User ID and taking Full Name. Deals with no owner show as "⚠ Unassigned" and are flagged as a data-quality issue.',
+                      desc: 'Owner NAME, not ID. On the Opportunity source it is resolved by joining the User table on Owner = User ID and taking Full Name; on the PRODUCT source Full Name arrives as a plain raw column. Deals with no owner show as "⚠ Unassigned" and are flagged as a data-quality issue.',
                       formula: 'IFNULL([Owner Name], "⚠ Unassigned")',
                       preferredHeaders: ['ownername'],
                       aliases: ['owner', 'ownername', 'rep', 'salesrep', 'accountexecutive', 'opportunityowner'] },
@@ -93,7 +94,7 @@ export const OPP_SCHEMA = {
   pod:              { type: 'string',  group: 'segmentation', label: 'POD', hint: 'Global filter, team performance',
                       calculated: true,
                       formula: 'IF STARTSWITH([Role Name], "AM ") OR [Role Name] = "Account Manager" THEN "AM"\nELSEIF [Role Name] = "Corp Account Executive"\n     OR (STARTSWITH([Role Name], "AE") AND CONTAINS(UPPER([Role Name]), "CORP")) THEN "AE Corp"\nELSEIF STARTSWITH([Role Name], "AE") OR [Role Name] = "Enterprise Account Executive" THEN "AE Enterprise"\nELSE "Others"\nEND',
-                      desc: 'Sales team grouping derived from the raw Role Name — AE Corp, AE Enterprise, AM, or Others. Non-AE/AM roles (SDR and BDR variants, Renewal Specialists, Admin, VPs and similar) collect in Others rather than returning null, so POD totals tie to dashboard totals. Built by pattern matching rather than a Tableau group, since worksheet groups do not travel through the published data source. Branch order matters: AM is tested first so "AM AMER Corp" is not misread as AE Corp; UPPER() handles inconsistent casing between "AE AMER CORP" and "AM AMER Corp"; and the STARTSWITH("AE") guard on the Corp branch keeps "BDR US CORP-Manager" out. Three roles are named explicitly because they carry no AE/AM prefix: Account Manager, Corp Account Executive, Enterprise Account Executive.',
+                      desc: 'Sales team grouping. On the PRODUCT source this arrives as a plain raw column; the derivation below applies to the Opportunity source, where it is calculated from the raw Role Name — AE Corp, AE Enterprise, AM, or Others. Non-AE/AM roles (SDR and BDR variants, Renewal Specialists, Admin, VPs and similar) collect in Others rather than returning null, so POD totals tie to dashboard totals. Built by pattern matching rather than a Tableau group, since worksheet groups do not travel through the published data source. Branch order matters: AM is tested first so "AM AMER Corp" is not misread as AE Corp; UPPER() handles inconsistent casing between "AE AMER CORP" and "AM AMER Corp"; and the STARTSWITH("AE") guard on the Corp branch keeps "BDR US CORP-Manager" out. Three roles are named explicitly because they carry no AE/AM prefix: Account Manager, Corp Account Executive, Enterprise Account Executive.',
                       aliases: ['pod', 'team', 'salespod', 'podname'] },
   team:             { type: 'string', group: 'segmentation', label: 'Team Name', hint: 'Win Board contribution and AE/AM splits',
                       desc: 'The source Team Name field. Kept separate from derived POD and used to split team, AE, and AM Won ARR contribution.',
@@ -102,8 +103,19 @@ export const OPP_SCHEMA = {
                       desc: 'Account vertical. The scorecard only ranks industries with three or more closed deals.',
                       aliases: ['industry', 'vertical', 'sector'] },
   product:          { type: 'string',  group: 'segmentation', label: 'Product', hint: 'Global filter, product portfolio bubble',
-                      desc: 'Product or SKU. Drives the portfolio bubble chart plotting closed value against win rate.',
-                      aliases: ['product', 'productname', 'productline', 'sku', 'productfamily'] },
+                      formula: 'IF [Product Name] = "Virtual Cloud (VMs & Virtual Devices)" THEN "Virtual Cloud"\nELSEIF [Product Name] = "Private Real Device Cloud" THEN "Private Devices"\nELSEIF [Product Name] = "Test Manager" THEN "Test Manager"\nELSEIF [Product Name] = "HyperExecute MultiOS" THEN "HyperExecute"\nELSEIF [Product Name] = "Private Real Device" THEN "Private Devices"\nELSEIF [Product Name] = "SmartUI Visual Regression" THEN "Smart UI"\nELSEIF [Product Name] = "Accessibility" THEN "Accessibility"\nELSEIF [Product Name] = "Accessibility Scheduling" THEN "Accessibility"\nELSEIF [Product Name] = "Accessibility Automation" THEN "Accessibility"\nELSEIF [Product Name] = "Test Manager Premium" THEN "Test Manager"\nELSEIF [Product Name] = "Kane AI (Web)" THEN "Kane AI"\nELSEIF [Product Name] = "Others" THEN "Others"\nELSEIF [Product Name] = "TestMuOne" THEN "HyperExecute"\nELSEIF [Product Name] = "Web Automation on Desktop" THEN "Automation"\nELSEIF [Product Name] = "Web & Mobile Browser Automation - Real Devices" THEN "Automation - RD"\nELSEIF [Product Name] = "App Automation - Virtual Device" THEN "Automation"\nELSEIF [Product Name] = "Kane AI (Mobile + Web)" THEN "Kane AI"\nELSEIF [Product Name] = "Enterprise Plan" THEN "Others"\nELSEIF [Product Name] = "Virtual Automation Cloud" THEN "Automation"\nELSEIF [Product Name] = "Native App Automation" THEN "Automation - RD"\nELSEIF [Product Name] = "Web & Mobile Browser Automation" THEN "Automation"\nELSEIF [Product Name] = "Real Device Live" THEN "Manual - RD"\nELSEIF [Product Name] = "HyperExecute - Public Cloud" THEN "HyperExecute"\nELSEIF [Product Name] = "Real Device Plus Automation Cloud" THEN "Automation - RD"\nELSEIF [Product Name] = "Web & Mobile Browser Automation on Real Devices Plus" THEN "Automation - RD"\nELSEIF [Product Name] = "Kane AI Web" THEN "Kane AI"\nELSEIF [Product Name] = "Additional Users" THEN "Others"\nELSEIF [Product Name] = "LambdaTest Virtual Cloud" THEN "Virtual Cloud"\nELSEIF [Product Name] = "Real Device Automation Cloud" THEN "Automation - RD"\nELSEIF [Product Name] = "Real Device Plus Live" THEN "Manual - RD"\nELSEIF [Product Name] = "Virtual & Real Device Automation Cloud" THEN "Automation - RD"\nELSEIF [Product Name] = "HyperExecute OnPrem (Including Lums + Oauth)" THEN "HyperExecute"\nELSEIF [Product Name] = "Virtual Live" THEN "Virtual Cloud"\nELSEIF [Product Name] = "Kane CLI" THEN "Kane CLI"\nELSEIF [Product Name] = "Agent to Agent Testing" THEN "A2A"\nELSEIF [Product Name] = "IP Whitelisting" THEN "Others"\nELSEIF [Product Name] = "SSO Support" THEN "Others"\nELSEIF [Product Name] = "Dedicated Proxy" THEN "Others"\nELSEIF [Product Name] = "HyperExecute OnPrem (Excluding LUMS + Oauth)" THEN "HyperExecute"\nELSEIF [Product Name] = "LambdaTestOne" THEN "HyperExecute"\nELSEIF [Product Name] = "HyperExecute (Dedicated Account On LT)" THEN "HyperExecute"\nELSEIF [Product Name] = "HyperExecute On Premise" THEN "HyperExecute"\nELSEIF [Product Name] = "LambdaTest One Plus" THEN "HyperExecute"\nELSEIF [Product Name] = "Native App Automation - Virtual Devices" THEN "Automation"\nELSEIF [Product Name] = "Professional Services" THEN "PS"\nELSEIF [Product Name] = "HyperExecute - Public Cloud (Linux Only)" THEN "HyperExecute"\nELSEIF [Product Name] = "TestMuOne - Lite" THEN "HyperExecute"\nELSEIF [Product Name] = "Native App Automation Plus" THEN "Automation - RD"\nELSEIF [Product Name] = "Add-on: Real Mobile Device - Automation" THEN "Automation - RD"\nELSEIF [Product Name] = "Add-on: Real Mobile Device - Manual" THEN "Manual - RD"\nELSEIF [Product Name] = "KaneAI Desktop & Mobile Essentials" THEN "Kane AI"\nELSEIF [Product Name] = "KaneAI Web & App" THEN "Kane AI"\nELSEIF [Product Name] = "Native App Accessibility" THEN "Accessibility"\nELSEIF [Product Name] = "SSO Add-On" THEN "Others"\nELSEIF [Product Name] = "Web and Mobile App automation on Virtual Devices" THEN "Automation"\nELSEIF [Product Name] = "LambdaTest One Lite" THEN "HyperExecute"\nELSEIF [Product Name] = "Kane CLI Pro" THEN "Kane CLI"\nELSEIF [Product Name] = "Web Automation on Desktop - Linux" THEN "Automation"\nELSEIF [Product Name] = "Advanced App Performance Analytics" THEN "Others"\nELSEIF [Product Name] = "Private Cloud Web Automation Desktop- Dedicated VM" THEN "Automation"\nELSEIF [Product Name] = "Enterprise Security" THEN "Others"\nELSEIF [Product Name] = "Virtual & Real Device Plus Automation Cloud" THEN "Virtual Cloud"\nELSEIF [Product Name] = "ChromeOS Live" THEN "Virtual Cloud"\nELSEIF [Product Name] = "Kane CLI Starter" THEN "Kane CLI"\nELSE ""\nEND',
+                      desc: 'Product or SKU. Drives the portfolio bubble chart plotting closed value against win rate. Map the RAW Product Name column: the APP collapses the SKU list into display names using the map above (implemented in services/productDerivations.js, recorded in calculated.md). One deviation from the Tableau formula: an unrecognised SKU keeps its raw name instead of blanking, so a new SKU shows up un-renamed rather than silently vanishing — that is the signal the map needs a new entry.',
+                      aliases: ['product', 'productname', 'productline', 'sku', 'productfamily', 'actualproductname'] },
+  productGroup:     { type: 'string',  group: 'segmentation', label: 'Product Group', hint: 'Product View — every split and trend series', derivable: 'product',
+                      formula: 'IF [Product Name] = "Kane AI (Mobile + Web)" OR [Product Name] = "Agent to Agent Testing" OR [Product Name] = "Test Manager"\n    OR [Product Name] = "Accessibility Scheduling" OR [Product Name] = "SmartUI Visual Regression" OR [Product Name] = "Kane AI (Web)"\n    OR [Product Name] = "Test Manager Premium" OR [Product Name] = "Accessibility" OR [Product Name] = "Accessibility Automation"\n    OR [Product Name] = "Kane AI Web" OR [Product Name] = "Native App Accessibility" OR [Product Name] = "KaneAI Web & App"\n    OR [Product Name] = "KaneAI Desktop & Mobile Essentials" OR [Product Name] = "Kane CLI" OR [Product Name] = "Kane CLI Pro"\n    OR [Product Name] = "Kane CLI Starter" THEN "Agentic AI"\nELSEIF [Product Name] = "HyperExecute - Public Cloud (Linux Only)" OR [Product Name] = "HyperExecute MultiOS"\n    OR [Product Name] = "HyperExecute - Public Cloud" OR [Product Name] = "TestMuOne" OR [Product Name] = "LambdaTestOne"\n    OR [Product Name] = "LambdaTest One Plus" OR [Product Name] = "LambdaTest One Lite"\n    OR [Product Name] = "HyperExecute OnPrem (Including Lums + Oauth)" OR [Product Name] = "HyperExecute OnPrem (Excluding LUMS + Oauth)"\n    OR [Product Name] = "HyperExecute On Premise" OR [Product Name] = "TestMuOne - Lite"\n    OR [Product Name] = "HyperExecute (Dedicated Account On LT)" THEN "Agentic cloud: Hyperexecute"\nELSEIF [Product Name] = "Private Real Device Cloud" OR [Product Name] = "Private Real Device" OR [Product Name] = "Native App Automation Plus"\n    OR [Product Name] = "Professional Services" OR [Product Name] = "Virtual Automation Cloud" OR [Product Name] = "Real Device Plus Automation Cloud"\n    OR [Product Name] = "Web Automation on Desktop" OR [Product Name] = "Real Device Plus Live" OR [Product Name] = "Virtual Cloud (VMs & Virtual Devices)"\n    OR [Product Name] = "Dedicated Proxy" OR [Product Name] = "Native App Automation" OR [Product Name] = "Real Device Live"\n    OR [Product Name] = "Virtual Live" OR [Product Name] = "Web & Mobile Browser Automation - Real Devices" OR [Product Name] = "SSO Add-On"\n    OR [Product Name] = "Enterprise Plan" OR [Product Name] = "Real Device Automation Cloud" OR [Product Name] = "Virtual & Real Device Automation Cloud"\n    OR [Product Name] = "Web & Mobile Browser Automation" OR [Product Name] = "SSO Support" OR [Product Name] = "Advanced App Performance Analytics"\n    OR [Product Name] = "Web & Mobile Browser Automation on Real Devices Plus" OR [Product Name] = "Native App Automation - Virtual Devices"\n    OR [Product Name] = "Enterprise Security" OR [Product Name] = "LambdaTest Virtual Cloud" OR [Product Name] = "App Automation - Virtual Device"\n    OR [Product Name] = "Web Automation on Desktop - Linux" OR [Product Name] = "ChromeOS Live" OR [Product Name] = "Add-on: Real Mobile Device - Automation"\n    OR [Product Name] = "Add-on: Real Mobile Device - Manual" OR [Product Name] = "Web and Mobile App automation on Virtual Devices"\n    OR [Product Name] = "Virtual & Real Device Plus Automation Cloud" OR [Product Name] = "Private Cloud Web Automation Desktop- Dedicated VM"\n    OR [Product Name] = "Web and App Automation on Virtual Device" THEN "Browser And App"\nELSEIF [Product Name] = "Others" OR [Product Name] = "IP Whitelisting" OR [Product Name] = "Additional Users" OR [Product Name] = "Test at Scale"\n    OR [Product Name] = "Test At Scale: Lite" OR [Product Name] = "Data Center Region Reservation" OR [Product Name] = "Data Retention"\n    OR [Product Name] = "GDPR" OR [Product Name] = "Unbound" OR [Product Name] = "Performance Testing - Basic" THEN "Others"\nELSE "Others"\nEND',
+                      desc: 'The product family a line item belongs to: Agentic AI, Agentic cloud: Hyperexecute, Browser And App, or Others. Map a column directly, or leave unmapped and the APP derives it from the raw Product Name using the bucket lists above (services/productDerivations.js, recorded in calculated.md). Anything unrecognised lands in Others — Others growing unexpectedly is the signal a new SKU needs sorting into a real group. The Product View splits every trend, stack and funnel table by this field.',
+                      preferredHeaders: ['productgroup'],
+                      aliases: ['productgroup', 'productcategory', 'prodgroup'] },
+  continentGroup:   { type: 'string',  group: 'segmentation', label: 'Continent Group', hint: 'Product View — global filter',
+                      formula: 'IF [Acc Continent] = "Asia" OR [Acc Continent] = "Australia" OR [Acc Continent] = "Oceania" THEN "APAC"\nELSEIF [Acc Continent] = "North America" OR [Acc Continent] = "South America" THEN "Americas"\nELSEIF [Acc Continent] = "Europe" OR [Acc Continent] = "Africa" OR [Acc Continent] = "Middle East" THEN "EMEA"\nELSE ""\nEND',
+                      desc: 'Geographic rollup of the account\'s continent: APAC, Americas, EMEA. Map either the raw Acc Continent column (the APP rolls it up — services/productDerivations.js, recorded in calculated.md) or an already-grouped column; rolled-up values pass through untouched. Kept separate from Region, which derives from the owning REP\'s role — this one follows the CUSTOMER\'s geography, and the two need not agree row-for-row (note it also says "Americas" where Region says "AMER").',
+                      preferredHeaders: ['continentgroup'],
+                      aliases: ['continentgroup', 'continent', 'continentname', 'acccontinent'] },
   source:           { type: 'string',  group: 'segmentation', label: 'Deal source', hint: 'Global filter, source effectiveness',
                       desc: 'Picklist of how the deal originated — Inbound, Outbound, Partner, Referral and similar. Also an input to the Sourced by attribution.',
                       aliases: ['source', 'leadsource', 'channel', 'opportunitysource', 'dealsource'] },
@@ -127,7 +139,7 @@ export const OPP_SCHEMA = {
                       desc: 'Annual recurring revenue, normalised from the deal value and contract term. Subscription Duration is in months. Must be a row-level calculation in Tableau — aggregate functions will not import correctly through VizQL Data Service.',
                       aliases: ['arr', 'annualrecurringrevenue', 'annualvalue', 'opparr'] },
   ownerActive:      { type: 'boolean', group: 'segmentation', label: 'Rep is active', hint: 'Rep status filter on every board',
-                      desc: 'Whether the opportunity owner still works here. Filters departed reps out of INDIVIDUAL rep rankings while their closed ARR still counts towards POD rankings and team totals, so a resignation never rewrites a past quarter. A blank value is treated as inactive, which is the strict reading: it means an explicitly unmatched rep is hidden rather than assumed present. Note the BDR variant of this flag exists on the opportunity source and is deliberately not mapped here, so the filter means one thing on every board: is the deal OWNER still here.',
+                      desc: 'Whether the opportunity owner still works here. On the product source this is the raw "User Active" column. Filters departed reps out of INDIVIDUAL rep rankings while their closed ARR still counts towards POD rankings and team totals, so a resignation never rewrites a past quarter. A blank value is treated as inactive, which is the strict reading: it means an explicitly unmatched rep is hidden rather than assumed present. Note the BDR variant of this flag exists on the opportunity source and is deliberately not mapped here, so the filter means one thing on every board: is the deal OWNER still here.',
                       aliases: ['active', 'isactive', 'useractive', 'repactive', 'owneractive', 'activeuser'] },
   quotaCurrent:     { type: 'number',  group: 'metrics', label: 'Current quarter quota', hint: 'AE Performance - % of quota achieved',
                       desc: 'The rep quota for the quarter the board is reporting on. Deliberately named by POSITION (current) rather than by quarter, so moving to a new quarter is a mapping change on this one field and nothing in the code moves. Arrives per opportunity row and is read with MIN() per rep, matching {FIXED [Full Name]: MIN([Quota])} - a quota is one number per rep, not something to sum across their deals. Source naming is inconsistent across quarters - some use a hyphen and a four-digit year, others an apostrophe and two digits - which is exactly why this is mapped by hand rather than auto-matched.',
@@ -179,6 +191,24 @@ export const OPP_SCHEMA = {
                       desc: 'Stable unique opportunity identifier. Opportunity names are display labels only and are never used for distinct counts.',
                       preferredHeaders: ['opportunityid'],
                       aliases: ['id', 'opportunityid', 'oppid', 'recordid', 'sfid'] },
+  productArr:       { type: 'number',  group: 'metrics', label: 'Product ARR', hint: 'Product View — every ARR figure', derivable: 'totalPrice',
+                      formula: '([Total Price] / [Subscription Duration]) * 12',
+                      desc: 'Annualised value of ONE product line. Map a pre-computed column, or leave unmapped and the app computes it from Total Price and Subscription duration (see calculated.md). The opp-level ARR field must not be used here: it repeats the whole opportunity\'s value on every product row, so summing it over a multi-product opp counts the deal once per product.',
+                      preferredHeaders: ['productarr'],
+                      aliases: ['productarr', 'linearr', 'productlinearr'] },
+  totalPrice:       { type: 'number',  group: 'metrics', label: 'Total price', hint: 'Product ARR input',
+                      desc: 'The product line\'s total contract price, raw from the source. Input to the app-computed Product ARR: (Total Price ÷ Subscription duration) × 12.',
+                      preferredHeaders: ['totalprice'],
+                      aliases: ['totalprice', 'lineprice', 'linetotal'] },
+  freeDomain:       { type: 'boolean', group: 'other', label: 'Free email domain', hint: 'Org type input',
+                      desc: 'True when the account signed up with a free email domain. Input to the app-computed Org type: a free domain forces SMB regardless of headcount, since it signals a self-serve evaluator rather than a corporate buyer.',
+                      preferredHeaders: ['freedomain'],
+                      aliases: ['freedomain', 'isfreedomain', 'freeemaildomain'] },
+  opportunityForecast: { type: 'string', group: 'other', label: 'Opportunity Forecast', hint: 'Product View — Commit and Best Case KPIs',
+                      formula: 'Tableau group "Opportunity Forecast (group)":\n  Best Case ← Best Case, High\n  Commit ← Commit\n  No Projection ← Low, No Projection',
+                      desc: 'The rep-committed forecast bucket on the product source. Map the RAW column: in Tableau the categories are merged with an ad-hoc group, but ad-hoc groups do not travel through the published data source (the same reason POD is a calculation), so this app applies the merge itself — Best Case ← Best Case + High, No Projection ← Low + No Projection, and a blank/null forecast stays in NO bucket (No Projection is an explicit rep call; a blank is the absence of one). Commit and Best Case drive the Product View KPIs; all three named buckets appear on the forecast-vs-open-pipe chart. Deliberately a separate mapping from Forecast category — the two come from different columns and need not agree.',
+                      preferredHeaders: ['opportunityforecast'],
+                      aliases: ['opportunityforecast', 'oppforecast', 'opportunityforecastgroup'] },
   forecastCategory: { type: 'string',  group: 'other', label: 'Forecast category', hint: 'Weighted forecast buckets',
                       formula: 'Pipeline 25% · Best Case 50% · Commit 75% · Closed 100%  [weights under review]',
                       desc: 'Forecast bucket. The Pulse tab multiplies Amount by these weights to produce the weighted forecast. The percentages are currently hardcoded in the application and pending confirmation — once settled they should move into Tableau. Not a global filter, since filtering to Pipeline would zero every closed metric.',
@@ -206,6 +236,10 @@ export const UPSTREAM_FIELDS = [
     desc: 'Join key into the User table. Its presence is what puts an opportunity into BDR rep performance; its absence keeps the deal in the AE/AM view only.' },
   { name: 'User ID / Full Name / Role ID', usedBy: ['owner', 'ownerRole', 'bdrName'],
     desc: 'User table columns. Full Name supplies owner and sourcer names; Role ID joins on to the Roles table.' },
+  { name: 'Product Name (raw)', usedBy: ['product', 'productGroup'],
+    desc: 'The raw SKU string on the product source, e.g. "HyperExecute OnPrem (Including Lums + Oauth)". Actual Product Name and Product Group both collapse it into display buckets.' },
+  { name: 'Acc Continent', usedBy: ['continentGroup'],
+    desc: 'The account\'s continent on the product source. Continent Group rolls it up into APAC / Americas / EMEA.' },
   { name: 'Role Name',    usedBy: ['ownerRole', 'pod', 'regionDetail', 'region'],
     desc: 'Roles table column, joined via Role ID.' },
 ];
@@ -233,6 +267,10 @@ export const DASHBOARD_FIELD_SETS = {
   lossBoard:   ['id','stage','arr','createdDate','isClosed','isWon','region','orgType','pod','team','type','lossReason','trialStageAt','ownerActive'],
   // AE and AM map the identical set: same formulas, only the row scope differs.
   repQuota:    ['id','stage','owner','ownerRole','pod','arr','closeDate','createdDate','isClosed','isWon','region','orgType','type','ownerActive','quotaCurrent'],
+  // Product View binds its OWN source: product LINE rows (one opportunity may
+  // span several rows, one per product), with its own geography and forecast
+  // columns. `product` here is the Actual Product Name.
+  productView: ['id','stage','productArr','totalPrice','subscriptionDuration','closeDate','createdDate','isClosed','isWon','orgType','employees','freeDomain','pod','owner','type','product','productGroup','continentGroup','opportunityForecast','ownerActive'],
 };
 
 export const FIELD_GROUPS = [
@@ -449,6 +487,26 @@ export function applyMapping(rawRows, fieldMapping) {
         if (!fieldMapping.isWon) row.isWon = false;
       }
     }
+    // Product View derivations, same gap-fill contract as the block below: a
+    // real mapped column always wins, and the business rules (supplied as
+    // Tableau formulas, recorded in calculated.md) live in
+    // services/productDerivations.js so the source only needs raw columns.
+    // Order matters: productGroup buckets by the RAW SKU, so it is derived
+    // before the SKU is renamed to its display name.
+    const rawProductName = row.product;
+    if (!fieldMapping.productGroup && rawProductName) row.productGroup = productGroupFor(rawProductName);
+    if (rawProductName) row.product = actualProductName(rawProductName);
+    if (row.continentGroup) row.continentGroup = continentGroupFor(row.continentGroup);
+    if (!fieldMapping.productArr) {
+      const lineArr = productArrFrom(row.totalPrice, row.subscriptionDuration);
+      if (lineArr !== null) row.productArr = lineArr;
+    }
+    // Only when the source ships the raw inputs — otherwise an unmapped Org
+    // type would mislabel every row as SMB.
+    if (!fieldMapping.orgType && (fieldMapping.employees || fieldMapping.freeDomain)) {
+      row.orgType = orgTypeFrom(row.freeDomain, row.employees);
+    }
+
     // A blank Industry is invisible to a multi-select filter's "select all"
     // (it can only capture the named options it saw at the time), so those
     // rows silently drop out of every KPI once a filter is fully selected.

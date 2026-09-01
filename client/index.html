@@ -4,6 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#070D22" />
+    <!-- Without an explicit icon the browser requests /favicon.ico and 404s
+         on every page load — noise in the console and in server logs. -->
+    <link rel="icon" type="image/png" href="/testmu-bi-logo-v2.png" />
     <title>TestMu BI</title>
     <script>
       document.documentElement.dataset.theme = localStorage.getItem('testmu-theme') || 'dark';

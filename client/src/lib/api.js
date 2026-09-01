@@ -26,6 +26,16 @@ const GATEWAY_STATUSES = new Set([502, 503, 504]);
 const MAX_RETRIES = 8;
 const RETRY_DELAY_MS = 5000;
 
+// Render's free tier sits behind Cloudflare, and Cloudflare sometimes serves
+// a bot challenge ("Just a moment…", Cf-Mitigated: challenge, HTTP 429) to
+// requests arriving via Vercel's shared proxy IPs — a challenge the
+// server-to-server proxy can never solve. That 429 is infrastructure noise,
+// not an application answer, and a retry usually sails through. It is
+// distinguishable from OUR 429s (the auth throttle), which always carry a
+// JSON {error} body: the challenge is an HTML page with no error field.
+const isInfrastructure429 = response =>
+  response?.status === 429 && !response?.data?.error;
+
 // Replaying is only safe where running twice is harmless. GETs always are. The
 // auth endpoints are listed because a gateway failure means no session was
 // established, so signing in "again" costs nothing. Every other write stays
@@ -50,7 +60,9 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 api.interceptors.response.use(undefined, async error => {
   const config = error?.config;
   // No response at all is a dropped connection, which the same boot produces.
-  const isGatewayFailure = !error?.response || GATEWAY_STATUSES.has(error.response.status);
+  const isGatewayFailure = !error?.response
+    || GATEWAY_STATUSES.has(error.response.status)
+    || isInfrastructure429(error.response);
   if (!config || !isGatewayFailure || !canReplay(config)) throw error;
 
   const attempt = (config.__retryCount || 0) + 1;
@@ -86,6 +98,8 @@ export const resolveShareToken = () => api.get('/share/resolve').then(r => r.dat
 
 // ===== Chart builder =====
 export const listDataSources = () => api.get('/datasources').then(r => r.data.sources);
+// A full VDS re-pull, so this can run for tens of seconds on a big source.
+export const refreshDataSource = sourceId => api.post(`/datasources/${sourceId}/refresh`).then(r => r.data);
 export const getChartOptions = sourceId => api.get(`/charts/options/${sourceId}`).then(r => r.data);
 export const previewChart = (sourceId, config) => api.post('/charts/preview', { sourceId, config }).then(r => r.data);
 export const createChart = body => api.post('/charts', body).then(r => r.data);
@@ -170,6 +184,9 @@ export async function getWinBoardSnapshot(filters) {
   }
 }
 export const getPeriodComparison = (templateId,filters) => api.get(`/comparison/${templateId}`, {params:filters,paramsSerializer:serializer}).then(r=>r.data);
+// Product View: one template, two independently-filtered views.
+export const getProductPipelineSnapshot = filters => api.get('/product-view/pipeline/snapshot', {params:filters,paramsSerializer:serializer}).then(r=>r.data);
+export const getProductWonSnapshot = filters => api.get('/product-view/won/snapshot', {params:filters,paramsSerializer:serializer}).then(r=>r.data);
 export async function getLossBoardSnapshot(filters) {
   const config={params:filters,paramsSerializer:serializer};
   return (await api.get('/loss-board/snapshot',config)).data;
