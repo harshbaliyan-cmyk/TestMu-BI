@@ -128,6 +128,32 @@ Documented in full on each field in [server/datasources.js](server/datasources.j
 - **Stale threshold** = 90 / 30 / 15 days by org type
 - **Is stalled** = open AND days-in-stage ≥ stale threshold
 
+## Opportunity Analytics board rules (metrics layer, `server/services/opportunityMetrics.js`)
+
+Validated 2026-09-04 against the published source **"Opportunity flow Data"**
+(54,873 rows = 54,873 distinct Opportunity IDs, so no LOD is needed): every
+headline number was recomputed independently from the raw columns and
+matched the board on 38/38 checks.
+
+- **Money** — every $ figure on this board is **ARR**. Amount is never read (business ruling).
+- **Won / lost counts** (the footnotes of the Won ARR and Lost ARR tiles, and everywhere a won or lost count appears) — `COUNTD(IF [Opp Stage] = "Closed Won" THEN [Opportunity ID] END)` and the same for `"Closed Lost"`. The app counts rows by the mapped Closed / Won flags after de-duplicating on Opportunity ID; on the live source the two rules agree on every row (26,733 won, 13,381 lost), and when the flag columns are unmapped the flags are themselves derived from the stage name.
+- **Geography** — the customer's **Continent Group** (Acc Continent rolled up to APAC / Americas / EMEA by the rule above), never the rep-role Region column (business ruling). A blank or unknown continent is the visible bucket **"No Continent"**; likewise a blank mapped Region / POD / Team becomes "No Region" / "No POD" / "No Team" so a fully ticked filter never silently drops rows (49 of 740 Q3-2026 opportunities had a blank Region).
+- **Columns used as-is from the source** — ARR (= Amount / Subscription Duration × 12, verified on 100% of rows), Cycle Days (= close − created for closed deals; null while open), Days In Stage, Stale Threshold (SMB 15 / Mid-Market 30 / Enterprise 90), Deal Health, Org Type, Forecast Category. The app's own gap-fills only run when a column is unmapped.
+- **Is stalled** = open AND Days In Stage ≥ Stale Threshold (derived; the source carries no column).
+- **Stage order** (funnel and aging) — by Salesforce stage probability read off the source: Qualification, Risk, No Contact, Demo, Pre-Trial, Work In Progress, Trial, Post Trial Discussion, Proposal, Confirmed, Negotiation, Procurement, then Closed Won / Closed Lost. A stage the source adds later is appended, never dropped.
+- **Deal Health** — Green / Amber / Red as written; blank is its own **"Not rated"** state (95% of open deals) and is never treated as Green.
+- **Loss-reason families** (raw reasons stay in the drill-down table):
+  - *Disengaged / no decision* — Not Responding, No Decision / Non-Responsive, Decision Deferred, No Longer In Company
+  - *Priority or budget* — Change of Priority, No Budget / Lost Funding, Upcoming Cut, Project Based
+  - *Product fit* — Product Feature Gap, Limitation/Complex Use Case, Product Issue, Support
+  - *Competition or price* — Competition, Lost to Competitor, Price
+  - *Not a real deal* — Duplicate Deal, Junk Lead
+  - *Other / not recorded* — Others, blank, and any reason not listed above
+- **Disengagement losses** = lost deals in the *Disengaged / no decision* family ÷ closed deals.
+- **Weighted forecast** — removed from the board (business ruling).
+- **Default scope** — this year by Opp Created Date; a saved named preset re-derives its dates on load.
+- **Public wall** (`/present/opportunity-analytics`) — counts, rates and owner names only: no currency figure, no day count, no account or opportunity name.
+
 ## Derived in-app for every source (gap-fills in `applyMapping`)
 
 - **Is closed / Is won** — from Stage when unmapped: contains "Closed" → closed; "Closed Won" → won; "Closed Lost" → lost. The Product source maps its raw `Closed` / `Won` columns directly.

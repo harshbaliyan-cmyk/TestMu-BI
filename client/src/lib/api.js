@@ -184,6 +184,8 @@ export async function getWinBoardSnapshot(filters) {
   }
 }
 export const getPeriodComparison = (templateId,filters) => api.get(`/comparison/${templateId}`, {params:filters,paramsSerializer:serializer}).then(r=>r.data);
+// The generic six-tab board: one computed snapshot per filter state.
+export const getOpportunitySnapshot = (templateId, filters) => api.get(`/dashboards/${templateId}/snapshot`, {params:filters,paramsSerializer:serializer}).then(r=>r.data);
 // Product View: one template, two independently-filtered views.
 export const getProductPipelineSnapshot = filters => api.get('/product-view/pipeline/snapshot', {params:filters,paramsSerializer:serializer}).then(r=>r.data);
 export const getProductWonSnapshot = filters => api.get('/product-view/won/snapshot', {params:filters,paramsSerializer:serializer}).then(r=>r.data);

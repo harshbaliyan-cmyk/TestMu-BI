@@ -114,7 +114,7 @@ export function buildGenericComparison(rows, query = {}) {
 
   const list = value => (Array.isArray(value) ? value : value ? [value] : []).filter(Boolean);
   let filtered = rows;
-  for (const field of ['region','orgType','stage','owner','source','type','industry','pod','team']) {
+  for (const field of ['region','continentGroup','orgType','stage','owner','source','type','industry','pod','team']) {
     const selected = list(query[field]);
     if (selected.length) filtered = filtered.filter(row => selected.includes(row[field]));
   }

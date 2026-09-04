@@ -27,6 +27,7 @@ import { createShareToken, listShareTokens, revokeShareToken, resolveShareToken 
 import { listAdminLogs, cleanupOldRecords } from './repositories/adminLogs.js';
 import { buildWinBoardSnapshot } from './services/winBoardMetrics.js';
 import { buildProductPipelineSnapshot, buildProductWonSnapshot } from './services/productViewMetrics.js';
+import { buildOpportunitySnapshot } from './services/opportunityMetrics.js';
 import { buildLossBoardSnapshot } from './services/lossBoardMetrics.js';
 import { buildAePerformanceSnapshot, isAmRow } from './services/aePerformanceMetrics.js';
 import { getMappedSourceColumn } from './repositories/dataSources.js';
@@ -86,7 +87,7 @@ function dashboardRows(userId, key) {
   const opportunityRows = cacheGet(userScope(userId, 'opportunity-analytics')) || [];
   if (!opportunityRows.length) return rows;
   const byOpportunityId = new Map(opportunityRows.map(row => [String(row.id || '').trim(), row]));
-  const supplementalFields = ['type','region','orgType','industry','pod','team','lossReason','trialStageAt'];
+  const supplementalFields = ['type','region','continentGroup','orgType','industry','pod','team','lossReason','trialStageAt'];
   return rows.map(row => {
     const peer = byOpportunityId.get(String(row.id || '').trim());
     if (!peer) return row;
@@ -543,6 +544,20 @@ app.get('/api/share/resolve', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// The generic six-tab board (Opportunity Analytics and any template without
+// its own service) reads ONE computed snapshot instead of every row: the
+// math lives in services/opportunityMetrics.js where it is unit-tested and
+// verifiable against the raw source, and the payload is a few hundred KB
+// where the row feed was tens of MB on the real 55k-row source.
+app.get('/api/dashboards/:templateId/snapshot', allowShareToken(req => req.params.templateId), (req, res) => {
+  const snapshot = buildOpportunitySnapshot(dashboardRows(requesterId(req), req.params.templateId), req.query);
+  res.json(snapshot);
+  logSourceAccess({ userId: requesterId(req), dashboardKey: req.params.templateId,
+    action: 'dashboard.snapshot.read', rowCount: snapshot.rowCount,
+    details: { filtered: Object.keys(req.query).length > 0, viaShareToken: Boolean(req.shareAuth) } })
+    .catch(error => console.error('access log', error.message));
+});
+
 app.get('/api/dashboards/:templateId/state', allowShareToken(req => req.params.templateId), async (req, res, next) => {
   try { res.json(await getDashboardState(requesterId(req), req.params.templateId)); }
   catch (error) { next(error); }
@@ -830,14 +845,14 @@ app.get('/api/health/database', async (req,res) => {
 app.get('/api/data/:templateId', allowShareToken(req => req.params.templateId), (req, res) => {
   const { templateId } = req.params;
   const {
-    region, orgType, stage, owner, source, type, industry, pod, team,
+    region, continentGroup, orgType, stage, owner, source, type, industry, pod, team,
     createdFrom, createdTo, closeFrom, closeTo,
   } = req.query;
 
   let data = cacheGet(userScope(requesterId(req), templateId)) || [];
 
   const asList = value => (Array.isArray(value) ? value : value ? [value] : []).filter(Boolean);
-  const selections = { region, orgType, stage, owner, source, type, industry, pod, team };
+  const selections = { region, continentGroup, orgType, stage, owner, source, type, industry, pod, team };
 
   Object.entries(selections).forEach(([field, value]) => {
     const selected = asList(value);

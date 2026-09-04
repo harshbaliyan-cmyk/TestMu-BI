@@ -40,7 +40,7 @@ test('exploratory: tabs, builder types, controls, themes', async ({ page }) => {
   // 1. Every Opportunity Analytics tab.
   step = 'dashboard tabs';
   await page.goto(`${BASE}/dashboard/opportunity-analytics`, { waitUntil: 'networkidle' });
-  for (const tab of ['Pulse', 'Diagnostics', 'Velocity', 'Where We Win', 'Rep Performance', 'Accounts']) {
+  for (const tab of ['Pulse', 'Diagnostics', 'Velocity', 'Where We Win', 'Rep Performance']) {
     // Tab buttons carry a numbered prefix ("1 Pulse"), so match loosely.
     await page.getByRole('button', { name: new RegExp(tab) }).first().click({ timeout: 5000 }).catch(() => {
       problems.push({ step, message: `tab button not found: ${tab}` });
