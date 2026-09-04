@@ -127,6 +127,23 @@ export default function DataSources() {
     } else setPreview(null);
   }
 
+  // Re-map a connected source: the server stages its own in-memory rows and
+  // the ordinary mapping panel opens on them, pre-filled with the saved
+  // mapping and the dashboards it already feeds.
+  const [remapSource, setRemapSource] = useState(null);
+  async function openMapping(source) {
+    setRemapSource(source.id); setError(null); setResult(null);
+    try {
+      const { data } = await api.post(`/datasources/${source.id}/remap`);
+      setPreview(data); setMapping(data.fieldMapping || {}); setStagedInfo(data);
+      setSelectedDashboards(data.dashboards?.length ? data.dashboards : ['opportunity-analytics']);
+      setWorkflowStep('mapping');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (error) {
+      setError(error.response?.data?.error || error.message);
+    } finally { setRemapSource(null); }
+  }
+
   function reopen() {
     if (!stagedInfo) return;
     setPreview(stagedInfo);
@@ -248,6 +265,10 @@ export default function DataSources() {
                 <td><span className="pill">{source.status}</span></td>
                 <td>{formatRefreshTime(source.lastSync)}</td>
                 <td style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                  <button className="btn-secondary"
+                    title="Change which source column feeds each dashboard field, and which dashboards this source serves — no re-upload or re-pull"
+                    disabled={remapSource===source.id||refreshingSource===source.id||deletingSource===source.id}
+                    onClick={()=>openMapping(source)}>{remapSource===source.id?'Opening…':'Edit mapping'}</button>
                   {source.sourceType?.startsWith('tableau') && <button className="btn-secondary"
                     disabled={refreshingSource===source.id||deletingSource===source.id} onClick={async()=>{
                       setRefreshingSource(source.id);setError(null);

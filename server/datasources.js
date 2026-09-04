@@ -19,7 +19,7 @@ import {
   persistImportedSource, listUserSources, getRefreshableSource, listRefreshableSourceIds,
   startSyncRun, finishSyncRun, listSyncRuns, softDeleteSource,
   findWebhookSource, getSourceWebhookState, saveSourceWebhook, markWebhookEventReceived,
-  markSourceStale, updateSourceSchema, getSourceSchema,
+  markSourceStale, updateSourceSchema, getSourceSchema, getSourceForRemap, updateSourceMapping,
 } from './repositories/dataSources.js';
 import { profileColumns } from './services/columnProfile.js';
 import { actualProductName, productGroupFor, continentGroupFor, productArrFrom, orgTypeFrom } from './services/productDerivations.js';
@@ -98,7 +98,7 @@ export const OPP_SCHEMA = {
                       aliases: ['pod', 'team', 'salespod', 'podname'] },
   team:             { type: 'string', group: 'segmentation', label: 'Team Name', hint: 'Win Board contribution and AE/AM splits',
                       desc: 'The source Team Name field. Kept separate from derived POD and used to split team, AE, and AM Won ARR contribution.',
-                      preferredHeaders: ['teamname'], aliases: ['teamname','salesteam','ownerteam'] },
+                      preferredHeaders: ['teamname'], aliases: ['teamname','salesteam','ownerteam','teamrole'] },
   industry:         { type: 'string',  group: 'segmentation', label: 'Industry', hint: 'Global filter, industry scorecard',
                       desc: 'Account vertical. The scorecard only ranks industries with three or more closed deals.',
                       aliases: ['industry', 'vertical', 'sector'] },
@@ -262,7 +262,11 @@ export const REP_STATUS_FILTER = { key: 'repStatus', field: 'ownerActive', defau
 // checks against each other. Three separate bugs in this app traced back to a
 // dashboard being present in some of those lists and absent from others.
 export const DASHBOARD_FIELD_SETS = {
-  opportunity: ['id','name','account','accountId','owner','stage','amount','arr','closeDate','createdDate','isClosed','isWon','orgType','region','pod','industry','product','source','type','daysStuck','cycleDays','staleThreshold','isStalled','dealHealth','forecastCategory','lossReason','trialStageAt','ownerActive'],
+  // Every $ on Opportunity Analytics is ARR (business ruling, 2026-09-04),
+  // so Amount is no longer a field this board asks the mapping for.
+  // Geography is the customer's Continent Group (rolled up from Acc
+  // Continent), not the rep-role Region column.
+  opportunity: ['id','name','account','accountId','owner','stage','arr','closeDate','createdDate','isClosed','isWon','orgType','continentGroup','pod','industry','source','type','daysStuck','cycleDays','staleThreshold','isStalled','dealHealth','lossReason','trialStageAt','ownerActive'],
   winBoard:    ['id','stage','arr','createdDate','isClosed','isWon','region','orgType','industry','pod','team','type','ownerActive'],
   lossBoard:   ['id','stage','arr','createdDate','isClosed','isWon','region','orgType','pod','team','type','lossReason','trialStageAt','ownerActive'],
   // AE and AM map the identical set: same formulas, only the row scope differs.
@@ -308,20 +312,27 @@ function toNumber(v) {
   return negative ? -n : n;
 }
 
+// A date cell means the CALENDAR DAY written in it. Date objects (xlsx parses
+// spreadsheet and CSV dates into local-midnight Dates) and free-form strings
+// are read back through local components — toISOString() converts to UTC
+// first, which on any machine east of Greenwich turned "2026-01-01" into
+// "2025-12-31" and silently moved every uploaded deal one day earlier.
+const localDay = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 function toDate(v) {
   if (v === null || v === undefined || v === '') return null;
-  if (v instanceof Date && !isNaN(v)) return v.toISOString().slice(0, 10);
+  if (v instanceof Date && !isNaN(v)) return localDay(v);
   const s = String(v).trim();
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2}|\d{4})$/);
   if (m) {
-    const [, a, b, y] = m;
+    const [, a, b, yearText] = m;
     const first = parseInt(a, 10), second = parseInt(b, 10);
     const [month, day] = first > 12 ? [second, first] : [first, second];
+    const y = yearText.length === 2 ? 2000 + parseInt(yearText, 10) : yearText;
     return `${y}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   }
   const d = new Date(s);
-  return isNaN(d) ? null : d.toISOString().slice(0, 10);
+  return isNaN(d) ? null : localDay(d);
 }
 
 function coerce(value, type) {
@@ -348,7 +359,10 @@ function scoreHeader(header, def, field) {
     if (n.startsWith(alias) && n.length - alias.length <= 4) best = Math.max(best, 85);
     if (n.endsWith(alias) && n.length - alias.length <= 4) best = Math.max(best, 82);
     if (n.includes(alias) && alias.length >= 4) best = Math.max(best, 70);
-    if (alias.includes(n) && n.length >= 4) best = Math.max(best, 60);
+    // Header-inside-alias is the weakest signal and needs the header to be
+    // most of the alias: a bare "Owner" column (an ID on the Opportunity
+    // flow source) once matched the "ownerteam" alias and became Team Name.
+    if (alias.includes(n) && n.length >= 4 && n.length >= alias.length * 0.75) best = Math.max(best, 60);
   }
   return best;
 }
@@ -513,6 +527,17 @@ export function applyMapping(rawRows, fieldMapping) {
     // Giving blanks an explicit category fixes that at the source: it
     // becomes a real, selectable option everywhere industry is used.
     if (!row.industry) row.industry = 'No Industry';
+    // The same trap on the other filter dimensions: 49 of 740 Q3-created
+    // opportunities had a blank Region and vanished from every KPI the moment
+    // any Region value was ticked, while Tableau (no Region filter) kept
+    // them (2026-09-04). Only for MAPPED columns — a source without a POD
+    // column should not sprout a "No POD" bucket on every row.
+    if (fieldMapping.region && !row.region) row.region = 'No Region';
+    if (fieldMapping.pod && !row.pod) row.pod = 'No POD';
+    if (fieldMapping.team && !row.team) row.team = 'No Team';
+    // A blank Acc Continent (and any continent the rollup does not know)
+    // stays a visible bucket rather than dropping out of the geography.
+    if (fieldMapping.continentGroup && !row.continentGroup) row.continentGroup = 'No Continent';
 
     // Cycle days / Stale threshold / Is stalled are calculated in Tableau at
     // WORKSHEET level, and worksheet calcs are not exposed to the data source
@@ -994,6 +1019,31 @@ export function createDataSourceRouter({ store, requireAuth }) {
       pending.mapping = finalMapping;
 
       const rows = applyMapping(pending.rows, finalMapping);
+
+      // A re-map of a connected source (see POST /:sourceId/remap) commits
+      // to the SAME source row rather than inserting a successor, so its
+      // sync history, webhook and saved charts survive the edit.
+      if (pending.restageOf) {
+        const updated = await updateSourceMapping({
+          userId: req.session.userId, sourceId: pending.restageOf, dashboardKeys, mapping: finalMapping,
+          rowCount: rows.length, columnProfiles: profileColumns(pending.headers, pending.rows),
+        });
+        // Drop the rows from every dashboard the source fed before, then load
+        // them for the new list — the runtime cache unions bound sources, so
+        // a stale binding would keep the old mapping's rows competing.
+        store.removeSourceRows(pending.restageOf, [...new Set([...dashboardKeys, ...updated.unbound])], req.session.userId);
+        store.setSourceRows(pending.restageOf, dashboardKeys, rows, req.session.userId,
+          { headers: pending.headers, rows: pending.rows });
+        await logAudit({ userId: req.session.userId, action: 'data_source.remapped',
+          entityType: 'data_source', entityId: pending.restageOf,
+          afterState: { filename: pending.filename, rowCount: rows.length, dashboards: dashboardKeys, unbound: updated.unbound } });
+        return res.json({
+          ok: true, remapped: true, templateId: dashboardKeys[0], templateIds: dashboardKeys,
+          sourceId: pending.restageOf, rowCount: rows.length,
+          stagingId, source: pending.filename, loadedAt: new Date().toISOString(),
+        });
+      }
+
       const persisted = await persistImportedSource({
         userId: req.session.userId, dashboardKeys,
         source: { ...pending, columnProfiles: profileColumns(pending.headers, pending.rows) },
@@ -1020,6 +1070,37 @@ export function createDataSourceRouter({ store, requireAuth }) {
       });
     } catch (err) {
       res.status(400).json({ error: err.message });
+    }
+  });
+
+  // ---- Re-map a connected source without re-uploading or re-pulling ----
+  // Stages the source's own raw rows (already in memory for the chart
+  // builder) under a fresh staging id, so the ordinary preview → map →
+  // commit flow runs on them; the commit then updates the same source row.
+  router.post('/:sourceId/remap', requireAuth, async (req, res) => {
+    try {
+      const source = await getSourceForRemap(req.session.userId, req.params.sourceId);
+      if (!source) return res.status(404).json({ error: 'Data source not found' });
+      const raw = store.getSourceRawData?.(req.params.sourceId, req.session.userId);
+      if (!raw || !raw.rows.length) {
+        return res.status(409).json({ error: String(source.sourceType || '').startsWith('tableau')
+          ? 'The rows for this source are not loaded right now. Click Refresh first, then edit the mapping.'
+          : 'The rows for this file are no longer in memory (the server restarted since it was uploaded). Upload the file again to change its mapping.' });
+      }
+      const stagingId = stageForUser(req.session.email, {
+        headers: raw.headers, rows: raw.rows, filename: source.sourceName, sourceType: source.sourceType,
+        externalId: source.externalId, projectName: source.projectName, workbookName: source.workbookName,
+        tableauConnectionId: source.tableauConnectionId, mapping: source.mapping || null, restageOf: source.id,
+      });
+      const preview = buildPreview({ headers: raw.headers, rows: raw.rows });
+      // The saved mapping is the starting point: an explicit saved choice
+      // beats a fresh automatic match, and a schema field added since the
+      // last commit inherits one.
+      if (source.mapping) preview.fieldMapping = { ...preview.fieldMapping, ...source.mapping };
+      res.json({ stagingId, source: 'remap', filename: source.sourceName, sourceId: source.id,
+        dashboards: source.dashboards || [], ...preview });
+    } catch (err) {
+      res.status(500).json({ error: 'Could not open the mapping for this source' });
     }
   });
 

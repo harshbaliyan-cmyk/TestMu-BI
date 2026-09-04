@@ -241,6 +241,64 @@ export async function listSyncRuns(userId,sourceId=null) {
 // period: quota columns for every quarter sit next to each other in the picker
 // and differ by two characters, so "Q3-2025 Quota" is one mis-click away from
 // "Q3-2026 Quota" and produces a plausible-looking board either way.
+// Everything a re-map needs about a source the user already owns: identity,
+// the dashboards it feeds today, and the mapping those bindings share.
+export async function getSourceForRemap(userId, sourceId) {
+  if (!databaseEnabled || !userId) return null;
+  const { rows } = await query(`SELECT ds.id, ds.source_type AS "sourceType", ds.external_id AS "externalId",
+    ds.source_name AS "sourceName", ds.tableau_connection_id AS "tableauConnectionId",
+    ds.project_name AS "projectName", ds.workbook_name AS "workbookName",
+    COALESCE(json_agg(d.template_key) FILTER (WHERE d.id IS NOT NULL),'[]') AS dashboards,
+    (SELECT fm.mapping FROM dashboard_source_bindings b2 JOIN field_mappings fm ON fm.id=b2.field_mapping_id
+       WHERE b2.data_source_id=ds.id AND b2.enabled=true ORDER BY fm.mapping_version DESC LIMIT 1) AS mapping
+    FROM data_sources ds
+    LEFT JOIN dashboard_source_bindings b ON b.data_source_id=ds.id AND b.enabled=true
+    LEFT JOIN dashboards d ON d.id=b.dashboard_id
+    WHERE ds.owner_user_id=$1 AND ds.id=$2 AND ds.deleted_at IS NULL
+    GROUP BY ds.id`, [userId, sourceId]);
+  return rows[0] || null;
+}
+
+// Re-map IN PLACE: the same data_sources row keeps its sync history, its
+// webhook registration and every saved chart that references it. Each
+// selected dashboard gets a new mapping version; a dashboard left unticked
+// is unbound and reported back so the caller can drop its rows from memory.
+export async function updateSourceMapping({ userId, sourceId, dashboardKeys, mapping, rowCount, columnProfiles = null }) {
+  if (!databaseEnabled || !userId) return { sourceId, bindings: dashboardKeys, unbound: [] };
+  return transaction(async client => {
+    const owned = await client.query('SELECT id FROM data_sources WHERE id=$1 AND owner_user_id=$2 AND deleted_at IS NULL', [sourceId, userId]);
+    if (!owned.rows[0]) { const error = new Error('Data source not found'); error.status = 404; throw error; }
+    const current = await client.query(`SELECT d.template_key FROM dashboard_source_bindings b
+      JOIN dashboards d ON d.id=b.dashboard_id WHERE b.data_source_id=$1 AND b.enabled=true`, [sourceId]);
+    const unbound = current.rows.map(row => row.template_key).filter(key => !dashboardKeys.includes(key));
+    for (const templateKey of dashboardKeys) {
+      const dashboard = await client.query('SELECT id FROM dashboards WHERE template_key=$1', [templateKey]);
+      if (!dashboard.rows[0]) throw new Error(`Unknown dashboard: ${templateKey}`);
+      const dashboardId = dashboard.rows[0].id;
+      const versionResult = await client.query(`SELECT COALESCE(MAX(mapping_version),0)+1 AS version
+        FROM field_mappings WHERE data_source_id=$1 AND dashboard_id=$2 AND schema_key='opportunity'`, [sourceId, dashboardId]);
+      const mapped = await client.query(`INSERT INTO field_mappings
+        (data_source_id,dashboard_id,schema_key,mapping,mapping_version,validation_status,created_by)
+        VALUES ($1,$2,'opportunity',$3,$4,'valid',$5) RETURNING id`,
+        [sourceId, dashboardId, JSON.stringify(mapping), versionResult.rows[0].version, userId]);
+      await client.query(`INSERT INTO dashboard_source_bindings
+        (dashboard_id,data_source_id,field_mapping_id,enabled,combination_mode,deduplication_key)
+        VALUES ($1,$2,$3,true,'union','id')
+        ON CONFLICT (dashboard_id,data_source_id) DO UPDATE SET
+          field_mapping_id=EXCLUDED.field_mapping_id,enabled=true,updated_at=now()`,
+        [dashboardId, sourceId, mapped.rows[0].id]);
+    }
+    if (unbound.length) {
+      await client.query(`UPDATE dashboard_source_bindings b SET enabled=false, updated_at=now()
+        FROM dashboards d WHERE b.dashboard_id=d.id AND b.data_source_id=$1 AND d.template_key = ANY($2::text[])`, [sourceId, unbound]);
+    }
+    await client.query(`UPDATE data_sources SET last_row_count=$2, status='loaded', updated_at=now(), last_accessed_at=now(),
+      column_metadata=COALESCE($3::jsonb, column_metadata) WHERE id=$1`,
+      [sourceId, rowCount, columnProfiles ? JSON.stringify(columnProfiles) : null]);
+    return { sourceId, bindings: dashboardKeys, unbound };
+  });
+}
+
 export async function getMappedSourceColumn(userId, templateKey, field) {
   const {rows} = await query(`SELECT f.mapping ->> $3 AS column_name
     FROM dashboard_source_bindings b
