@@ -307,18 +307,29 @@ export function StageHeatmap({stages,stack,fill=false}){
     return {background:ramp[step],color:deep?'#FFFFFF':'#0B0B0B'};
   };
   const grandTotal=stack.reduce((sum,row)=>sum+row.total,0);
+  const stageTotals=stages.map((_,index)=>stack.reduce((sum,row)=>sum+(Number(row.stages[index])||0),0));
+  const share=value=>grandTotal?fmtPercent(value/grandTotal*100):'';
   return <div className={`pv-heatmap-wrap${fill?' pv-chart-fill':''}`}><table className="pv-heatmap">
     <thead><tr><th>Group</th>{stages.map(stage=><th key={stage}>{stage}</th>)}<th className="pv-heatmap-total">Total</th></tr></thead>
     <tbody>{stack.map(row=><tr key={row.label}>
-      <td className="pv-heatmap-label">{row.label}</td>
+      <td className="pv-heatmap-label"><i className="pv-dot" style={{background:groupColor(row.label)}}/>{row.label}</td>
       {row.stages.map((value,index)=><td key={stages[index]} style={cellStyle(value)}
-        title={`${row.label} · ${stages[index]}: ${fmtCurrency(value)}${row.counts?.[index]?` · ${fmtNumber(row.counts[index])} opps`:''}${grandTotal?` — ${fmtPercent(value/grandTotal*100)} of open pipe`:''}`}>
-        {value?fmtCurrency(value):''}
+        title={`${row.label} · ${stages[index]}: ${fmtCurrency(value)}${row.counts?.[index]?` · ${fmtNumber(row.counts[index])} opps`:''}${grandTotal?` — ${share(value)} of open pipe`:''}`}>
+        {value?<>{fmtCurrency(value)}{!fill&&<small>{share(value)}</small>}</>:''}
       </td>)}
       <td className="pv-heatmap-total" title={row.totalCount?`${fmtNumber(row.totalCount)} open opps`:undefined}>{fmtCurrency(row.total)}</td>
     </tr>)}</tbody>
+    {/* Column totals answer "which stage holds the money" without the
+        reader summing a column by eye. */}
+    {stack.length>1&&<tfoot><tr>
+      <td className="pv-heatmap-label pv-heatmap-foot">All groups</td>
+      {stageTotals.map((value,index)=><td key={stages[index]} className="pv-heatmap-foot" title={`${stages[index]}: ${share(value)} of open pipe`}>
+        {value?<>{fmtCurrency(value)}{!fill&&<small>{share(value)}</small>}</>:''}
+      </td>)}
+      <td className="pv-heatmap-total pv-heatmap-foot">{fmtCurrency(grandTotal)}</td>
+    </tr></tfoot>}
   </table>
-  <small className="pv-heatmap-hint">Darker cell = more open ARR · hover any cell for its share of total open pipe</small></div>;
+  <div className="pv-heatmap-legend"><span>Less</span><i style={{background:`linear-gradient(90deg, ${ramp.join(', ')})`}}/><span>More open ARR</span>{!fill&&<small>· every cell shows its share of total open pipe</small>}</div></div>;
 }
 
 // 100% stacked column: each group's share of the quarter's Won ARR (kept by
@@ -429,7 +440,7 @@ export function HBarChart({items,measures,format=fmtCurrency,percentAxis=false,t
 
 // ===== Tables =====
 const TABLE_FORMATS={count:fmtNumber,arr:fmtCurrency,rate:fmtPercent,avg:fmtCurrency};
-export function ProductTable({rows,grandTotal,columns,maxRows=0}){
+export function ProductTable({rows,grandTotal,columns,maxRows=0,groupDots=false,ranked=false}){
   // Click a header to sort, click again to flip. No sort state = the
   // server's order (open pipe / Won ARR descending). Sorting runs BEFORE
   // the Top-N slice, so "Top 5 by Lost ARR" shows the five biggest losers,
@@ -451,16 +462,27 @@ export function ProductTable({rows,grandTotal,columns,maxRows=0}){
     });
   },[rows,sort]);
   const visible=maxRows>0?sorted.slice(0,maxRows):sorted;
+  // Money columns get an in-cell data bar scaled against the WHOLE column,
+  // not the visible slice, so "Top 5" stays honest about the long tail.
+  const maxima=useMemo(()=>Object.fromEntries(columns.cells
+    .filter(cell=>cell.kind==='arr'||cell.kind==='avg')
+    .map(cell=>[cell.key,rows.reduce((max,row)=>Math.max(max,Number(row[cell.key])||0),0)])),[rows,columns]);
+  const cellOf=(row,cell)=>{
+    if(cell.kind==='rate')return row[cell.key]===null||row[cell.key]===undefined
+      ?<span className="pv-na">—</span>:<Pill tone={rateTone(row[cell.key])}>{fmtPercent(row[cell.key])}</Pill>;
+    const text=TABLE_FORMATS[cell.kind](row[cell.key]);
+    const max=maxima[cell.key];
+    if(!max)return text;
+    const width=Math.max(0,Math.min(100,(Number(row[cell.key])||0)/max*100));
+    return <span className="pv-cell-bar" style={{'--w':`${width}%`}}><span>{text}</span></span>;
+  };
   return <div className="pv-table-scroll"><table className="pv-table">
     <thead><tr><Th label={columns.firstHeader} sortKey="label" sort={sort} onSort={onSort}/>
       {columns.cells.map(cell=><Th key={cell.key} label={cell.label} sortKey={cell.key} sort={sort} onSort={onSort} numeric/>)}
     </tr></thead>
-    <tbody>{visible.map(row=><tr key={row.label}><td>{row.label}</td>
-      {columns.cells.map(cell=><td key={cell.key} className="num">
-        {cell.kind==='rate'
-          ?(row[cell.key]===null?<span className="pv-na">—</span>:<Pill tone={rateTone(row[cell.key])}>{fmtPercent(row[cell.key])}</Pill>)
-          :TABLE_FORMATS[cell.kind](row[cell.key])}
-      </td>)}
+    <tbody>{visible.map((row,index)=><tr key={row.label}>
+      <td>{ranked&&<span className="pv-rank">{index+1}</span>}{groupDots&&<i className="pv-dot" style={{background:groupColor(row.label)}}/>}{row.label}</td>
+      {columns.cells.map(cell=><td key={cell.key} className="num">{cellOf(row,cell)}</td>)}
     </tr>)}</tbody>
     {/* The grand total row is computed server-side as a TRUE distinct count
         across the whole table — summing the rows above would double-count
@@ -496,33 +518,59 @@ export const WON_LOST_COLUMNS=firstHeader=>({firstHeader,cells:[
 ]});
 
 // ===== KPI strip =====
-function KpiDelta({value,kind='growth'}){
+// Group order is fixed by entity, so the same color sits in the same place
+// on every tile and the header chips double as the legend for all of them.
+const groupRank=label=>label==='Others'?99:(GROUP_SLOTS[label]??50);
+export const orderGroups=labels=>[...labels].sort((a,b)=>groupRank(a)-groupRank(b)||String(a).localeCompare(String(b)));
+function CompositionBar({parts,format=fmtCurrency}){
+  const total=parts.reduce((sum,part)=>sum+part.value,0);
+  if(!(total>0))return null;
+  const ordered=parts.filter(part=>part.value>0).sort((a,b)=>(a.rank??groupRank(a.label))-(b.rank??groupRank(b.label)));
+  const legend=ordered.map(part=>`${part.label}: ${format(part.value)} · ${fmtPercent(part.value/total*100)}`);
+  return <div className="pv-kpi-mix" role="img" aria-label={legend.join(', ')} title={legend.join('\n')}>
+    {ordered.map(part=><i key={part.label} style={{width:`${part.value/total*100}%`,background:part.color||groupColor(part.label)}}/>)}
+  </div>;
+}
+function KpiDelta({value,kind='growth',invert=false}){
   if(value===null||value===undefined||!Number.isFinite(Number(value)))return <small className="pv-kpi-delta muted">no prior period</small>;
   const up=value>=0;
-  const text=kind==='points'?`${up?'+':''}${value.toFixed(1)} pts`:`${up?'+':''}${value.toFixed(1)}%`;
-  return <small className={`pv-kpi-delta ${up?'up':'down'}`}>{up?'▲':'▼'} {text} vs prior period</small>;
+  // A shrinking Closed Lost is the good direction; the chip color says so.
+  const good=invert?!up:up;
+  const magnitude=Math.abs(value);
+  const text=kind==='points'?`${magnitude.toFixed(1)} pts`:magnitude>=1000?'>999%':`${magnitude.toFixed(1)}%`;
+  return <small className={`pv-kpi-delta ${good?'good':'bad'}`} title="Against the previous equal period">{up?'▲':'▼'} {text}</small>;
 }
-export function ProductKpis({view,overall,comparison}){
+const partsOf=(rows,key)=>(rows||[]).map(row=>({label:row.label,value:Number(row[key])||0}));
+// `metrics` is optional: with it, every money tile carries a composition
+// bar (which groups make up the number) and the prior period's actual
+// value; without it the tile is the plain figure — both TV layers pass it.
+export function ProductKpis({view,overall,comparison,metrics=null}){
   const growth=comparison?.growth||{};
   const points=comparison?.pointChange||{};
+  const previous=comparison?.available?comparison.previous:null;
+  const prior=(key,format=fmtCurrency)=>previous&&previous[key]!==null&&previous[key]!==undefined?format(previous[key]):null;
+  const byGroup=view==='pipeline'?metrics?.funnelByGroup:metrics?.wonLostByGroup;
   const tiles=view==='pipeline'?[
-    {key:'open-pipe',label:'Open pipeline',value:fmtCurrency(overall.openPipe),sub:`${fmtNumber(overall.openOppCount)} open opps`,delta:growth.openPipe},
-    {key:'closed-won',label:'Closed Won',value:fmtCurrency(overall.closedWonArr),sub:`${fmtNumber(overall.closedWonCount)} won`,delta:growth.closedWonArr},
-    {key:'commit',label:'Commit',value:fmtCurrency(overall.commitArr),sub:`${fmtNumber(overall.commitOppCount)} opps`,delta:growth.commitArr},
-    {key:'best-case',label:'Best Case',value:fmtCurrency(overall.bestCaseArr),sub:`${fmtNumber(overall.bestCaseOppCount)} opps`,delta:growth.bestCaseArr},
+    {key:'open-pipe',label:'Open pipeline',value:fmtCurrency(overall.openPipe),sub:`${fmtNumber(overall.openOppCount)} open opps`,delta:growth.openPipe,prior:prior('openPipe'),parts:metrics&&partsOf(byGroup,'openPipe')},
+    {key:'closed-won',label:'Closed Won',value:fmtCurrency(overall.closedWonArr),sub:`${fmtNumber(overall.closedWonCount)} won`,delta:growth.closedWonArr,prior:prior('closedWonArr'),parts:metrics&&partsOf(byGroup,'closedWonArr')},
+    {key:'commit',label:'Commit',value:fmtCurrency(overall.commitArr),sub:`${fmtNumber(overall.commitOppCount)} opps`,delta:growth.commitArr,prior:prior('commitArr'),parts:metrics&&partsOf(metrics.forecastByGroup,'commitArr')},
+    {key:'best-case',label:'Best Case',value:fmtCurrency(overall.bestCaseArr),sub:`${fmtNumber(overall.bestCaseOppCount)} opps`,delta:growth.bestCaseArr,prior:prior('bestCaseArr'),parts:metrics&&partsOf(metrics.forecastByGroup,'bestCaseArr')},
   ]:[
-    {key:'closed-won',label:'Closed Won',value:fmtCurrency(overall.closedWonArr),sub:`${fmtNumber(overall.closedWonCount)} won`,delta:growth.closedWonArr},
-    {key:'closed-lost',label:'Closed Lost',value:fmtCurrency(overall.closedLostArr),sub:`${fmtNumber(overall.closedLostCount)} lost`,delta:growth.closedLostArr},
-    {key:'win-rate',label:'Win rate',value:fmtPercent(overall.winRateCount),sub:`${fmtPercent(overall.winRateArr)} by ARR`,delta:points.winRateCount,kind:'points'},
-    {key:'avg-deal',label:'Avg deal size',value:overall.avgDealSize===null?'—':fmtCurrency(overall.avgDealSize),sub:'Won ARR ÷ won opps',delta:growth.avgDealSize},
+    {key:'closed-won',label:'Closed Won',value:fmtCurrency(overall.closedWonArr),sub:`${fmtNumber(overall.closedWonCount)} won`,delta:growth.closedWonArr,prior:prior('closedWonArr'),parts:metrics&&partsOf(byGroup,'closedWonArr')},
+    {key:'closed-lost',label:'Closed Lost',value:fmtCurrency(overall.closedLostArr),sub:`${fmtNumber(overall.closedLostCount)} lost`,delta:growth.closedLostArr,invert:true,prior:prior('closedLostArr'),parts:metrics&&partsOf(byGroup,'closedLostArr')},
+    {key:'win-rate',label:'Win rate',value:fmtPercent(overall.winRateCount),sub:`${fmtPercent(overall.winRateArr)} by ARR`,delta:points.winRateCount,kind:'points',prior:prior('winRateCount',fmtPercent),
+      parts:metrics&&[{label:'Won',value:Number(overall.closedWonCount)||0,color:'var(--green)',rank:0},{label:'Lost',value:Number(overall.closedLostCount)||0,color:'var(--red)',rank:1}],partsFormat:fmtNumber},
+    {key:'avg-deal',label:'Avg deal size',value:overall.avgDealSize===null||overall.avgDealSize===undefined?'—':fmtCurrency(overall.avgDealSize),sub:'Won ARR ÷ won opps',delta:growth.avgDealSize,prior:prior('avgDealSize')},
   ];
   // Hideable is inert on the interactive board (no provider) and makes each
   // KPI double-click-hideable on the presentations — Win Board parity.
   return <div className="pv-kpi-strip">
     {tiles.map(tile=><Hideable key={tile.key} k={`kpi:${view}:${tile.key}`} label={tile.label}>
       <div className="pv-kpi">
-        <span>{tile.label}</span><strong>{tile.value}</strong><small>{tile.sub}</small>
-        <KpiDelta value={tile.delta} kind={tile.kind||'growth'}/>
+        <div className="pv-kpi-head"><span>{tile.label}</span><KpiDelta value={tile.delta} kind={tile.kind||'growth'} invert={tile.invert}/></div>
+        <strong>{tile.value}</strong>
+        <small>{tile.sub}{tile.prior?<> · <em>prior {tile.prior}</em></>:null}</small>
+        {tile.parts?<CompositionBar parts={tile.parts} format={tile.partsFormat||fmtCurrency}/>:null}
       </div>
     </Hideable>)}
   </div>;
@@ -535,20 +583,25 @@ const EMPTY_WON_METRICS={overall:{},trendYear:null,trendByGroup:{monthlyLabels:[
 // refresh button. Inactive views keep their last data — switching tabs is
 // instant and never refetches unless something actually changed.
 function useSnapshot(fetcher,filters,reloadTick,empty){
-  const [state,setState]=useState({loading:true,error:'',metrics:empty,comparison:{available:false}});
+  const [state,setState]=useState({loading:true,loaded:false,error:'',metrics:empty,comparison:{available:false}});
+  // Keyed on the filter CONTENT, not the object. Hydration, the Opp Type
+  // default and the saved-state round trip each hand over a new-but-equal
+  // filter object, and keying on identity refetched both views for every
+  // one of them — four snapshot pairs per page load, all identical.
+  const key=JSON.stringify(filters);
   useEffect(()=>{
     let cancelled=false;
     setState(current=>({...current,loading:true,error:''}));
     fetcher(filters).then(snapshot=>{
       if(cancelled)return;
-      setState({loading:false,error:'',metrics:snapshot.metrics||empty,comparison:snapshot.comparison||{available:false}});
+      setState({loading:false,loaded:true,error:'',metrics:snapshot.metrics||empty,comparison:snapshot.comparison||{available:false}});
     }).catch(error=>{
       if(cancelled)return;
-      setState({loading:false,error:error.response?.data?.error||error.message||'Could not load Product View data',metrics:empty,comparison:{available:false}});
+      setState({loading:false,loaded:true,error:error.response?.data?.error||error.message||'Could not load Product View data',metrics:empty,comparison:{available:false}});
     });
     return()=>{cancelled=true;};
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[filters,reloadTick]);
+  },[key,reloadTick]);
   return state;
 }
 
@@ -557,13 +610,82 @@ const savedState=()=>{
   catch{return {};}
 };
 const hydrate=(saved,empty)=>saved?Object.fromEntries(Object.keys(empty).map(key=>[key,saved[key]??empty[key]])):empty;
+// A saved NAMED preset re-derives its boundaries on load. "Current quarter"
+// saved on 31 Aug used to come back as 1 Jul – 31 Aug on 4 Sep: the board
+// silently dropped every day since the save, while the date pill still
+// read "Current quarter". Custom ranges are the user's exact dates and stay.
+const refreshPreset=(filters,fromKey,toKey)=>{
+  const preset=filters.datePreset;
+  if(!preset||preset==='custom'||preset==='all')return filters;
+  const [from,to]=rangeFor(preset,filters.dateCount,filters.dateUnit);
+  if(!from||!to)return filters;
+  return {...filters,[fromKey]:isoDate(from),[toKey]:isoDate(to)};
+};
+const hydratePipeline=saved=>refreshPreset(hydrate(saved,EMPTY_PIPELINE),'createdFrom','createdTo');
+const hydrateWon=saved=>refreshPreset(hydrate(saved,EMPTY_WON),'closeFrom','closeTo');
+
+// ===== Highlights: three plain-English readings of the loaded numbers =====
+// Every sentence is arithmetic over the same snapshot the charts draw, so a
+// highlight can never disagree with the tile or table beneath it.
+const monthlyTotals=(trend,trendYear)=>{
+  const labels=trend?.monthlyLabels||[];
+  const totals=labels.map((label,index)=>({label,total:(trend.series||[]).reduce((sum,item)=>sum+(Number(item.monthly?.[index])||0),0)}));
+  // The month in progress is a partial and would read as a collapse next
+  // to a complete one, so momentum only compares COMPLETE months.
+  const now=new Date();
+  const currentIndex=Number(trendYear)===now.getFullYear()?now.getMonth():labels.length;
+  return totals.slice(0,currentIndex).filter(item=>item.total>0);
+};
+const topBy=(rows,key)=>(rows||[]).filter(row=>Number(row[key])>0).reduce((best,row)=>(!best||row[key]>best[key]?row:best),null);
+export function buildHighlights(view,metrics){
+  const items=[];
+  const overall=metrics?.overall||{};
+  // With a single group in scope "X holds 100% of open pipe" is true and
+  // useless, so the leader reading steps down to the biggest product line.
+  const singleGroup=(metrics.funnelByGroup||metrics.wonLostByGroup||[]).length<=1;
+  if(view==='pipeline'){
+    const leader=singleGroup?topBy(metrics.funnelByProduct,'openPipe'):topBy(metrics.funnelByGroup,'openPipe');
+    if(leader&&overall.openPipe>0)items.push({tag:'Leader',text:<><b>{leader.label}</b> holds {fmtPercent(leader.openPipe/overall.openPipe*100)} of open pipe — {fmtCurrency(leader.openPipe)} across {fmtNumber(leader.openOppCount)} open opps.</>});
+    if(overall.openPipe>0)items.push({tag:'Coverage',text:<>Commit covers <b>{fmtPercent(overall.commitArr/overall.openPipe*100)}</b> of open pipe; Best Case adds another {fmtPercent(overall.bestCaseArr/overall.openPipe*100)} ({fmtCurrency(overall.bestCaseArr)}).</>});
+    const months=monthlyTotals(metrics.trend,metrics.trendYear);
+    if(months.length>=2){
+      const [before,latest]=months.slice(-2);
+      const change=(latest.total-before.total)/before.total*100;
+      items.push({tag:'Momentum',tone:change>=0?'good':'bad',text:<>Created ARR {change>=0?'rose':'fell'} <b>{fmtPercent(Math.abs(change))}</b> in {latest.label} against {before.label} — {fmtCurrency(latest.total)} vs {fmtCurrency(before.total)}, complete months only.</>});
+    }
+  }else{
+    const leader=singleGroup?null:topBy(metrics.wonLostByGroup,'closedWonArr');
+    if(leader&&overall.closedWonArr>0)items.push({tag:'Leader',text:<><b>{leader.label}</b> is {fmtPercent(leader.closedWonArr/overall.closedWonArr*100)} of Won ARR — {fmtCurrency(leader.closedWonArr)} from {fmtNumber(leader.closedWonCount)} won opps.</>});
+    else{
+      const loss=topBy(metrics.wonLostByProduct,'closedLostArr');
+      if(loss)items.push({tag:'Biggest loss',tone:'bad',text:<><b>{loss.label}</b> lost the most — {fmtCurrency(loss.closedLostArr)} across {fmtNumber(loss.closedLostCount)} lost opps{overall.closedLostArr>0?`, ${fmtPercent(loss.closedLostArr/overall.closedLostArr*100)} of all Lost ARR`:''}.</>});
+    }
+    if(overall.winRateCount!==null&&overall.winRateArr!==null&&overall.winRateCount!==undefined){
+      const gap=overall.winRateArr-overall.winRateCount;
+      const reading=gap>3?'bigger deals are closing at a higher rate than small ones':gap<-3?'the larger deals are the ones being lost':'deal size is not skewing the win rate';
+      items.push({tag:'Win-rate gap',tone:gap>3?'good':gap<-3?'bad':undefined,text:<>{fmtPercent(overall.winRateCount)} of closed opps won vs <b>{fmtPercent(overall.winRateArr)}</b> of closed ARR — {reading}.</>});
+    }
+    const product=topBy(metrics.wonLostByProduct,'closedWonArr');
+    if(product)items.push({tag:'Top product',text:<><b>{product.label}</b> leads Won ARR at {fmtCurrency(product.closedWonArr)} ({fmtNumber(product.closedWonCount)} won{product.winRateCount!==null?`, ${fmtPercent(product.winRateCount)} win rate`:''}).</>});
+  }
+  return items.slice(0,3);
+}
+export function Highlights({view,metrics}){
+  const items=buildHighlights(view,metrics);
+  if(!items.length)return null;
+  return <div className="pv-highlights" aria-label="Highlights">
+    {items.map(item=><div key={item.tag} className={`pv-highlight${item.tone?` ${item.tone}`:''}`}>
+      <span className="pv-highlight-tag">{item.tag}</span><div>{item.text}</div>
+    </div>)}
+  </div>;
+}
 
 export default function ProductView({user}){
   const navigate=useNavigate();
   const {signOut}=useAuth();
   const [tab,setTab]=useState(()=>savedState().view==='product-won'?'won':'pipeline');
-  const [pipelineFilters,setPipelineFilters]=useState(()=>hydrate(savedState().filters?.pipeline,EMPTY_PIPELINE));
-  const [wonFilters,setWonFilters]=useState(()=>hydrate(savedState().filters?.won,EMPTY_WON));
+  const [pipelineFilters,setPipelineFilters]=useState(()=>hydratePipeline(savedState().filters?.pipeline));
+  const [wonFilters,setWonFilters]=useState(()=>hydrateWon(savedState().filters?.won));
   const [options,setOptions]=useState(Object.fromEntries(CATEGORY_KEYS.map(key=>[key,[]])));
   const [optionsReady,setOptionsReady]=useState(false);
   const [hydrated,setHydrated]=useState(false);
@@ -580,8 +702,8 @@ export default function ProductView({user}){
   const [wonLostTopN,setWonLostTopN]=useState(5);
 
   useEffect(()=>{getDashboardState(TEMPLATE).then(state=>{
-    if(state?.filters?.pipeline)setPipelineFilters(hydrate(state.filters.pipeline,EMPTY_PIPELINE));
-    if(state?.filters?.won)setWonFilters(hydrate(state.filters.won,EMPTY_WON));
+    if(state?.filters?.pipeline)setPipelineFilters(hydratePipeline(state.filters.pipeline));
+    if(state?.filters?.won)setWonFilters(hydrateWon(state.filters.won));
     if(state?.view==='product-won')setTab('won');
     if(state?.view==='product-pipeline')setTab('pipeline');
   }).catch(()=>{}).finally(()=>setHydrated(true));},[]);
@@ -625,33 +747,72 @@ export default function ProductView({user}){
     window.open(`/present/product-${view==='won'?'won':'pipeline'}`,'_blank','noopener');
   };
 
-  if(active.loading&&!active.metrics.overall.label)return <AppLoader fullscreen label="Loading Product View…"/>;
+  // The full-screen loader is for the FIRST answer only. Every later filter
+  // change keeps the board on screen and dims it under a progress bar —
+  // blanking a page of charts to swap one filter reads as a crash.
+  if(!active.loaded)return <AppLoader fullscreen label="Loading Product View…"/>;
   const filterDefs=[['productGroup','Product Group'],['product','Product'],['type','Opp type'],['orgType','Org type'],
     ['pod','Sales POD'],['stage','Stage'],['owner','Rep'],['continentGroup','Continent']];
   const {metrics,comparison}=active;
   const granularity=tab==='won'?wonGranularity:pipelineGranularity;
   const setGranularity=tab==='won'?setWonGranularity:setPipelineGranularity;
+  const period=comparison?.available?comparison.period:null;
+  const scopeFrom=tab==='won'?wonFilters.closeFrom:pipelineFilters.createdFrom;
+  const scopeTo=tab==='won'?wonFilters.closeTo:pipelineFilters.createdTo;
+  const scopeRange=scopeFrom||scopeTo?`${shortDate(scopeFrom)||'Start'} – ${shortDate(scopeTo)||'Today'}`:'All dates';
+  // The header chips are the Product Group filter in one-click form: they
+  // read and write the same filter the dropdown does, per view.
+  const groupOptions=orderGroups(options.productGroup||[]);
+  const selectedGroups=filters.productGroup||[];
+  const toggleGroup=group=>setFilters(current=>{
+    const next=new Set(current.productGroup||[]);
+    if(next.has(group))next.delete(group);else next.add(group);
+    return {...current,productGroup:[...next]};
+  });
+  const hasSource=CATEGORY_KEYS.some(key=>(options[key]||[]).length>0);
+  const isEmpty=!active.loading&&!active.error&&!metrics.overall.openOppCount&&!metrics.overall.closedWonCount&&!metrics.overall.closedLostCount;
+  const granularityToggle=<div className="pv-toggle"><button className={granularity==='monthly'?'on':''} onClick={()=>setGranularity('monthly')}>M</button><button className={granularity==='quarterly'?'on':''} onClick={()=>setGranularity('quarterly')}>Q</button></div>;
 
   return <div className="wrap win-board-wrap"><div className="top-nav" style={{margin:'-18px -18px 18px'}}>
     <div className="brand" onClick={()=>navigate('/gallery')} style={{cursor:'pointer'}}><img className="brand-logo" src="/testmu-bi-logo-v2.png" alt="TestMu BI"/><span>TestMu BI</span></div>
     <div className="user-pill"><ThemeToggle/><DashboardSwitcher/><RefreshDataButton templateId={TEMPLATE} onRefreshed={()=>setReloadTick(tick=>tick+1)}/><span>{user?.name||'User'}</span><button className="btn-secondary" onClick={signOut}>Sign out</button></div></div>
 
-    <header className="top"><div className="top-row"><div><h1>Product View</h1>
+    <header className="top pv-top"><div className="top-row"><div className="pv-title-block"><h1>Product View</h1>
       <div className="sub">{tab==='won'
         ?<>Actual Won ARR by product — scoped by <strong>Opp Close Date</strong>. Open pipe, Commit and Best Case are deliberately absent: open deals have tentative close dates.</>
         :<>Pipeline built by product — scoped by <strong>Opp Created Date</strong>.</>}</div>
-      <div className="pv-tabs" role="tablist" aria-label="Product View views">
-        <button role="tab" aria-selected={tab==='pipeline'} className={tab==='pipeline'?'on':''} onClick={()=>setTab('pipeline')}>Pipeline · by Created Date</button>
-        <button role="tab" aria-selected={tab==='won'} className={tab==='won'?'on':''} onClick={()=>setTab('won')}>Won ARR · by Close Date</button>
+      <div className="pv-scope">
+        <span className="pv-scope-key">{tab==='won'?'Opp Close Date':'Opp Created Date'}</span>
+        <strong>{scopeRange}</strong>
+        {period&&<span>compared with {shortDate(period.previousFrom)} – {shortDate(period.previousTo)}</span>}
       </div></div>
-      <button type="button" className="present-button" onClick={()=>startPresentation(tab)}>▶ Present</button></div>
+      <div className="pv-header-actions">
+        {/* Each tab previews its own view's headline under its own filters,
+            so the inactive view is never a mystery box. */}
+        <div className="pv-seg" role="tablist" aria-label="Product View views">
+          <button role="tab" aria-selected={tab==='pipeline'} className={tab==='pipeline'?'on':''} onClick={()=>setTab('pipeline')}>
+            <b>Pipeline</b><span>by Created Date · {fmtNumber(pipeline.metrics.overall.openOppCount||0)} open</span></button>
+          <button role="tab" aria-selected={tab==='won'} className={tab==='won'?'on':''} onClick={()=>setTab('won')}>
+            <b>Won ARR</b><span>by Close Date · {fmtNumber(won.metrics.overall.closedWonCount||0)} won</span></button>
+        </div>
+        <button type="button" className="present-button" onClick={()=>startPresentation(tab)}>▶ Present</button>
+      </div></div>
       <div className="filters win-board-filter-shelf">
         {filterDefs.map(([key,label])=><MultiSelect key={`${tab}:${key}`} label={label} options={options[key]||[]} value={filters[key]} onChange={value=>setFilters(current=>({...current,[key]:value}))}/>)}
         {tab==='won'
           ?<AdvancedDateRange key="won-dates" filters={wonFilters} setFilters={setWonFilters} fromKey="closeFrom" toKey="closeTo" label="Opportunity close date" title="Opp Close Date" emptyLabel="All close dates"/>
           :<AdvancedDateRange key="pipeline-dates" filters={pipelineFilters} setFilters={setPipelineFilters} label="Opportunity created date" title="Opp Created Date" emptyLabel="All created dates"/>}
         <button className="btn-secondary filter-reset-button" onClick={()=>setFilters({...empty,type:defaultTypes(options.type)})}>Reset</button>
-      </div></header>
+      </div>
+      {groupOptions.length>0&&<div className="pv-chips" role="group" aria-label="Quick filter by Product Group">
+        <span className="pv-chips-label">Product Group</span>
+        {groupOptions.map(group=>{const on=selectedGroups.includes(group);
+          return <button key={group} type="button" className={`pv-chip${on?' on':''}`} aria-pressed={on} onClick={()=>toggleGroup(group)}>
+            <i style={{background:groupColor(group)}}/>{group}</button>;})}
+        {selectedGroups.length>0&&<button type="button" className="pv-chip pv-chip-clear" onClick={()=>setFilters(current=>({...current,productGroup:[]}))}>Clear groups</button>}
+      </div>}
+      {active.loading&&<div className="pv-progress" role="progressbar" aria-label="Updating Product View"/>}
+    </header>
 
     {active.error&&<div className="error">{active.error}</div>}
     {/* "No data" must mean NO SOURCE, never an empty selection: the filter
@@ -659,23 +820,24 @@ export default function ProductView({user}){
         existing proves a source is loaded — an all-zero scope then gets a
         zeroed board and an honest note, not "connect a source". A previous
         quarter with nothing closed used to show the connect card. */}
-    {!active.loading&&!active.error
-      &&!metrics.overall.openOppCount&&!metrics.overall.closedWonCount&&!metrics.overall.closedLostCount
-      &&!CATEGORY_KEYS.some(key=>(options[key]||[]).length>0)
+    {isEmpty&&!hasSource
       ?<div className="card win-board-empty"><div className="win-board-empty-icon">▦</div>
         <div><h3>No Product View data is loaded</h3><p>Connect the product source (product line rows with Product Group, Actual Product Name, Product ARR, Opportunity Forecast and Continent Group) and map it to this dashboard.</p></div>
         <button type="button" className="btn-primary" onClick={()=>navigate('/data-sources')}>Open data sources</button></div>
-      :<>
-      {!active.loading&&!active.error
-        &&!metrics.overall.openOppCount&&!metrics.overall.closedWonCount&&!metrics.overall.closedLostCount
-        &&<div className="empty">Nothing matches this view&rsquo;s filters and date range — the source is loaded, the current selection is just empty.</div>}
+      :<div className={`pv-board${active.loading?' is-updating':''}`} aria-busy={active.loading}>
+      {isEmpty&&<div className="empty">Nothing matches this view&rsquo;s filters and date range — the source is loaded, the current selection is just empty.</div>}
       {tab==='pipeline'?<>
-        <ProductKpis view="pipeline" overall={metrics.overall} comparison={comparison}/>
+        <ProductKpis view="pipeline" overall={metrics.overall} comparison={comparison} metrics={metrics}/>
+        <Highlights view="pipeline" metrics={metrics}/>
+        <div className="pv-section"><span>Trend</span></div>
         <div className="pv-grid">
           <ChartCard className="pv-card-full" title="Pipeline created trend" hint={`Created ARR per ${granularity==='quarterly'?'quarter':'month'} of ${metrics.trendYear} — line ends show the latest value, the big dot marks each group's peak`}
-            controls={<div className="pv-toggle"><button className={granularity==='monthly'?'on':''} onClick={()=>setGranularity('monthly')}>M</button><button className={granularity==='quarterly'?'on':''} onClick={()=>setGranularity('quarterly')}>Q</button></div>}>
+            controls={granularityToggle}>
             <SeriesLineChart trend={metrics.trend} granularity={granularity} byGroup/>
           </ChartCard>
+        </div>
+        <div className="pv-section"><span>Forecast &amp; stage</span></div>
+        <div className="pv-grid">
           <ChartCard title="Forecast vs open pipe by Product Group" hint="Open pipe next to Commit, Best Case (incl. High) and No Projection (incl. Low) — hover for opportunity counts">
             <ForecastBars items={metrics.forecastByGroup}/>
           </ChartCard>
@@ -684,28 +846,36 @@ export default function ProductView({user}){
             <HBarChart items={topProductsN>0?metrics.topProducts.slice(0,topProductsN):metrics.topProducts}
               measures={[{key:'openPipe',label:'Open pipe'}]} tooltipExtra={item=>`${fmtNumber(item.openOppCount)} open opps`}/>
           </ChartCard>
-          <ChartCard className="pv-card-full" title="Open pipeline by stage" hint="Every cell readable — darker means more open ARR, stages run early → late">
+          <ChartCard className="pv-card-full" title="Open pipeline by stage" hint="Every cell readable — darker means more open ARR, stages run early → late, the last row totals each stage">
             <StageHeatmap stages={metrics.stages} stack={metrics.stageStack}/>
           </ChartCard>
         </div>
-        <ChartCard title="Funnel by Product Group" hint="Distinct opportunity counts; the grand total is a true COUNTD across the table">
-          <ProductTable rows={metrics.funnelByGroup} grandTotal={metrics.overall} columns={FUNNEL_COLUMNS('Product Group')}/>
-        </ChartCard>
-        <ChartCard title="Funnel by Product" hint="Sorted by open pipe, descending; the grand total spans ALL products, not just the visible rows"
-          controls={<TopNSelect value={funnelProductTopN} onChange={setFunnelProductTopN} options={[5,10,20,0]} label="Top N products"/>}>
-          <ProductTable rows={metrics.funnelByProduct} grandTotal={metrics.overall} columns={FUNNEL_COLUMNS('Product')} maxRows={funnelProductTopN}/>
-        </ChartCard>
+        <div className="pv-section"><span>Funnel tables</span></div>
+        <div className="pv-stack">
+          <ChartCard title="Funnel by Product Group" hint="Distinct opportunity counts; the grand total is a true COUNTD across the table">
+            <ProductTable rows={metrics.funnelByGroup} grandTotal={metrics.overall} columns={FUNNEL_COLUMNS('Product Group')} groupDots/>
+          </ChartCard>
+          <ChartCard title="Funnel by Product" hint="Sorted by open pipe, descending; the grand total spans ALL products, not just the visible rows"
+            controls={<TopNSelect value={funnelProductTopN} onChange={setFunnelProductTopN} options={[5,10,20,0]} label="Top N products"/>}>
+            <ProductTable rows={metrics.funnelByProduct} grandTotal={metrics.overall} columns={FUNNEL_COLUMNS('Product')} maxRows={funnelProductTopN} ranked/>
+          </ChartCard>
+        </div>
       </>:<>
-        <ProductKpis view="won" overall={metrics.overall} comparison={comparison}/>
+        <ProductKpis view="won" overall={metrics.overall} comparison={comparison} metrics={metrics}/>
+        <Highlights view="won" metrics={metrics}/>
+        <div className="pv-section"><span>Trend</span></div>
         <div className="pv-grid">
           <ChartCard className="pv-card-full" title="Won ARR trend by Product Group" hint={`Closed Won ARR per ${granularity==='quarterly'?'quarter':'month'} of ${metrics.trendYear} — line ends show the latest value, the big dot marks each group's peak`}
-            controls={<div className="pv-toggle"><button className={granularity==='monthly'?'on':''} onClick={()=>setGranularity('monthly')}>M</button><button className={granularity==='quarterly'?'on':''} onClick={()=>setGranularity('quarterly')}>Q</button></div>}>
+            controls={granularityToggle}>
             <SeriesLineChart trend={metrics.trendByGroup} granularity={granularity} byGroup/>
           </ChartCard>
           <ChartCard className="pv-card-full" title="Won ARR trend by Product" hint="Top products by full-year Won ARR — more lines than this are unreadable"
             controls={<TopNSelect value={trendTopN} onChange={setTrendTopN} options={[3,5,8]} label="Top N product lines"/>}>
             <SeriesLineChart trend={metrics.trendByProduct} granularity={granularity} topN={trendTopN}/>
           </ChartCard>
+        </div>
+        <div className="pv-section"><span>Mix &amp; win rates</span></div>
+        <div className="pv-grid">
           <ChartCard title="Product mix % of Won ARR" hint="Each Product Group's share of the quarter's Won ARR — segments are labeled, hover for the actual $">
             <ProductMixChart mix={metrics.productMix} trend={metrics.trendByGroup}/>
           </ChartCard>
@@ -727,14 +897,17 @@ export default function ProductView({user}){
               tooltipExtra={item=>`${fmtNumber(item.closedWonCount)} won opps · ${fmtCurrency(item.closedWonArr)} Won ARR`}/>
           </ChartCard>
         </div>
-        <ChartCard title="Won vs Lost by Product Group" hint="Distinct opportunity counts; grand total is a true COUNTD across the table">
-          <ProductTable rows={metrics.wonLostByGroup} grandTotal={metrics.overall} columns={WON_LOST_COLUMNS('Product Group')}/>
-        </ChartCard>
-        <ChartCard title="Won vs Lost by Product" hint="Sorted by Won ARR, descending; the grand total spans ALL products, not just the visible rows"
-          controls={<TopNSelect value={wonLostTopN} onChange={setWonLostTopN} options={[5,10,20,0]} label="Top N products"/>}>
-          <ProductTable rows={metrics.wonLostByProduct} grandTotal={metrics.overall} columns={WON_LOST_COLUMNS('Product')} maxRows={wonLostTopN}/>
-        </ChartCard>
+        <div className="pv-section"><span>Won vs Lost tables</span></div>
+        <div className="pv-stack">
+          <ChartCard title="Won vs Lost by Product Group" hint="Distinct opportunity counts; grand total is a true COUNTD across the table">
+            <ProductTable rows={metrics.wonLostByGroup} grandTotal={metrics.overall} columns={WON_LOST_COLUMNS('Product Group')} groupDots/>
+          </ChartCard>
+          <ChartCard title="Won vs Lost by Product" hint="Sorted by Won ARR, descending; the grand total spans ALL products, not just the visible rows"
+            controls={<TopNSelect value={wonLostTopN} onChange={setWonLostTopN} options={[5,10,20,0]} label="Top N products"/>}>
+            <ProductTable rows={metrics.wonLostByProduct} grandTotal={metrics.overall} columns={WON_LOST_COLUMNS('Product')} maxRows={wonLostTopN} ranked/>
+          </ChartCard>
+        </div>
       </>}
-    </>}
+    </div>}
   </div>;
 }

@@ -2,12 +2,8 @@
   "detector": {
     "ignoreRules": [],
     "ignoreFiles": [
-      {
-        "file": "client/src/pages/Dashboard.jsx",
-        "rule": "design-system-color",
-        "createdAt": "2026-08-28T13:00:00.000Z",
-        "reason": "pre-existing chart palette literals throughout this legacy chart-heavy page; user's standing decision is to leave board chart colors as-is (chat 2026-08-27/28)"
-      }
+      "[object Object]",
+      "client/src/pages/Dashboard.jsx"
     ],
     "ignoreValues": [
       {
@@ -27,6 +23,30 @@
         "value": "#dc2626",
         "createdAt": "2026-08-27T07:24:25.110Z",
         "reason": "user confirmed: intentional WinBoard color, leave as-is (chat 2026-08-27)"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgba(15,23,42,.06)",
+        "createdAt": "2026-09-04T12:47:08.021Z",
+        "reason": "pre-existing product view chart grid-line alpha (committed 57a0283); user's standing decision is to leave board chart colors as-is"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#0b0b0b",
+        "createdAt": "2026-09-04T12:47:08.138Z",
+        "reason": "pre-existing heatmap cell ink flip for light cells (committed 57a0283); user's standing decision is to leave board chart colors as-is"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgba(217,119,6,0.07)",
+        "createdAt": "2026-09-04T15:31:16.380Z",
+        "reason": "pre-existing amber notice tint on the Data Sources mapping panel (noticeStyle), untouched by the remap feature"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "rgba(217,119,6,0.25)",
+        "createdAt": "2026-09-04T15:31:16.563Z",
+        "reason": "pre-existing amber notice tint on the Data Sources mapping panel (noticeStyle), untouched by the remap feature"
       }
     ]
   }

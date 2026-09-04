@@ -137,7 +137,7 @@ export default function ProductWonPresentation({ share = false } = {}) {
     </header>
     <div className="presentation-slide win-board-tv-layout">
       <section className="win-board-tv-main" aria-label="Won ARR charts and KPIs">
-        <div className="presentation-kpi-strip pv-tv-kpis"><ProductKpis view="won" overall={metrics.overall} comparison={comparison}/></div>
+        <div className="presentation-kpi-strip pv-tv-kpis"><ProductKpis view="won" overall={metrics.overall} comparison={comparison} metrics={metrics}/></div>
         <div className="win-board-tv-chart-grid">
           <PresentCard hideKey="trend-group" title="Won ARR trend by Product Group" subtitle={`Closed Won ARR per ${granularity === 'quarterly' ? 'quarter' : 'month'} of ${metrics.trendYear || ''}`}>
             <SeriesLineChart trend={metrics.trendByGroup} granularity={granularity} byGroup fill/>

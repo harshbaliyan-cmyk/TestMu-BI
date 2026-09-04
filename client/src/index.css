@@ -568,13 +568,66 @@ tbody tr:hover { background: var(--line-2); }
 }
 
 /* ===== Product View (two date-scoped views on one board) ===== */
-.pv-tabs { display: flex; gap: 8px; margin-top: 10px; }
-.pv-tabs button {
-  padding: 7px 14px; border: 1px solid var(--line); border-radius: 999px;
-  background: var(--card); color: var(--txt-2); font-size: 12.5px; cursor: pointer;
+/* Header chrome speaks the dark shelf's translucent-white grammar. The four
+   locals below are the whole theme contract: light mode flips them and the
+   segmented tabs, scope line, chips and progress bar all follow. */
+.pv-top {
+  --pv-hdr-fg: #FFFFFF; --pv-hdr-muted: #9DB0CC;
+  --pv-hdr-line: rgba(255,255,255,.2); --pv-hdr-fill: rgba(255,255,255,.08); --pv-hdr-fill-on: rgba(255,255,255,.16);
+  position: relative;
 }
-.pv-tabs button.on { border-color: var(--blue); color: var(--blue); font-weight: 600; }
+html[data-theme="light"] .pv-top {
+  --pv-hdr-fg: #0F172A; --pv-hdr-muted: #64748B;
+  --pv-hdr-line: rgba(15,23,42,.14); --pv-hdr-fill: rgba(15,23,42,.05); --pv-hdr-fill-on: #FFFFFF;
+}
+.pv-title-block { min-width: 0; }
+.pv-header-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+/* Segmented control: each tab carries its own view's headline count, so the
+   inactive view is a preview rather than a mystery. */
+.pv-seg { display: inline-flex; padding: 3px; border: 1px solid var(--pv-hdr-line); border-radius: 12px; background: var(--pv-hdr-fill); }
+.pv-seg button {
+  display: grid; gap: 1px; min-width: 156px; padding: 6px 14px; border: 0; border-radius: 9px;
+  background: transparent; color: var(--pv-hdr-muted); font: inherit; text-align: left; cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.pv-seg button b { font-size: 12.5px; font-weight: 600; color: inherit; }
+.pv-seg button span { font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.pv-seg button:hover { color: var(--pv-hdr-fg); }
+.pv-seg button.on { background: var(--pv-hdr-fill-on); color: var(--pv-hdr-fg); box-shadow: 0 1px 2px rgba(0,0,0,.18); }
+.pv-seg button:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.pv-scope { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 9px; font-size: 12px; color: var(--pv-hdr-muted); }
+.pv-scope-key {
+  padding: 2px 8px; border: 1px solid var(--pv-hdr-line); border-radius: 999px;
+  font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
+}
+.pv-scope strong { color: var(--pv-hdr-fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+/* One-click Product Group filter; the dots are the color key every chart,
+   tile bar and table row on the page shares. */
+.pv-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--pv-hdr-line); }
+.pv-chips-label { margin-right: 2px; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--pv-hdr-muted); }
+.pv-chip {
+  display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px 5px 9px;
+  border: 1px solid var(--pv-hdr-line); border-radius: 999px; background: var(--pv-hdr-fill);
+  color: var(--pv-hdr-fg); font: inherit; font-size: 12px; cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.pv-chip i { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.pv-chip:hover { background: var(--pv-hdr-fill-on); }
+.pv-chip.on { background: var(--pv-hdr-fill-on); border-color: var(--pv-hdr-fg); font-weight: 600; }
+.pv-chip:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.pv-chip-clear { background: transparent; color: var(--pv-hdr-muted); }
+/* Refetch state: the board dims under an indeterminate bar instead of
+   vanishing into a full-screen loader on every filter change. */
+.pv-progress { position: absolute; left: 22px; right: 22px; bottom: 0; height: 2px; overflow: hidden; border-radius: 2px; background: var(--pv-hdr-line); }
+.pv-progress::after { content: ''; position: absolute; top: 0; bottom: 0; width: 38%; border-radius: 2px; background: var(--blue); animation: pv-progress 1.1s ease-in-out infinite; }
+@keyframes pv-progress { from { left: -40%; } to { left: 100%; } }
+.pv-board { transition: opacity .2s; }
+.pv-board.is-updating { opacity: .6; }
+@media (prefers-reduced-motion: reduce) { .pv-progress::after { animation: none; left: 0; width: 100%; } .pv-board { transition: none; } }
+.pv-section { display: flex; align-items: center; gap: 12px; margin: 4px 0 12px; font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--txt-3); }
+.pv-section::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 .pv-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
+.pv-stack { display: grid; gap: 16px; margin-bottom: 16px; }
 @media (max-width: 1100px) { .pv-grid { grid-template-columns: 1fr; } }
 /* Trend cards span the whole row: 12 monthly points plus end-of-line labels
    need the full horizontal run, half a row squeezed them illegible. */
@@ -586,19 +639,46 @@ tbody tr:hover { background: var(--line-2); }
 .pv-toggle button { padding: 4px 10px; border: none; background: var(--card); color: var(--txt-2); font-size: 11.5px; cursor: pointer; }
 .pv-toggle button.on { background: var(--blue); color: #FFFFFF; }
 .pv-topn { padding: 4px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--txt-2); font-size: 11.5px; }
-.pv-kpi-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 16px; }
+/* KPI tiles: label + delta chip, the figure, the prior period's actual
+   value, and a composition bar of the groups that make the number up. */
+.pv-kpi-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
 @media (max-width: 900px) { .pv-kpi-strip { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .pv-kpi-strip { grid-template-columns: 1fr; } .pv-seg button { min-width: 0; } }
 .pv-kpi {
   background: var(--card); border: 1px solid var(--line); border-radius: 12px;
-  padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; min-width: 0;
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 5px; min-width: 0;
 }
-.pv-kpi span { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--txt-3); }
-.pv-kpi strong { font-size: 24px; line-height: 1.15; color: var(--txt); }
+.pv-kpi-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pv-kpi-head > span { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--txt-3); }
+.pv-kpi strong { font-size: 27px; line-height: 1.1; letter-spacing: -.02em; font-weight: 600; color: var(--txt); font-variant-numeric: tabular-nums; }
 .pv-kpi small { font-size: 11.5px; color: var(--txt-2); }
-.pv-kpi-delta { font-size: 11px; }
-.pv-kpi-delta.up { color: #16A34A; }
-.pv-kpi-delta.down { color: #DC2626; }
-.pv-kpi-delta.muted { color: var(--txt-3); }
+.pv-kpi small em { font-style: normal; color: var(--txt-3); }
+.pv-kpi-delta {
+  display: inline-flex; align-items: center; gap: 3px; padding: 2px 7px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.pv-kpi-delta.good { color: #5EF0BD; background: rgba(33,214,155,.14); }
+.pv-kpi-delta.bad { color: #FF87A7; background: rgba(255,71,120,.14); }
+.pv-kpi-delta.muted { color: var(--txt-3); background: var(--line-2); font-weight: 600; }
+html[data-theme="light"] .pv-kpi-delta.good { color: #10633A; background: #D3F2DF; }
+html[data-theme="light"] .pv-kpi-delta.bad { color: #A31D1D; background: #FADBDB; }
+.pv-kpi-mix { display: flex; gap: 2px; height: 6px; margin-top: 5px; border-radius: 3px; overflow: hidden; }
+.pv-kpi-mix i { display: block; height: 100%; min-width: 2px; border-radius: 2px; }
+/* Highlights: three sentences of arithmetic over the loaded snapshot. */
+.pv-highlights { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 16px; }
+@media (max-width: 1100px) { .pv-highlights { grid-template-columns: 1fr; } }
+.pv-highlight {
+  position: relative; min-width: 0; padding: 11px 14px 11px 26px;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--card);
+  font-size: 12.5px; line-height: 1.45; color: var(--txt-2);
+}
+/* The accent rule is absolutely placed so it never takes a grid column —
+   as a grid track it once swallowed the text into a 3px-wide column. */
+.pv-highlight::before { content: ''; position: absolute; left: 12px; top: 13px; bottom: 13px; width: 3px; border-radius: 2px; background: var(--blue); }
+.pv-highlight.good::before { background: var(--green); }
+.pv-highlight.bad::before { background: var(--red); }
+.pv-highlight-tag { display: block; margin-bottom: 2px; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--txt-3); }
+.pv-highlight b { color: var(--txt); font-weight: 600; }
 .pv-table-scroll { overflow: auto; max-height: 420px; }
 .pv-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .pv-table th, .pv-table td { padding: 7px 10px; border-bottom: 1px solid var(--line-2); text-align: left; white-space: nowrap; }
@@ -606,7 +686,17 @@ tbody tr:hover { background: var(--line-2); }
 .pv-table .num, .pv-table th.n { text-align: right; }
 .pv-table th .sort-arrow { display: inline-block; }
 .pv-table tfoot td { border-top: 2px solid var(--line); font-weight: 700; }
+.pv-table tbody td:first-child { font-weight: 500; }
 .pv-na { color: var(--txt-3); }
+.pv-dot { display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; vertical-align: 1px; }
+.pv-rank { display: inline-block; min-width: 18px; margin-right: 4px; color: var(--txt-3); font-size: 11px; font-variant-numeric: tabular-nums; }
+/* In-cell data bar behind money figures, scaled to the column's maximum. */
+.pv-cell-bar { position: relative; display: block; padding: 1px 6px; font-variant-numeric: tabular-nums; }
+.pv-cell-bar::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: var(--w, 0%);
+  border-radius: 3px; background: color-mix(in srgb, var(--blue) 16%, transparent);
+}
+.pv-cell-bar > span { position: relative; }
 /* Custom chart tooltip — the app's card language instead of the Chart.js
    default box. Positioned by renderPvTooltip inside the .pv-chart card. */
 .pv-tooltip {
@@ -651,6 +741,11 @@ tbody tr:hover { background: var(--line-2); }
    label column half the row while the stage cells share what's left. */
 .pv-heatmap-label { background: none !important; color: var(--txt-2) !important; text-align: left !important; font-weight: 600; width: 1%; padding-right: 18px; }
 .pv-heatmap-total { background: none !important; color: var(--txt) !important; font-weight: 700; }
+.pv-heatmap td small { display: block; margin-top: 2px; font-size: 10px; font-weight: 500; opacity: .82; }
+.pv-heatmap tbody td:not(.pv-heatmap-label):not(.pv-heatmap-total):hover { outline: 2px solid var(--txt); outline-offset: -2px; }
+.pv-heatmap tfoot .pv-heatmap-foot { background: none !important; color: var(--txt) !important; font-weight: 700; border-top: 1px solid var(--line); border-radius: 0; padding-top: 10px; }
+.pv-heatmap-legend { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 11px; color: var(--txt-3); }
+.pv-heatmap-legend i { width: 120px; height: 8px; border-radius: 4px; }
 .pv-heatmap-hint { display: block; margin-top: 8px; font-size: 11px; color: var(--txt-3); }
 /* TV shell: our KPI strip lives inside the shared presentation strip, and
    the rail's table gets the full rail height instead of the page cap. */
@@ -1445,6 +1540,19 @@ html[data-theme="light"] .present-button { color: #fff; }
 .presentation-kpi-strip .present-kpi > span { font-size: 9px; letter-spacing: .7px; }
 .presentation-kpi-strip .present-kpi > b { font-size: clamp(21px, 2.2vw, 34px); letter-spacing: -.8px; }
 .presentation-kpi-strip .present-kpi > small { font-size: 9.5px; }
+/* Wall highlights: the board's readings in their public, amount-free form. */
+.present-highlights { display: grid; gap: clamp(6px, 1vh, 12px); align-content: start; }
+.present-highlight {
+  position: relative; padding: clamp(8px, 1.1vh, 12px) 12px clamp(8px, 1.1vh, 12px) 22px;
+  border: 1px solid var(--line); border-radius: 10px; color: var(--txt-2);
+  font-size: clamp(12px, 1.5vh, 17px); line-height: 1.4;
+}
+.present-highlight::before { content: ''; position: absolute; left: 9px; top: 11px; bottom: 11px; width: 3px; border-radius: 2px; background: var(--blue); }
+.present-highlight.good::before { background: var(--green); }
+.present-highlight.bad::before { background: var(--red); }
+.present-highlight span { display: block; margin-bottom: 2px; font-size: clamp(9px, 1.05vh, 11px); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--txt-3); }
+.present-highlight p { margin: 0; }
+.present-highlight b { color: var(--txt); font-weight: 600; }
 .presentation-grid { height: 100%; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 18px; }
 .present-card, .present-kpi {
   min-height: 0; border: 1px solid var(--line); border-radius: 11px;

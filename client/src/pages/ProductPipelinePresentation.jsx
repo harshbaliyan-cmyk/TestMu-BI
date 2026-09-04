@@ -136,7 +136,7 @@ export default function ProductPipelinePresentation({ share = false } = {}) {
     </header>
     <div className="presentation-slide win-board-tv-layout">
       <section className="win-board-tv-main" aria-label="Product pipeline charts and KPIs">
-        <div className="presentation-kpi-strip pv-tv-kpis"><ProductKpis view="pipeline" overall={metrics.overall} comparison={comparison}/></div>
+        <div className="presentation-kpi-strip pv-tv-kpis"><ProductKpis view="pipeline" overall={metrics.overall} comparison={comparison} metrics={metrics}/></div>
         <div className="win-board-tv-chart-grid">
           <PresentCard hideKey="trend" title="Pipeline created trend" subtitle={`Created ARR per ${granularity === 'quarterly' ? 'quarter' : 'month'} of ${metrics.trendYear || ''} · one line per Product Group`}>
             <SeriesLineChart trend={metrics.trend} granularity={granularity} byGroup fill/>

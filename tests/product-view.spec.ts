@@ -74,7 +74,25 @@ test('product view: two independently-filtered views with true distinct counts',
   // renamed SKU ("Real Device Live" → "Manual - RD").
   await expect(page.locator('.pv-table').first()).toContainText('Agentic AI');
   await expect(page.locator('.pv-table').nth(1)).toContainText('Manual - RD');
+  // The segmented tab previews its own view's headline count, and the
+  // highlights strip is arithmetic over the same snapshot as the tiles.
+  await expect(page.getByRole('tab', { name: /Pipeline/ })).toContainText('3 open');
+  await expect(page.locator('.pv-highlight').first()).toContainText('of open pipe');
   await page.screenshot({ path: '.playwright/baseline/product_pipeline.png', fullPage: true });
+
+  // ===== Header chips are the Product Group filter in one-click form =====
+  // Agentic AI holds OPP-1's Kane CLI line ($1000) and OPP-2 ($2000): the
+  // Hyperexecute line of the split opp drops out, the opp itself still counts.
+  const agenticChip = page.locator('.pv-chip', { hasText: 'Agentic AI' });
+  await agenticChip.click();
+  await expect(agenticChip).toHaveAttribute('aria-pressed', 'true');
+  await expect(kpi(0)).toContainText('$3.0K', { timeout: 15000 });
+  await expect(kpi(0)).toContainText('2 open opps');
+  // The dropdown and the chip are the same filter, so the dropdown shows it.
+  await expect(page.locator('.ms-trigger', { hasText: 'Product Group' })).toContainText('Agentic AI');
+  await agenticChip.click();
+  await expect(agenticChip).toHaveAttribute('aria-pressed', 'false');
+  await expect(kpi(0)).toContainText('$4.0K', { timeout: 15000 });
 
   // ===== Won ARR view =====
   await page.getByRole('tab', { name: /Won ARR/ }).click();
