@@ -189,6 +189,7 @@ export const getOpportunitySnapshot = (templateId, filters) => api.get(`/dashboa
 // Product View: one template, two independently-filtered views.
 export const getProductPipelineSnapshot = filters => api.get('/product-view/pipeline/snapshot', {params:filters,paramsSerializer:serializer}).then(r=>r.data);
 export const getProductWonSnapshot = filters => api.get('/product-view/won/snapshot', {params:filters,paramsSerializer:serializer}).then(r=>r.data);
+export const getExecutiveSnapshot = filters => api.get('/executive-dashboard/snapshot', {params:filters,paramsSerializer:serializer}).then(r=>r.data);
 export async function getLossBoardSnapshot(filters) {
   const config={params:filters,paramsSerializer:serializer};
   return (await api.get('/loss-board/snapshot',config)).data;

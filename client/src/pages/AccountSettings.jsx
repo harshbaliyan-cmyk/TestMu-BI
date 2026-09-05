@@ -301,7 +301,7 @@ export default function AccountSettings({ user }) {
   return <div className="wrap account-wrap">
     <div className="top-nav" style={{ margin: '-18px -18px 18px' }}>
       <div className="brand" onClick={() => !forced && navigate('/gallery')} style={{ cursor: forced ? 'default' : 'pointer' }}>
-        <img className="brand-logo" src="/testmu-bi-logo-v2.png" alt="TestMu BI" /><span>TestMu BI</span>
+        <img className="brand-logo" src="/testmu-bi-logo-v3.png" alt="TestMu BI" /><span>TestMu BI</span>
       </div>
       <div className="user-pill"><ThemeToggle /><span>{user?.name || 'User'}</span>
         <button className="btn-secondary" onClick={signOut}>Sign out</button></div>

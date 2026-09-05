@@ -287,7 +287,7 @@ export default function Presentation({ share = false, templateId: templateIdProp
   if (loadError && !M) return <main className="presentation-loading"><div className="error">{loadError}</div></main>;
   if (loading || !M) return <AppLoader fullscreen label="Preparing presentation…" />;
   return <HideableProvider value={hideControl}><main className="presentation-shell">
-    <header className="presentation-header"><div className="presentation-brand"><img src="/testmu-bi-logo-v2.png" alt="" /><div><b>TestMu BI</b><span>Counts and rates only — no revenue figures on the wall</span></div></div>
+    <header className="presentation-header"><div className="presentation-brand"><img src="/testmu-bi-logo-v3.png" alt="" /><div><b>TestMu BI</b><span>Counts and rates only — no revenue figures on the wall</span></div></div>
       <div className="presentation-view-label"><span>VIEW {activeViewNumber} OF {VIEW_ORDER.length}</span><b>{VIEW_LABELS[activeSlide?.view] || activeSlide?.title}</b></div>
       <div className="presentation-clock"><b>{now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</b><span>{now.toLocaleDateString()}</span><DataFreshnessStamp online={online} dataUpdatedAt={dataUpdatedAt} /></div>
     </header>

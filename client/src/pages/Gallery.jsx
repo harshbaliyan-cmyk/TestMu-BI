@@ -31,7 +31,7 @@ export default function Gallery({ user }) {
     <div className="wrap">
       <div className="top-nav" style={{ margin: '-18px -18px 18px' }}>
         <div className="brand">
-          <img className="brand-logo" src="/testmu-bi-logo-v2.png" alt="TestMu BI" />
+          <img className="brand-logo" src="/testmu-bi-logo-v3.png" alt="TestMu BI" />
           <span>TestMu BI</span>
         </div>
         <div className="user-pill">

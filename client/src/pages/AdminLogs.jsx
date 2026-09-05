@@ -8,7 +8,7 @@ export default function AdminLogs(){
   const load=()=>api.get('/admin/logs',{params:{type,limit:200}}).then(({data})=>setItems(data.items||[])).catch(e=>setError(e.response?.data?.error||e.message));
   useEffect(()=>{load();},[type]);
   return <div className="wrap"><div className="top-nav" style={{margin:'-18px -18px 18px'}}>
-    <div className="brand"><img className="brand-logo" src="/testmu-bi-logo-v2.png" alt="TestMu BI"/><span>Administration</span></div>
+    <div className="brand"><img className="brand-logo" src="/testmu-bi-logo-v3.png" alt="TestMu BI"/><span>Administration</span></div>
     <div className="user-pill"><ThemeToggle/><button className="btn-secondary" onClick={()=>navigate('/gallery')}>Back</button></div></div>
     <div className="gallery-header"><h2>Audit and error log</h2><div style={{display:'flex',gap:8}}>
       <button className={type==='audit'?'btn-primary':'btn-secondary'} onClick={()=>setType('audit')}>Audit</button>

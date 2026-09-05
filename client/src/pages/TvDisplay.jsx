@@ -57,7 +57,7 @@ export default function TvDisplay() {
     // Deliberately says nothing about WHY beyond the server's generic line —
     // a revoked link on a public wall should not explain itself to passers-by.
     return <main className="tv-share-error">
-      <img src="/testmu-bi-logo-v2.png" alt="TestMu BI" />
+      <img src="/testmu-bi-logo-v3.png" alt="TestMu BI" />
       <h1>This display link is not active</h1>
       <p>{resolved.message}</p>
       <p>Ask whoever set up this screen to create a fresh link from the dashboard&rsquo;s Present view.</p>

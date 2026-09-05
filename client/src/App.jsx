@@ -19,6 +19,7 @@ import AccountSettings from './pages/AccountSettings';
 import TvDisplay from './pages/TvDisplay';
 import ChartBuilder from './pages/ChartBuilder';
 import ProductView from './pages/ProductView';
+import ExecutiveDashboard from './pages/ExecutiveDashboard';
 import ProductPipelinePresentation from './pages/ProductPipelinePresentation';
 import ProductWonPresentation from './pages/ProductWonPresentation';
 import CustomDashboard from './pages/CustomDashboard';
@@ -50,6 +51,7 @@ function App() {
           <Route path="/dashboard/loss-board" element={user ? <LossBoard user={user} /> : <Navigate to="/" />} />
           <Route path="/loss-board" element={<Navigate to="/dashboard/loss-board" replace />} />
           <Route path="/dashboard/product-view" element={user ? <ProductView user={user} /> : <Navigate to="/" />} />
+          <Route path="/dashboard/executive-dashboard" element={user ? <ExecutiveDashboard user={user} /> : <Navigate to="/" />} />
           <Route path="/dashboard/ae-performance" element={user ? <AePerformance user={user} /> : <Navigate to="/" />} />
           <Route path="/dashboard/am-performance" element={user ? <AmPerformance user={user} /> : <Navigate to="/" />} />
           <Route path="/dashboard/:templateId" element={user ? <Dashboard user={user} /> : <Navigate to="/" />} />

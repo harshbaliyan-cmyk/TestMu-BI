@@ -5035,3 +5035,178 @@ html:not([data-theme="light"]) {
   margin: 10px 0 0; font-size: 12.5px; line-height: 1.45;
   color: var(--txt-3); text-align: center;
 }
+
+/* ---- Executive Dashboard ------------------------------------------------ */
+.exec-note { display: inline-flex; align-items: center; gap: 8px; margin-top: 8px; padding: 6px 10px; border-radius: 8px; font-size: 12px; font-weight: 600; color: #FF6B8A; background: rgba(255,71,120,.10); border: 1px solid rgba(255,71,120,.25); }
+html[data-theme=light] .exec-note { color: #B4233F; background: rgba(204,0,51,.06); border-color: rgba(204,0,51,.2); }
+.exec-kpis-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.exec-kpis-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1100px) { .exec-kpis-5, .exec-kpis-4 { grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); } }
+.kpi .exec-pair { font-size: 12.5px; font-weight: 700; color: var(--amber); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.kpi .exec-tile-note { font-size: 11px; font-weight: 600; color: #FF6B8A; margin-top: 2px; }
+html[data-theme=light] .kpi .exec-tile-note { color: #B4233F; }
+.exec-chart { position: relative; height: 300px; }
+.exec-chart canvas { width: 100% !important; height: 100% !important; }
+.exec-table-scroll { overflow: auto; max-height: 440px; }
+.exec-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.exec-table th, .exec-table td { padding: 7px 8px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+.exec-table th { position: sticky; top: 0; background: var(--card); font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--txt-3); }
+.exec-table th.n, .exec-table td.n { text-align: right; font-variant-numeric: tabular-nums; }
+.exec-table tbody tr:hover td { background: var(--line-2); }
+.exec-mix { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, auto); gap: 24px; align-items: center; }
+.exec-mix > * { min-width: 0; }
+.exec-legend-note { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: 11.5px; color: var(--txt-3); }
+.exec-legend-note b { color: var(--txt-2); font-weight: 600; }
+@media (max-width: 900px) { .exec-mix { grid-template-columns: 1fr; } }
+.exec-topn { padding: 4px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--txt-2); font-size: 11.5px; }
+.exec-filter-note { font-size: 11.5px; color: var(--txt-3); margin-top: 6px; }
+.exec-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* Executive Dashboard categorical palette: twelve saturated hues that stay
+   vivid on both the light card and the dark one (ruling 2026-09-05). Shared
+   by the canvas charts and the HTML charts on that board. */
+:root {
+  --exec-1: #3B82F6; --exec-2: #22C55E; --exec-3: #F59E0B; --exec-4: #EC4899;
+  --exec-5: #8B5CF6; --exec-6: #06B6D4; --exec-7: #F97316; --exec-8: #84CC16;
+  --exec-9: #14B8A6; --exec-10: #EF4444; --exec-11: #A855F7; --exec-12: #0EA5E9;
+}
+
+/* Executive tiles: one small visual per number. */
+.exec-tile { display: flex; flex-direction: column; gap: 4px; min-height: 138px; }
+.exec-tile-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.exec-tile .exec-tile-note { margin: 0; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: .02em; color: #FF6B8A; background: rgba(255,71,120,.14); }
+html[data-theme=light] .exec-tile .exec-tile-note { color: #B4233F; background: rgba(204,0,51,.08); }
+.exec-tile-body { display: flex; align-items: center; gap: 14px; margin-top: 2px; }
+.exec-tile-main { min-width: 0; flex: 1; }
+.exec-tile .vl { margin: 0; font-size: 27px; line-height: 1.1; }
+.exec-tile .ft { margin-top: 3px; }
+.exec-ring { position: relative; flex: 0 0 auto; }
+.exec-ring svg { display: block; transform: rotate(-90deg); }
+.exec-ring b { position: absolute; inset: 0; display: grid; place-items: center; font-size: 11px; font-weight: 700; color: var(--txt-2); font-variant-numeric: tabular-nums; }
+.exec-meter { position: relative; height: 8px; border-radius: 4px; background: var(--line-2); margin: 12px 4px 18px 0; }
+.exec-meter > i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: var(--meter-color); box-shadow: 0 0 10px color-mix(in srgb, var(--meter-color) 55%, transparent); }
+.exec-meter-mark { position: absolute; top: -3px; width: 2px; height: 14px; background: var(--txt-3); border-radius: 1px; transform: translateX(-1px); }
+.exec-meter-mark > span { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); font-size: 9.5px; color: var(--txt-3); white-space: nowrap; }
+.exec-share { margin-top: 8px; }
+.exec-share-track { height: 6px; border-radius: 3px; background: var(--line-2); overflow: hidden; }
+.exec-share-track i { display: block; height: 100%; border-radius: 3px; background: var(--share-color); box-shadow: 0 0 8px color-mix(in srgb, var(--share-color) 55%, transparent); }
+.exec-share-caption, .exec-mix-legend { margin-top: 5px; font-size: 10.5px; color: var(--txt-3); display: flex; gap: 4px 10px; flex-wrap: wrap; }
+.exec-mix-strip { margin-top: 8px; }
+.exec-mix-strip .pv-kpi-mix { height: 7px; margin-top: 0; }
+.exec-mix-legend b { color: var(--txt-2); font-weight: 600; }
+.exec-mix-legend i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+
+/* Executive deals table: ranked, searchable, one colour per POD. */
+.exec-table-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.exec-search { padding: 5px 10px; min-width: 220px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--txt); font: inherit; font-size: 12px; }
+.exec-search:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
+.exec-deals { table-layout: fixed; }
+.exec-col-rank { width: 44px; } .exec-col-deal { width: 34%; } .exec-col-rep { width: 15%; } .exec-col-arr { width: 24%; } .exec-col-pod { width: 13%; } .exec-col-date { width: 11%; }
+.exec-deals td { white-space: normal; vertical-align: middle; }
+.exec-deals tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--line-2) 55%, transparent); }
+.exec-deals tbody tr.exec-podium .exec-rank { color: var(--exec-3); }
+.exec-rank { color: var(--txt-3); font-weight: 700; font-variant-numeric: tabular-nums; }
+.exec-deal-account { font-weight: 600; color: var(--txt); }
+.exec-deal-name { font-size: 11px; color: var(--txt-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exec-deal-arr { display: grid; grid-template-columns: minmax(0, 1fr) auto 38px; align-items: center; gap: 8px; }
+.exec-deal-track { height: 7px; border-radius: 4px; background: var(--line-2); overflow: hidden; }
+.exec-deal-track i { display: block; height: 100%; border-radius: 4px; }
+.exec-deal-arr b { font-variant-numeric: tabular-nums; }
+.exec-deal-arr small { color: var(--txt-3); font-size: 10.5px; text-align: right; }
+.exec-pod-pill { display: inline-block; max-width: 100%; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--txt); background: color-mix(in srgb, var(--pill) 22%, transparent); border: 1px solid color-mix(in srgb, var(--pill) 55%, transparent); }
+.exec-deals tfoot td { border-top: 2px solid var(--line); border-bottom: 0; color: var(--txt-2); font-size: 11.5px; }
+
+/* Executive forecast-mix table. */
+.exec-mix-table { table-layout: fixed; }
+.exec-mix-table td { white-space: normal; vertical-align: middle; }
+.exec-mix-table tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--line-2) 55%, transparent); }
+.exec-mix-table tbody tr.exec-mix-commit td:first-child { box-shadow: inset 3px 0 0 var(--exec-3); }
+.exec-mix-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.exec-mix-group i { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+.exec-mix-group small { color: var(--txt-3); font-size: 10.5px; }
+.exec-mix-count { display: grid; gap: 3px; justify-items: end; }
+.exec-mix-count span { font-variant-numeric: tabular-nums; }
+.exec-mix-count i { display: block; height: 4px; border-radius: 2px; min-width: 3px; }
+.exec-mix-share { display: grid; grid-template-columns: minmax(0, 1fr) 52px; align-items: center; gap: 8px; }
+.exec-mix-share b { font-variant-numeric: tabular-nums; text-align: right; }
+.exec-mix-table tfoot td { border-top: 2px solid var(--line); border-bottom: 0; color: var(--txt-2); font-size: 11.5px; }
+
+/* Executive per-POD charts: attainment ladder and pipeline composition. */
+.exec-ladder, .exec-pipe { display: grid; gap: 9px; padding: 4px 0; }
+.exec-ladder-row, .exec-pipe-row { display: grid; align-items: center; gap: 10px; font-size: 12px; }
+.exec-ladder-row { grid-template-columns: 96px minmax(0, 1fr) 56px minmax(0, 150px); }
+.exec-pipe-row { grid-template-columns: 96px minmax(0, 1fr) 62px minmax(0, 120px); }
+.exec-ladder-label { color: var(--txt-2); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.exec-ladder-track { position: relative; height: 12px; border-radius: 6px; background: var(--line-2); }
+.exec-ladder-track i { display: block; height: 100%; border-radius: 6px; min-width: 0; }
+.exec-ladder-goal { position: absolute; top: -4px; bottom: -4px; width: 0; border-left: 2px dashed var(--txt-3); transform: translateX(-1px); }
+.exec-ladder-pct { font-variant-numeric: tabular-nums; text-align: right; }
+.exec-ladder-row small, .exec-pipe-row small { color: var(--txt-3); font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.exec-ladder-row.is-empty .exec-ladder-pct { color: var(--txt-3); }
+.band-good { background: var(--exec-2); } .band-mid { background: var(--exec-3); } .band-low { background: var(--exec-10); } .band-none { background: transparent; }
+.exec-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 6px; font-size: 10.5px; color: var(--txt-3); }
+.exec-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.exec-legend i.goal { width: 0; height: 11px; border-left: 2px dashed var(--txt-3); border-radius: 0; }
+.exec-pipe-track { height: 14px; border-radius: 7px; background: var(--line-2); }
+.exec-pipe-bar { display: flex; height: 100%; border-radius: 7px; overflow: hidden; }
+.exec-pipe-bar i { display: block; height: 100%; }
+.exec-pipe-row b { font-variant-numeric: tabular-nums; text-align: right; }
+.seg-commit { background: var(--exec-3); } .seg-best { background: var(--exec-1); } .seg-rest { background: color-mix(in srgb, var(--txt-3) 45%, transparent); }
+
+/* Executive donuts: a legend you can read from a step back. */
+.exec-donut .donut-legend { gap: 10px; min-width: 230px; }
+.exec-donut .donut-legend-row { font-size: 13.5px; gap: 10px; }
+.exec-donut .donut-legend-row i { width: 12px; height: 12px; border-radius: 6px; }
+.exec-donut .donut-legend-val { font-size: 13.5px; }
+.exec-donut .donut-legend-pct { font-size: 12.5px; min-width: 38px; }
+.exec-legend-note { font-size: 12.5px; }
+.exec-donut .donut-legend-row { grid-template-columns: 12px 1fr auto auto; }
+
+/* Executive tooltip bubble (replaces the browser's title tooltip). */
+.exec-tip { position: fixed; z-index: 4000; min-width: 190px; max-width: 340px; padding: 10px 12px 9px; border-radius: 10px; background: #0F172A; color: #fff; border: 1px solid rgba(255,255,255,.14); box-shadow: 0 14px 34px rgba(0,0,0,.4); font-size: 12px; line-height: 1.35; pointer-events: none; }
+.exec-tip-title { font-weight: 700; font-size: 12.5px; margin-bottom: 6px; }
+.exec-tip-row { display: grid; grid-template-columns: 9px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 2px 0; color: rgba(255,255,255,.78); }
+.exec-tip-row i { width: 9px; height: 9px; border-radius: 50%; }
+.exec-tip-row b { color: #fff; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.exec-tip-note { margin-top: 6px; font-size: 11px; color: rgba(255,255,255,.62); }
+html[data-theme=light] .exec-tip { background: #FFFFFF; color: #0F172A; border-color: #D7DFE9; box-shadow: 0 14px 34px rgba(15,23,42,.18); }
+html[data-theme=light] .exec-tip-row { color: #475569; }
+html[data-theme=light] .exec-tip-row b { color: #0F172A; }
+html[data-theme=light] .exec-tip-note { color: #64748B; }
+.exec-ladder-row:focus-visible, .exec-pipe-row:focus-visible, .exec-deals tbody tr:focus-visible, .exec-mix-table tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; border-radius: 6px; }
+.exec-ladder-row:hover .exec-ladder-track, .exec-pipe-row:hover .exec-pipe-track { filter: brightness(1.08); }
+.exec-mix-strip .pv-kpi-mix i { cursor: default; }
+
+/* Roomier per-POD rows inside a scrolling list; the legend stays put. */
+.exec-ladder, .exec-pipe { display: grid; gap: 10px; padding: 0; }
+.exec-scroll { display: grid; gap: 15px; max-height: 420px; overflow-y: auto; overscroll-behavior: contain; padding: 8px 10px 10px 2px; scrollbar-width: thin; }
+.exec-ladder-row, .exec-pipe-row { font-size: 12.5px; min-height: 26px; }
+.exec-ladder-row { grid-template-columns: 110px minmax(0, 1fr) 60px minmax(0, 160px); }
+.exec-pipe-row { grid-template-columns: 110px minmax(0, 1fr) 66px minmax(0, 130px); }
+.exec-ladder-track { height: 15px; border-radius: 8px; }
+.exec-ladder-track i { border-radius: 8px; }
+.exec-pipe-track { height: 17px; border-radius: 9px; }
+.exec-pipe-bar { border-radius: 9px; }
+.exec-ladder-row small, .exec-pipe-row small { font-size: 11px; }
+.exec-ladder-label { font-size: 12.5px; }
+.exec-legend { margin-top: 2px; padding-top: 8px; border-top: 1px solid var(--line-2); font-size: 11px; }
+
+/* Executive product list. */
+.exec-product-row { grid-template-columns: 160px minmax(0, 1fr) 66px minmax(0, 110px); }
+.exec-product-name { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.exec-product-name b { font-weight: 600; color: var(--txt-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.exec-product-name small { color: var(--txt-3); font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.exec-forecast-row { grid-template-columns: 110px minmax(0, 1fr) 66px minmax(0, 150px); }
+.exec-forecast-row small i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin: 0 4px 0 6px; vertical-align: -1px; }
+.exec-forecast-row small i:first-child { margin-left: 0; }
+
+/* Executive card headings: eyebrow, title, hint. */
+.exec-wrap .card-head { margin-bottom: 14px; }
+.exec-wrap .card-head h3, .exec-wrap .card h3 { font-size: 16.5px; font-weight: 700; letter-spacing: -.2px; line-height: 1.2; }
+.exec-wrap .card .hint { font-size: 12px; line-height: 1.5; color: var(--txt-3); max-width: 72ch; margin-top: 4px; margin-bottom: 0; }
+.exec-eyebrow { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--txt-3); }
+.exec-eyebrow::before { content: ''; width: 8px; height: 8px; border-radius: 2px; background: var(--eyebrow, var(--blue)); box-shadow: 0 0 8px color-mix(in srgb, var(--eyebrow, var(--blue)) 60%, transparent); }
+.exec-wrap .pv-section { font-size: 11px; letter-spacing: .1em; color: var(--txt-2); margin: 10px 0 14px; }
+
+/* The square mark reads better with the same corner radius the cards use. */
+.brand-logo, .login-logo, .presentation-brand img { border-radius: 9px; }

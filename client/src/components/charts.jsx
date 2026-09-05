@@ -461,7 +461,9 @@ export function MultiSelect({ label, options, value = [], onChange, allLabel }) 
         ...(opensAbove
           ? { bottom: Math.max(edge, window.innerHeight - r.top + 6) }
           : { top: Math.max(edge, r.bottom + 6) }),
-        maxHeight: Math.max(150, Math.min(360, (opensAbove ? above : below) - 6)),
+        // Tall enough for a product list to show whole before scrolling — a
+        // 360px menu showed 7 of 13 products and read as "options missing".
+        maxHeight: Math.max(150, Math.min(520, (opensAbove ? above : below) - 6)),
       });
     };
     measure();

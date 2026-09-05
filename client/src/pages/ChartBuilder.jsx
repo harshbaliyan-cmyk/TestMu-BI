@@ -167,7 +167,7 @@ export default function ChartBuilder() {
 
   return <div className="wrap builder-wrap">
     <div className="top-nav" style={{ margin: '-18px -18px 18px' }}>
-      <div className="brand"><img className="brand-logo" src="/testmu-bi-logo-v2.png" alt="TestMu BI" /><span>Chart builder</span></div>
+      <div className="brand"><img className="brand-logo" src="/testmu-bi-logo-v3.png" alt="TestMu BI" /><span>Chart builder</span></div>
       <div className="user-pill"><ThemeToggle />
         <DashboardSwitcher />
         <button className="btn-secondary" onClick={() => navigate(destination && destination !== NEW_DASHBOARD ? `/dashboards/custom/${destination}` : '/gallery')}>Back</button></div>

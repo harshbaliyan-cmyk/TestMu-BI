@@ -63,7 +63,7 @@ export default function TvCustomDashboard({ dashboardId }) {
 
   return <main className="presentation-shell tv-custom-shell">
     <header className="presentation-header">
-      <div className="presentation-brand"><img src="/testmu-bi-logo-v2.png" alt="" /><div><b>TestMu BI</b><span>Live dashboard</span></div></div>
+      <div className="presentation-brand"><img src="/testmu-bi-logo-v3.png" alt="" /><div><b>TestMu BI</b><span>Live dashboard</span></div></div>
       <div className="presentation-view-label"><b>{dashboard.name}</b></div>
       <div className="presentation-clock">
         <b>{now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</b>

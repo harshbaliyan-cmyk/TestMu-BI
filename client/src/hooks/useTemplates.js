@@ -23,6 +23,7 @@ const FALLBACK = [
   { id: 'loss-board', name: 'Loss Board' },
   { id: 'am-performance', name: 'AM Performance' },
   { id: 'ae-performance', name: 'AE Performance' },
+  { id: 'executive-dashboard', name: 'Executive Dashboard' },
 ];
 
 export function useTemplates() {

@@ -122,7 +122,7 @@ export default function ProductPipelinePresentation({ share = false } = {}) {
   if (loading) return <AppLoader fullscreen label="Preparing presentation…" />;
   return <HideableProvider value={hideControl}><main className="presentation-shell win-board-wrap win-board-tv-shell">
     <header className="presentation-header">
-      <div className="presentation-brand"><img src="/testmu-bi-logo-v2.png" alt="" /><div><b>TestMu BI</b>
+      <div className="presentation-brand"><img src="/testmu-bi-logo-v3.png" alt="" /><div><b>TestMu BI</b>
         <div className="presentation-brand-context">
           <span>Pipeline built by product.</span>
           <i aria-hidden="true">•</i>

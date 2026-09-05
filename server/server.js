@@ -27,6 +27,7 @@ import { createShareToken, listShareTokens, revokeShareToken, resolveShareToken 
 import { listAdminLogs, cleanupOldRecords } from './repositories/adminLogs.js';
 import { buildWinBoardSnapshot } from './services/winBoardMetrics.js';
 import { buildProductPipelineSnapshot, buildProductWonSnapshot } from './services/productViewMetrics.js';
+import { buildExecutiveSnapshot } from './services/executiveMetrics.js';
 import { buildOpportunitySnapshot } from './services/opportunityMetrics.js';
 import { buildLossBoardSnapshot } from './services/lossBoardMetrics.js';
 import { buildAePerformanceSnapshot, isAmRow } from './services/aePerformanceMetrics.js';
@@ -470,6 +471,13 @@ const TEMPLATES = [
     description: 'Pipeline by created date and Won ARR by close date, split by product',
     tags: ['Tableau', '2 views'],
     fields: DASHBOARD_FIELD_SETS.productView,
+  },
+  {
+    id: 'executive-dashboard',
+    name: 'Executive Dashboard',
+    description: 'Quota attainment, pipeline coverage, forecast and trials — the current quarter at a glance',
+    tags: ['Tableau', 'Exec'],
+    fields: DASHBOARD_FIELD_SETS.executive,
   },
   {
     id: 'am-performance',
@@ -935,6 +943,13 @@ app.get('/api/product-view/pipeline/snapshot', allowShareToken(() => 'product-vi
 });
 app.get('/api/product-view/won/snapshot', allowShareToken(() => 'product-view'), (req, res) => {
   res.json(buildProductWonSnapshot(dashboardRows(requesterId(req), 'product-view'), req.query));
+});
+
+// Executive Dashboard: every object is computed here from the opportunity ×
+// product-line rows; the browser only renders. Board-only (no wall), so a
+// share token has nothing to open, but the read path stays uniform.
+app.get('/api/executive-dashboard/snapshot', allowShareToken(() => 'executive-dashboard'), (req, res) => {
+  res.json(buildExecutiveSnapshot(dashboardRows(requesterId(req), 'executive-dashboard'), req.query));
 });
 
 app.get('/api/loss-board/metrics', allowShareToken(() => 'loss-board'), (req, res) => {

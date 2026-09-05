@@ -78,6 +78,23 @@ export const PRODUCT_NAME_MAP = {
   'Virtual & Real Device Plus Automation Cloud': 'Virtual Cloud',
   'ChromeOS Live': 'Virtual Cloud',
   'Kane CLI Starter': 'Kane CLI',
+  // Aligned with the Product Mapping sheet (2026-09-05): the source spells
+  // A2A with a DOUBLE space between "Agent" and "to", and the compliance /
+  // add-on SKUs are Others, not raw names.
+  'Agent  to Agent Testing': 'A2A',
+  'Test at Scale': 'Others',
+  'Test At Scale: Lite': 'Others',
+  'Data Center Region Reservation': 'Others',
+  'Data Retention': 'Others',
+  'GDPR': 'Others',
+  'Unbound': 'Others',
+  'Performance Testing - Basic': 'Others',
+  // Live in the source but missing from the sheet; filed with their family
+  // by ruling of 2026-09-05, the same way the Executive Dashboard files them.
+  'KaneAI Max': 'Kane AI',
+  'KaneAI Desktop Essentials': 'Kane AI',
+  'HyperExecute Private Cloud': 'HyperExecute',
+  'Web and App Automation on Virtual Device': 'Automation',
 };
 export const actualProductName = raw => PRODUCT_NAME_MAP[raw] ?? raw;
 
@@ -89,12 +106,16 @@ const GROUP_AGENTIC_AI = [
   'SmartUI Visual Regression', 'Kane AI (Web)', 'Test Manager Premium', 'Accessibility',
   'Accessibility Automation', 'Kane AI Web', 'Native App Accessibility', 'KaneAI Web & App',
   'KaneAI Desktop & Mobile Essentials', 'Kane CLI', 'Kane CLI Pro', 'Kane CLI Starter',
+  // The source's double-spaced A2A spelling, and the two KaneAI SKUs the
+  // sheet omits (ruling of 2026-09-05).
+  'Agent  to Agent Testing', 'KaneAI Max', 'KaneAI Desktop Essentials',
 ];
 const GROUP_HYPEREXECUTE = [
   'HyperExecute - Public Cloud (Linux Only)', 'HyperExecute MultiOS', 'HyperExecute - Public Cloud',
   'TestMuOne', 'LambdaTestOne', 'LambdaTest One Plus', 'LambdaTest One Lite',
   'HyperExecute OnPrem (Including Lums + Oauth)', 'HyperExecute OnPrem (Excluding LUMS + Oauth)',
   'HyperExecute On Premise', 'TestMuOne - Lite', 'HyperExecute (Dedicated Account On LT)',
+  'HyperExecute Private Cloud',   // missing from the sheet; ruling of 2026-09-05
 ];
 const GROUP_BROWSER_AND_APP = [
   'Private Real Device Cloud', 'Private Real Device', 'Native App Automation Plus', 'Professional Services',

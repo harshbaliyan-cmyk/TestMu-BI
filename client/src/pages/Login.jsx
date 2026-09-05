@@ -79,7 +79,7 @@ export default function Login() {
     <div className="login-wrap">
       <div className="login-theme"><ThemeToggle /></div>
       <div className="login-card">
-        <img className="login-logo" src="/testmu-bi-logo-v2.png" alt="TestMu BI" />
+        <img className="login-logo" src="/testmu-bi-logo-v3.png" alt="TestMu BI" />
         <h2>TestMu BI</h2>
         {/* The signup tab appears only where the server will actually accept a
             signup. Accounts are normally provisioned by an administrator, so

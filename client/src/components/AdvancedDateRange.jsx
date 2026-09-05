@@ -11,7 +11,7 @@ const endBefore = date => addDays(date, -1);
 
 const LABELS = {
   all: 'All dates', currentWeek: 'Current week', previousWeek: 'Previous week',
-  currentQuarter: 'Current quarter', previousQuarter: 'Previous quarter',
+  currentQuarter: 'Current quarter', wholeQuarter: 'This quarter (to quarter end)', previousQuarter: 'Previous quarter',
   currentYear: 'Current year', previousYear: 'Previous year',
   last7: 'Last 7 days', last30: 'Last 30 days', last90: 'Last 90 days',
   previousN: 'Previous periods', custom: 'Custom range',
@@ -28,6 +28,10 @@ export function rangeFor(key, count = 1, unit = 'quarter') {
     case 'currentWeek': return [weekStart, today];
     case 'previousWeek': return [addDays(weekStart, -7), endBefore(weekStart)];
     case 'currentQuarter': return [quarterStart, today];
+    // The whole calendar quarter, not quarter-to-date: a CLOSE-date scope
+    // must keep the deals still due to close later this quarter (Tableau's
+    // relative "This quarter"), which the to-date preset silently drops.
+    case 'wholeQuarter': return [quarterStart, endBefore(addMonths(quarterStart, 3))];
     case 'previousQuarter': return [addMonths(quarterStart, -3), endBefore(quarterStart)];
     case 'currentYear': return [atDate(year, 0, 1), today];
     case 'previousYear': return [atDate(year - 1, 0, 1), atDate(year - 1, 11, 31)];
@@ -130,7 +134,7 @@ export default function AdvancedDateRange({
 
   const quickGroups = [
     ['Weeks', [['currentWeek','Current week'],['previousWeek','Previous week']]],
-    ['Quarters', [['currentQuarter','Current quarter'],['previousQuarter','Previous quarter']]],
+    ['Quarters', [['currentQuarter','Current quarter'],['wholeQuarter','This quarter (to quarter end)'],['previousQuarter','Previous quarter']]],
     ['Years', [['currentYear','Current year'],['previousYear','Previous year']]],
     ['Rolling', [['last7','Last 7 days'],['last30','Last 30 days'],['last90','Last 90 days']]],
   ];

@@ -1402,3 +1402,28 @@ test('a webhook delivery is matched to its own resource, and never silenced by a
   assert.equal(webhookEventResourceLuid({'resource-luid':''}),null);
   assert.equal(webhookEventResourceLuid({'resource-luid':{nested:true}}),null);
 });
+
+// The Opp + Product source (Executive Dashboard) carries look-alike columns
+// for several fields; each pair must resolve to the one the spec names.
+test('autoMap tells the Opp + Product look-alike columns apart', () => {
+  const { fieldMapping } = autoMap(['User ID', 'Opportunity Type', 'Product Family', 'Product Type', 'Opp Created Date', 'Created Date',
+    'Stage', 'POD', 'Sales POD', 'Subscription Duration-1', 'Subscription Duration', 'Opportunity ID', 'Amount', 'Discount Amount',
+    'Total Price', 'User Active', 'Active', 'Won', 'Closed', 'Full Name', 'Account Name', 'Name', 'Opportunity Forecast',
+    'MIS Required', 'Product Name', 'Employees', 'Free Domain', 'Acc Continent', 'Tier Based Pricing?', 'Opp Close Date', 'Q3-2026 Quota']);
+  assert.equal(fieldMapping.product, 'Product Name');
+  assert.equal(fieldMapping.createdDate, 'Opp Created Date');
+  assert.equal(fieldMapping.closeDate, 'Opp Close Date');
+  assert.equal(fieldMapping.ownerActive, 'User Active');
+  assert.equal(fieldMapping.oppActive, 'Active');
+  assert.equal(fieldMapping.pod, 'POD');
+  assert.equal(fieldMapping.salesPod, 'Sales POD');
+  assert.equal(fieldMapping.subscriptionDuration, 'Subscription Duration');
+  assert.equal(fieldMapping.lineDuration, 'Subscription Duration-1');
+  assert.equal(fieldMapping.owner, 'Full Name');
+  assert.equal(fieldMapping.userId, 'User ID');
+  assert.equal(fieldMapping.misRequired, 'MIS Required');
+  assert.equal(fieldMapping.amount, 'Amount');
+  assert.equal(fieldMapping.type, 'Opportunity Type');
+  assert.equal(fieldMapping.orgType, null, 'no Org Type column here — nothing may fuzzy-match one');
+  assert.equal(fieldMapping.quotaCurrent, null, 'quota stays manual');
+});
