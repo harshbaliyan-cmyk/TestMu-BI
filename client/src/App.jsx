@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import Login from './pages/Login';
+import Landing from './pages/Landing';
 import Gallery from './pages/Gallery';
 import Dashboard from './pages/Dashboard';
 import DataSources from './pages/DataSources';
@@ -44,7 +45,11 @@ function App() {
               wall display cannot change anyone's password. */}
           <Route path="/tv/:token" element={<TvDisplay />} />
           {mustChangePassword && <Route path="*" element={<AccountSettings user={user} />} />}
-          <Route path="/" element={user ? <Navigate to="/gallery" /> : <Login />} />
+          {/* Signed out, "/" is the landing page with the sign-in card embedded
+              in its hero; "/login" keeps the bare form for bookmarks and for
+              anyone who wants no scrolling between them and the button. */}
+          <Route path="/" element={user ? <Navigate to="/gallery" /> : <Landing />} />
+          <Route path="/login" element={user ? <Navigate to="/gallery" /> : <Login />} />
           <Route path="/gallery" element={user ? <Gallery user={user} /> : <Navigate to="/" />} />
           <Route path="/dashboard/win-board" element={user ? <WinBoard user={user} /> : <Navigate to="/" />} />
           <Route path="/win-board" element={<Navigate to="/dashboard/win-board" replace />} />

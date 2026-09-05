@@ -16,7 +16,11 @@ function describeAuthError(requestError, mode) {
   return `${mode === 'signup' ? 'Account creation' : 'Sign in'} failed.`;
 }
 
-export default function Login() {
+// `embedded` renders only the card, for the landing hero: the wrapper, the
+// fixed theme toggle and the brand block belong to the page around it there.
+// Everything that talks to the server is shared, so the hero form and the
+// bare /login form cannot drift apart.
+export default function Login({ embedded = false } = {}) {
   const googleButton = useRef(null);
   const [config, setConfig] = useState(null);
   const [error, setError] = useState('');
@@ -75,12 +79,10 @@ export default function Login() {
     }
   };
 
-  return (
-    <div className="login-wrap">
-      <div className="login-theme"><ThemeToggle /></div>
-      <div className="login-card">
-        <img className="login-logo" src="/testmu-bi-logo-v3.png" alt="TestMu BI" />
-        <h2>TestMu BI</h2>
+  const card = (
+      <div className="login-card" id={embedded ? "signin" : undefined}>
+        {!embedded && <img className="login-logo" src="/testmu-bi-logo-v3.png" alt="TestMu BI" />}
+        <h2>{embedded ? "Sign in" : "TestMu BI"}</h2>
         {/* The signup tab appears only where the server will actually accept a
             signup. Accounts are normally provisioned by an administrator, so
             offering "Create account" would be inviting people into a 403.
@@ -114,6 +116,12 @@ export default function Login() {
         {config?.googleClientId && <div ref={googleButton} aria-label="Sign in with Google" />}
         {error && <div role="alert" style={{ color: 'var(--red)', marginTop: 12, fontSize: 13 }}>{error}</div>}
       </div>
+  );
+  if (embedded) return card;
+  return (
+    <div className="login-wrap">
+      <div className="login-theme"><ThemeToggle /></div>
+      {card}
     </div>
   );
 }
