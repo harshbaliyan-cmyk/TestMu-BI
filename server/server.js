@@ -732,12 +732,16 @@ app.patch('/api/admin/users/:id', requireAdmin, async (req, res, next) => {
     }
 
     const updated = await updateUserAccess(target.id, { role, status });
-    // A disabled account must lose its live sessions immediately; otherwise
-    // "disabled" only takes effect at their next sign-in, which is exactly
-    // when it matters least.
-    if (status === 'disabled') await revokeOtherSessions(target.id, null);
+    // The role is copied into the session at sign-in (establishSession) and
+    // every guard reads it from there, so a live session keeps whatever it
+    // was granted then. A disabled account, or one whose role changed in
+    // either direction, must lose its sessions now: without this a demoted
+    // admin stays an admin until their session idles out, and a promoted
+    // user stays a user until they happen to sign in again.
+    const roleChanged = role !== undefined && role !== target.role;
+    const sessionsRevoked = status === 'disabled' || roleChanged ? await revokeOtherSessions(target.id, null) : 0;
     await logAudit({ userId: req.session.userId, action: 'user.access_changed', entityType: 'user',
-      entityId: target.id, afterState: { role: updated.role, status: updated.status } });
+      entityId: target.id, afterState: { role: updated.role, status: updated.status, sessionsRevoked } });
     res.json(updated);
   } catch (error) { next(error); }
 });
