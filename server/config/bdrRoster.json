@@ -1,0 +1,15 @@
+{
+  "_comment": "Who counts as a BDR on the BDR Funnel board. Matched by Salesforce User Id first, then by the exact name as it appears in the data (the business spelling differs: 'Saksham Chandhok' not 'Chandok', 'Gauri M' without the period, 'Ayush Kumar BDR' not the PreSales 'Ayush Kumar'). Add ids as they are confirmed; inactive users stay on purpose.",
+  "userIds": [
+    "005e200000AKwYLAA1",
+    "005e2000007DbAbAAK"
+  ],
+  "names": [
+    "Adamya Veer", "Ali Rizvi", "Anmol Anand", "Arham Khan", "Aryamann Arora", "Ayush Kumar BDR",
+    "Dheeraj Ashra", "Dhruv Rana", "Divyanshu Shukla", "Dushaan Singh", "Gauri M", "Hrishita Verma",
+    "Ishan Roy", "Izan Khan", "Jyotsana Singh", "Lavanay Mishra", "Manav Narang", "Niharika Srivastava",
+    "Prashant Jha", "Priya Agarwal", "Rajat Mathur", "Saksham Chandhok", "Sana Saleem", "Shivalaya Rana",
+    "Shreya Gupta", "Soham Gupta", "Sushant Sharma", "Tina Singh", "Utkarsh Sriram",
+    "Vishesh Singh Bhadauria", "Vibhuti Chadha"
+  ]
+}
