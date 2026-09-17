@@ -17,6 +17,19 @@ const LABELS = {
   previousN: 'Previous periods', custom: 'Custom range',
 };
 
+// A saved NAMED preset re-derives its boundaries on load. "Current quarter"
+// saved on a Friday came back on Monday still labelled "Current quarter" but
+// ending on Friday, so the board silently dropped the days since and the
+// autosave re-persisted the stale range. Custom ranges are the user's exact
+// dates and stay as saved.
+export function refreshPreset(filters, fromKey, toKey) {
+  const preset = filters?.datePreset;
+  if (!preset || preset === 'custom' || preset === 'all') return filters;
+  const [from, to] = rangeFor(preset, filters.dateCount, filters.dateUnit);
+  if (!from || !to) return filters;
+  return { ...filters, [fromKey]: isoDate(from), [toKey]: isoDate(to) };
+}
+
 export function rangeFor(key, count = 1, unit = 'quarter') {
   const now = new Date();
   const today = atDate(now.getFullYear(), now.getMonth(), now.getDate());

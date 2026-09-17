@@ -4,7 +4,6 @@ import session from 'express-session';
 import connectPgSimple from 'connect-pg-simple';
 import { OAuth2Client } from 'google-auth-library';
 import { createDataSourceRouter , DASHBOARD_FIELD_SETS } from './datasources.js';
-import { createChartRouter, createCustomDashboardRouter } from './chartRoutes.js';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import { databaseEnabled, pool, closePool } from './db/pool.js';
@@ -33,6 +32,8 @@ import { buildLossBoardSnapshot } from './services/lossBoardMetrics.js';
 import { buildAePerformanceSnapshot, isAmRow } from './services/aePerformanceMetrics.js';
 import { getMappedSourceColumn } from './repositories/dataSources.js';
 import { buildGenericComparison } from './services/periodComparison.js';
+import { buildBdrFunnelSnapshot } from './services/bdrFunnelMetrics.js';
+import { readFileSync } from 'node:fs';
 
 dotenv.config();
 const app = express();
@@ -100,11 +101,9 @@ function dashboardRows(userId, key) {
   });
 }
 
-// The RAW rows behind each source, exactly as parsed — before field mapping
-// coerces them into the canonical opportunity shape. The chart builder binds
-// to raw columns, so it reads these; the fixed dashboards keep reading the
-// mapped rows. Same lifecycle as the mapped cache: filled on commit/refresh,
-// gone on restart, rehydrated by the startup Tableau sweep.
+// Raw source rows support preview and field remapping. They share the mapped
+// cache lifecycle: filled on commit/refresh, gone on restart, then rehydrated
+// by the startup Tableau sweep.
 const runtimeSourceRawData = new Map(); // sourceId -> { ownerUserId, headers, rows }
 
 // ownerUserId is required, not optional: a source whose owner we cannot name
@@ -121,6 +120,25 @@ function setSourceRows(sourceId, dashboardKeys, rows, ownerUserId, raw = null) {
     runtimeDashboardSources.get(scope).add(sourceId);
     cacheSet(scope, [...runtimeDashboardSources.get(scope)].flatMap(id => runtimeSourceRows.get(id) || []));
   });
+}
+
+// Admin deletion transfers a departing user's sources to the admin in SQL;
+// the in-memory copies must follow, or the new owner's boards read an empty
+// scope until the next scheduled sync, while the old scope keeps rows
+// resident for nobody.
+function rehomeUserSources(fromUserId, toUserId) {
+  for (const raw of runtimeSourceRawData.values()) if (raw.ownerUserId === fromUserId) raw.ownerUserId = toUserId;
+  const prefix = userScope(fromUserId, '');
+  for (const [scope, bound] of [...runtimeDashboardSources]) {
+    if (!scope.startsWith(prefix)) continue;
+    const key = scope.slice(prefix.length);
+    runtimeDashboardSources.delete(scope);
+    cache.delete(scope);
+    const target = userScope(toUserId, key);
+    const merged = new Set([...(runtimeDashboardSources.get(target) || []), ...bound]);
+    runtimeDashboardSources.set(target, merged);
+    cacheSet(target, [...merged].flatMap(id => runtimeSourceRows.get(id) || []));
+  }
 }
 
 function removeSourceRows(sourceId, dashboardKeys, ownerUserId) {
@@ -192,12 +210,13 @@ app.use((req, res, next) => {
 app.use(cors({
   origin: process.env.CLIENT_ORIGIN || (IS_PRODUCTION ? false : 'http://localhost:5173'),
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
 }));
 app.use(express.json({ limit: '25mb' }));
 const PgSession = connectPgSimple(session);
+const SESSION_COOKIE_NAME = process.env.SESSION_COOKIE_NAME || 'testmu.sid';
 app.use(session({
-  name: process.env.SESSION_COOKIE_NAME || 'testmu.sid',
+  name: SESSION_COOKIE_NAME,
   secret: process.env.SESSION_SECRET || (IS_PRODUCTION ? '' : 'local-development-only-change-me'),
   ...(databaseEnabled ? { store: new PgSession({ pool, createTableIfMissing: true }) } : {}),
   resave: false,
@@ -257,9 +276,13 @@ function requireAuth(req, res, next) {
 // Policy lives in authGuard.isAdminSession — see there for why an email is no
 // longer accepted in place of a role.
 function requireAdmin(req, res, next) {
-  if (!req.session?.email) return res.status(401).json({ error: 'Not authenticated' });
-  if (!isAdminSession(req.session)) return res.status(403).json({ error: 'Admin access required' });
-  next();
+  // Same temporary-password gate as requireAuth: an invited admin who has
+  // not yet replaced the password the inviter knows must not be able to
+  // create users, reset passwords or load data on that shared secret.
+  requireAuth(req, res, () => {
+    if (!isAdminSession(req.session)) return res.status(403).json({ error: 'Admin access required' });
+    next();
+  });
 }
 
 // ===== TV SHARE TOKENS =====
@@ -297,7 +320,11 @@ app.post('/api/auth/verify', async (req, res) => {
     if (!credential) return res.status(400).json({ error: 'Missing credential' });
     const ticket = await oAuth2Client.verifyIdToken({ idToken: credential, audience: process.env.GOOGLE_CLIENT_ID });
     const payload = ticket.getPayload();
-    const email = payload.email;
+    const email = payload?.email;
+    // A valid Google token can still carry an address Google has not verified
+    // (or none at all); the domain allow-list below is only meaningful for a
+    // verified one, so anything else is treated as no proof of identity.
+    if (!email || payload.email_verified === false) return res.status(401).json({ error: 'Invalid token' });
     const domain = process.env.ALLOWED_DOMAIN;
     if (domain && !email.endsWith(`@${domain}`)) return res.status(403).json({ error: `Only @${domain} emails allowed` });
 
@@ -307,7 +334,6 @@ app.post('/api/auth/verify', async (req, res) => {
     // simply continuing — unlike the password endpoints, where the caller has
     // proved nothing. Both intents therefore resolve to the same session
     // rather than erroring, which also removes a pointless dead end.
-    if (!user) user = null;
     if (!user) user = await upsertUser({
       email, googleSubject: payload.sub, displayName: payload.name, pictureUrl: payload.picture,
       role: (process.env.ADMIN_EMAILS || '').split(',').map(v => v.trim()).includes(email) ? 'admin' : 'user',
@@ -316,7 +342,10 @@ app.post('/api/auth/verify', async (req, res) => {
     await markLogin(user.id);
     establishSession(req, res, user);
   } catch (err) {
-    res.status(401).json({ error: 'Invalid token', detail: err.message });
+    // The library's message names the exact check that failed (audience,
+    // expiry, signature); that is useful in the log and to nobody else.
+    console.warn('[auth] google verify failed:', err.message);
+    res.status(401).json({ error: 'Invalid token' });
   }
 });
 
@@ -372,7 +401,7 @@ app.post('/api/auth/signup', async (req, res) => {
   }
 });
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', async (req, res, next) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
   const password = String(req.body?.password || '');
   const ip = clientIp(req);
@@ -380,10 +409,14 @@ app.post('/api/auth/login', async (req, res) => {
   const gate = authAttemptStatus(ip, email);
   if (gate.blocked) {
     res.set('Retry-After', String(gate.retryAfterSeconds));
-    await logAuthEvent({ email, action: 'auth.login', req, outcome: 'rate_limited' });
+    await logAuthEvent({ email, action: 'auth.login', req, outcome: 'rate_limited' }).catch(() => {});
     return res.status(429).json({ error: 'Too many attempts. Try again later.' });
   }
 
+  // Express 4 does not route an async rejection to the error handler, so a
+  // cold or unreachable database here used to leave the sign-in request
+  // hanging with no reply and no application_errors row.
+  try {
   const user = await findUserByEmail(email);
   // verifyPassword runs bcrypt even when the account does not exist, so an
   // unknown address and a wrong password take the same time and return the
@@ -400,6 +433,7 @@ app.post('/api/auth/login', async (req, res) => {
   await markLogin(user.id);
   await logAuthEvent({ email, action: 'auth.login', req, outcome: 'success' });
   establishSession(req, res, user);
+  } catch (error) { next(error); }
 });
 
 app.get('/api/auth/config', (req, res) => {
@@ -425,7 +459,13 @@ app.get('/api/auth/me', (req, res) => {
 });
 
 app.post('/api/auth/logout', (req, res) => {
-  req.session.destroy(() => res.json({ ok: true }));
+  // Destroying the store row is what ends the session. Clearing the cookie
+  // as well stops the browser presenting the dead id on every request for
+  // the rest of its maxAge, and lets a shared machine start a clean sign-in.
+  req.session.destroy(() => {
+    res.clearCookie(SESSION_COOKIE_NAME, { path: '/', httpOnly: true, sameSite: 'lax', secure: IS_PRODUCTION });
+    res.json({ ok: true });
+  });
 });
 
 // ===== TEMPLATES =====
@@ -493,7 +533,28 @@ const TEMPLATES = [
     tags: ['Tableau', 'ARR Contribution'],
     fields: DASHBOARD_FIELD_SETS.repQuota,
   },
+  {
+    id: 'bdr-funnel',
+    name: 'BDR Funnel',
+    description: 'One row per BDR: leads called, meetings, qualification, and the 30/60/90-day windows from each rep\'s first call',
+    tags: ['Tableau', 'BDR'],
+    fields: DASHBOARD_FIELD_SETS.bdrFunnel,
+  },
 ];
+
+// Who counts as a BDR. Kept in config, matched by Salesforce User Id first
+// and exact data spelling second, because the Tableau name list has already
+// broken twice on spelling. A missing or malformed file is a loud startup
+// warning and an unscoped board, not a crash.
+const BDR_ROSTER = (() => {
+  try {
+    const parsed = JSON.parse(readFileSync(new URL('./config/bdrRoster.json', import.meta.url), 'utf8'));
+    return { userIds: Array.isArray(parsed.userIds) ? parsed.userIds : [], names: Array.isArray(parsed.names) ? parsed.names : [] };
+  } catch (error) {
+    console.warn('[bdr-funnel] roster config unreadable, board is unscoped:', error?.message || error);
+    return { userIds: [], names: [] };
+  }
+})();
 
 app.get('/api/templates', requireAuth, (req, res) => {
   res.json(TEMPLATES);
@@ -505,22 +566,18 @@ app.get('/api/templates', requireAuth, (req, res) => {
 app.post('/api/share-tokens', requireAuth, async (req, res, next) => {
   try {
     const templateKey = String(req.body?.templateId || '') || null;
-    const customDashboardId = String(req.body?.customDashboardId || '') || null;
-    if (templateKey && !TEMPLATES.some(t => t.id === templateKey)) {
+    if (!templateKey || !TEMPLATES.some(t => t.id === templateKey)) {
       return res.status(400).json({ error: 'Unknown dashboard' });
-    }
-    if (Boolean(templateKey) === Boolean(customDashboardId)) {
-      return res.status(400).json({ error: 'Pass exactly one of templateId or customDashboardId' });
     }
     const label = String(req.body?.label || '').slice(0, 100) || null;
     const days = Number(req.body?.expiresDays);
+    // Capped at ten years: a huge value made an Invalid Date, whose
+    // toISOString threw, and a 400's worth of input became a logged 500.
     const expiresAt = Number.isFinite(days) && days > 0
-      ? new Date(Date.now() + days * 86_400_000).toISOString() : null;
-    // Ownership of a custom dashboard is enforced inside createShareToken —
-    // its INSERT only matches the caller's own, undeleted dashboard.
-    const created = await createShareToken({ userId: req.session.userId, templateKey, customDashboardId, label, expiresAt });
+      ? new Date(Date.now() + Math.min(days, 3650) * 86_400_000).toISOString() : null;
+    const created = await createShareToken({ userId: req.session.userId, templateKey, label, expiresAt });
     await logAudit({ userId: req.session.userId, action: 'share_token.created', entityType: 'share_token',
-      entityId: created.id, afterState: { templateKey, customDashboardId, label, expiresAt } });
+      entityId: created.id, afterState: { templateKey, label, expiresAt } });
     res.status(201).json(created);
   } catch (error) {
     if (error.status === 400) return res.status(400).json({ error: error.message });
@@ -548,7 +605,7 @@ app.get('/api/share/resolve', async (req, res, next) => {
   try {
     const grant = await resolveShareToken(req.get('x-share-token'));
     if (!grant) return res.status(401).json({ error: 'This share link is invalid, revoked, or expired.' });
-    res.json({ templateKey: grant.templateKey, customDashboardId: grant.customDashboardId });
+    res.json({ templateKey: grant.templateKey });
   } catch (error) { next(error); }
 });
 
@@ -732,6 +789,7 @@ app.patch('/api/admin/users/:id', requireAdmin, async (req, res, next) => {
     }
 
     const updated = await updateUserAccess(target.id, { role, status });
+    if (!updated) return res.status(400).json({ error: 'This is the last active admin. Promote someone else first.' });
     // The role is copied into the session at sign-in (establishSession) and
     // every guard reads it from there, so a live session keeps whatever it
     // was granted then. A disabled account, or one whose role changed in
@@ -761,6 +819,7 @@ app.delete('/api/admin/users/:id', requireAdmin, async (req, res, next) => {
     // team's, not theirs personally.
     const notifyAddress = target.email;
     const result = await deleteUserData(target.id, { transferTo: req.session.userId });
+    rehomeUserSources(target.id, req.session.userId);
     sendSecurityNotification({ to: notifyAddress, event: 'account_deleted' }).catch(() => {});
     await logAudit({ userId: req.session.userId, action: 'user.deleted', entityType: 'user',
       entityId: null, afterState: { subject: 'deleted-user', transferred: result?.moved } });
@@ -929,8 +988,6 @@ app.use('/api/datasources', createDataSourceRouter({
   },
 }));
 
-app.use('/api/charts', createChartRouter({ requireAuth, store: { getSourceRawData } }));
-app.use('/api/custom-dashboards', createCustomDashboardRouter({ requireAuth }));
 
 app.get('/api/win-board/metrics', allowShareToken(() => 'win-board'), (req, res) => {
   res.json(buildWinBoardSnapshot(dashboardRows(requesterId(req),'win-board'),req.query).metrics);
@@ -952,6 +1009,12 @@ app.get('/api/product-view/won/snapshot', allowShareToken(() => 'product-view'),
 // Executive Dashboard: every object is computed here from the opportunity ×
 // product-line rows; the browser only renders. Board-only (no wall), so a
 // share token has nothing to open, but the read path stays uniform.
+// No share-token path: the board has no wall view. asOf pins Weeks Measured
+// and Avg Leads per Week to a day so a number can be reproduced later.
+app.get('/api/bdr-funnel/snapshot', requireAuth, (req, res) => {
+  res.json(buildBdrFunnelSnapshot(dashboardRows(req.session.userId, 'bdr-funnel'), { asOf: req.query.asOf, roster: BDR_ROSTER }));
+});
+
 app.get('/api/executive-dashboard/snapshot', allowShareToken(() => 'executive-dashboard'), (req, res) => {
   res.json(buildExecutiveSnapshot(dashboardRows(requesterId(req), 'executive-dashboard'), req.query));
 });

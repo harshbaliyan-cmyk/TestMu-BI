@@ -19,7 +19,7 @@ import {
   persistImportedSource, listUserSources, getRefreshableSource, listRefreshableSourceIds,
   startSyncRun, finishSyncRun, listSyncRuns, softDeleteSource,
   findWebhookSource, getSourceWebhookState, saveSourceWebhook, markWebhookEventReceived,
-  markSourceStale, updateSourceSchema, getSourceSchema, getSourceForRemap, updateSourceMapping,
+  markSourceStale, updateSourceSchema, getSourceForRemap, updateSourceMapping,
 } from './repositories/dataSources.js';
 import { profileColumns } from './services/columnProfile.js';
 import { actualProductName, productGroupFor, continentGroupFor, productArrFrom, orgTypeFrom } from './services/productDerivations.js';
@@ -249,6 +249,84 @@ export const OPP_SCHEMA = {
                       desc: 'The product LINE\'s subscription duration in months ("Subscription Duration-1" on the Opp + Product source), separate from the opportunity-level Subscription duration. Product ARR = Total price ÷ this × 12. Leave unmapped on a source with a single duration column and the opportunity-level one is used.',
                       preferredHeaders: ['subscriptionduration1'],
                       aliases: ['subscriptionduration1', 'lineduration', 'productduration', 'linesubscriptionduration', 'productsubscriptionduration'] },
+  // ---------- BDR FUNNEL ----------
+  // The "BDR -Req" source is a stacked union of Task, Meeting and Account
+  // records: each row fills one column family (T./E./A. plus their joined
+  // L./TLA./TLU./EA./EU./AU. columns) and leaves the rest blank. Headers are
+  // matched on their exact Tableau names; services/bdrFunnelMetrics.js does
+  // the unification.
+  bdrTaskId:         { type: 'string', group: 'bdr', label: 'Task activity ID', hint: 'T.Activity ID',
+                      desc: 'Present on Task rows only; its presence is what makes a row a Task.',
+                      preferredHeaders: ['tactivityid'], aliases: ['tactivityid'] },
+  bdrTaskOwnerId:    { type: 'string', group: 'bdr', label: 'Task owner (User ID)', hint: 'T.Assigned To ID',
+                      desc: 'Salesforce User Id of the BDR who logged the task.',
+                      preferredHeaders: ['tassignedtoid'], aliases: ['tassignedtoid'] },
+  bdrTaskSubtype:    { type: 'string', group: 'bdr', label: 'Task subtype', hint: 'T.Task Subtype',
+                      desc: 'Call, Email, LinkedIn, ListEmail, Cadence or Task. Only "Call" is a dial.',
+                      preferredHeaders: ['ttasksubtype'], aliases: ['ttasksubtype'] },
+  bdrTaskDueDate:    { type: 'date', group: 'bdr', label: 'Task due date', hint: 'T.Due Date Only',
+                      desc: 'Primary activity date for a task.',
+                      preferredHeaders: ['tduedateonly'], aliases: ['tduedateonly'] },
+  bdrTaskCreatedDate: { type: 'date', group: 'bdr', label: 'Task created date', hint: 'T.Created Date',
+                      desc: 'Fallback activity date when the due date is blank.',
+                      preferredHeaders: ['tcreateddate'], aliases: ['tcreateddate'] },
+  bdrTaskAccountId:  { type: 'string', group: 'bdr', label: 'Task account ID', hint: 'T.Account ID',
+                      desc: 'Fallback account key for a task.',
+                      preferredHeaders: ['taccountid'], aliases: ['taccountid'] },
+  bdrLeadId:         { type: 'string', group: 'bdr', label: 'Lead ID (task)', hint: 'L.Lead ID',
+                      desc: 'The lead a task was logged against; the unit for "leads called".',
+                      preferredHeaders: ['lleadid'], aliases: ['lleadid'] },
+  bdrEventId:        { type: 'string', group: 'bdr', label: 'Meeting activity ID', hint: 'E.Activity ID',
+                      desc: 'Present on Meeting rows only; the unit for every meeting count.',
+                      preferredHeaders: ['eactivityid'], aliases: ['eactivityid'] },
+  bdrEventOwnerId:   { type: 'string', group: 'bdr', label: 'Meeting owner (User ID)', hint: 'E.Assigned To ID',
+                      desc: 'Salesforce User Id of the meeting owner.',
+                      preferredHeaders: ['eassignedtoid'], aliases: ['eassignedtoid'] },
+  bdrEventStart:     { type: 'date', group: 'bdr', label: 'Meeting start', hint: 'E.Start Date Time',
+                      desc: 'Primary meeting date.',
+                      preferredHeaders: ['estartdatetime'], aliases: ['estartdatetime'] },
+  bdrEventDueDate:   { type: 'date', group: 'bdr', label: 'Meeting due date', hint: 'E.Due Date Only',
+                      desc: 'Fallback meeting date.',
+                      preferredHeaders: ['eduedateonly'], aliases: ['eduedateonly'] },
+  bdrEventAccountId: { type: 'string', group: 'bdr', label: 'Meeting account ID', hint: 'E.Account ID',
+                      desc: 'Fallback account key for a meeting.',
+                      preferredHeaders: ['eaccountid'], aliases: ['eaccountid'] },
+  bdrEventNameId:    { type: 'string', group: 'bdr', label: 'Meeting contact ID', hint: 'E.Name ID',
+                      desc: 'The lead or contact the meeting is against.',
+                      preferredHeaders: ['enameid'], aliases: ['enameid'] },
+  bdrEventRating:    { type: 'string', group: 'bdr', label: 'Meeting rating', hint: 'E.Rating',
+                      desc: 'Qualified, Future Qualified, Disqualified, Influencer, Upcoming Cut or To be Rated.',
+                      preferredHeaders: ['erating'], aliases: ['erating'] },
+  bdrAccountId:      { type: 'string', group: 'bdr', label: 'Account ID (account row)', hint: 'A.Account ID',
+                      desc: 'Account key on Account rows.',
+                      preferredHeaders: ['aaccountid'], aliases: ['aaccountid'] },
+  bdrAccountOwnerId: { type: 'string', group: 'bdr', label: 'Account BDR owner (User ID)', hint: 'A.BDR Owner',
+                      desc: 'Salesforce User Id of the BDR who owns the account.',
+                      preferredHeaders: ['abdrowner'], aliases: ['abdrowner'] },
+  bdrAccountCreatedDate: { type: 'date', group: 'bdr', label: 'Account created date', hint: 'A.Created Date',
+                      desc: 'Activity date for an account row.',
+                      preferredHeaders: ['acreateddate'], aliases: ['acreateddate'] },
+  bdrTaskLeadAccountId: { type: 'string', group: 'bdr', label: 'Account ID via task lead', hint: 'TLA.Account ID',
+                      desc: 'Account joined to the task through its lead; preferred account key for a task.',
+                      preferredHeaders: ['tlaaccountid'], aliases: ['tlaaccountid'] },
+  bdrTaskLeadAccountOwnerId: { type: 'string', group: 'bdr', label: 'Account BDR owner via task lead', hint: 'TLA.BDR Owner',
+                      desc: 'Carried for the account-owner attribution model.',
+                      preferredHeaders: ['tlabdrowner'], aliases: ['tlabdrowner'] },
+  bdrEventAccountJoinId: { type: 'string', group: 'bdr', label: 'Account ID via meeting', hint: 'EA.Account ID',
+                      desc: 'Account joined to the meeting; preferred account key for a meeting.',
+                      preferredHeaders: ['eaaccountid'], aliases: ['eaaccountid'] },
+  bdrEventAccountOwnerId: { type: 'string', group: 'bdr', label: 'Account BDR owner via meeting', hint: 'EA.BDR Owner',
+                      desc: 'Carried for the account-owner attribution model.',
+                      preferredHeaders: ['eabdrowner'], aliases: ['eabdrowner'] },
+  bdrTaskOwnerName:  { type: 'string', group: 'bdr', label: 'Task owner name', hint: 'TLU.Full Name',
+                      desc: 'User joined to the task stream.',
+                      preferredHeaders: ['tlufullname'], aliases: ['tlufullname'] },
+  bdrEventOwnerName: { type: 'string', group: 'bdr', label: 'Meeting owner name', hint: 'EU.Full Name',
+                      desc: 'User joined to the meeting stream.',
+                      preferredHeaders: ['eufullname'], aliases: ['eufullname'] },
+  bdrAccountOwnerName: { type: 'string', group: 'bdr', label: 'Account owner name', hint: 'AU.Full Name',
+                      desc: 'User joined to the account stream.',
+                      preferredHeaders: ['aufullname'], aliases: ['aufullname'] },
 };
 
 export const OPP_COLUMNS = Object.keys(OPP_SCHEMA);
@@ -310,6 +388,9 @@ export const DASHBOARD_FIELD_SETS = {
   // Product ARR (line) divide by different columns; `product` must be the RAW
   // SKU column, and the current-quarter quota is mapped by hand.
   executive:   ['id','name','account','owner','userId','ownerActive','oppActive','stage','isClosed','isWon','type','opportunityForecast','amount','subscriptionDuration','closeDate','createdDate','misRequired','product','totalPrice','lineDuration','pod','salesPod','quotaCurrent','orgType','employees','freeDomain','continentGroup'],
+  // BDR Funnel binds the "BDR -Req" source, which shares nothing with the
+  // opportunity schema; the whole family is its own group.
+  bdrFunnel:   ['bdrTaskId','bdrTaskOwnerId','bdrTaskSubtype','bdrTaskDueDate','bdrTaskCreatedDate','bdrTaskAccountId','bdrLeadId','bdrEventId','bdrEventOwnerId','bdrEventStart','bdrEventDueDate','bdrEventAccountId','bdrEventNameId','bdrEventRating','bdrAccountId','bdrAccountOwnerId','bdrAccountCreatedDate','bdrTaskLeadAccountId','bdrTaskLeadAccountOwnerId','bdrEventAccountJoinId','bdrEventAccountOwnerId','bdrTaskOwnerName','bdrEventOwnerName','bdrAccountOwnerName'],
 };
 
 export const FIELD_GROUPS = [
@@ -317,6 +398,7 @@ export const FIELD_GROUPS = [
   { key: 'segmentation', label: 'Segmentation', note: 'Drives the breakdown tabs and filters.' },
   { key: 'metrics',      label: 'Metrics',      note: 'Velocity and value charts.' },
   { key: 'other',        label: 'Other',        note: 'Nice to have.' },
+  { key: 'bdr',          label: 'BDR Funnel',   note: 'The Task / Meeting / Account column families of the BDR -Req source.' },
 ];
 
 const normalize = s => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -340,9 +422,13 @@ function toNumber(v) {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
   let s = String(v).trim();
   const negative = /^\(.*\)$/.test(s);
-  s = s.replace(/[()]/g, '').replace(/[^0-9.\-]/g, '');
-  if (s === '' || s === '-') return null;
-  const n = parseFloat(s);
+  s = s.replace(/[()]/g, '');
+  // Excel writes a large amount as 1.5E+5 in CSV; stripping the E and the
+  // sign read that as 1.55 and it sailed through every fill-rate check.
+  const bare = s.replace(/[,\s]/g, '');
+  const stripped = bare.replace(/[^0-9.\-]/g, '');
+  if (stripped === '' || stripped === '-') return null;
+  const n = /^[-+]?(\d+\.?\d*|\.\d+)e[-+]?\d+$/i.test(bare) ? Number(bare) : parseFloat(stripped);
   if (!Number.isFinite(n)) return null;
   return negative ? -n : n;
 }
@@ -897,6 +983,15 @@ function tableauError(err) {
 // ===== ROUTER =====
 export function createDataSourceRouter({ store, requireAuth }) {
   const router = Router();
+  // Every :sourceId is a data_sources uuid. Anything else used to reach
+  // Postgres as a 22P02 and, from a handler that awaited outside its try,
+  // never got a reply at all.
+  router.param('sourceId', (req, res, next, id) =>
+    (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) ? next() : res.status(404).json({ error: 'Data source not found' })));
+  // The router's own error handler answers 400 with the message (it exists
+  // for multer's size and type refusals, which are written for the user); a
+  // database failure must not take that path.
+  const fail = (res, error) => { console.error('[datasources]', error?.message || error); res.status(500).json({ error: 'Unexpected server error' }); };
 
   const upload = multer({
     storage: multer.memoryStorage(),
@@ -911,6 +1006,12 @@ export function createDataSourceRouter({ store, requireAuth }) {
   // without re-uploading. Replaced on the next import; dropped on restart.
   const staged = new Map();
   const latestStageByUser = new Map();
+  // Every preview parks a full parsed row set here and nothing used to evict
+  // it, so a day of re-previewing 25 MB files pinned hundreds of MB until
+  // restart. Each user keeps their most recent handful; a batch preview
+  // stages up to ten at once, which sets the floor.
+  const MAX_STAGED_PER_USER = 12;
+  const stagedIdsByUser = new Map();
 
   // A Tableau Personal Access Token holds ONE active session at a time: signing
   // in again invalidates the token the previous signin handed out. Every source
@@ -954,8 +1055,8 @@ export function createDataSourceRouter({ store, requireAuth }) {
     try {
       const parsed=await fetchSourceData(spec);
       const rows=applyMapping(parsed.rows,spec.mapping);
-      // Raw rows ride along for the chart builder; profiles are recomputed so
-      // its schema always describes the pull that is actually loaded.
+      // Keep raw rows for preview/remapping and refresh the column metadata
+      // to describe the source data that is actually loaded.
       store.setSourceRows(spec.id,spec.dashboards,rows,userId,{headers:parsed.headers,rows:parsed.rows});
       await updateSourceSchema(spec.id,profileColumns(parsed.headers,parsed.rows)).catch(error=>
         console.error(`[schema] profile update failed for ${spec.id}:`,error?.message||error));
@@ -970,6 +1071,10 @@ export function createDataSourceRouter({ store, requireAuth }) {
     const stagingId = randomUUID();
     staged.set(`${email}:${stagingId}`, pending);
     latestStageByUser.set(email, stagingId);
+    const ids = stagedIdsByUser.get(email) || [];
+    ids.push(stagingId);
+    while (ids.length > MAX_STAGED_PER_USER) staged.delete(`${email}:${ids.shift()}`);
+    stagedIdsByUser.set(email, ids);
     return stagingId;
   }
 
@@ -1060,7 +1165,7 @@ export function createDataSourceRouter({ store, requireAuth }) {
 
       // A re-map of a connected source (see POST /:sourceId/remap) commits
       // to the SAME source row rather than inserting a successor, so its
-      // sync history, webhook and saved charts survive the edit.
+      // sync history and webhook survive the edit.
       if (pending.restageOf) {
         const updated = await updateSourceMapping({
           userId: req.session.userId, sourceId: pending.restageOf, dashboardKeys, mapping: finalMapping,
@@ -1174,25 +1279,6 @@ export function createDataSourceRouter({ store, requireAuth }) {
     catch { res.status(500).json({error:'Could not load sync history'}); }
   });
 
-  // The chart builder's view of a source: per-column profiles captured at the
-  // last sync, plus whether the raw rows are actually loaded right now (`live`
-  // is false after a restart until the source is refreshed — the builder can
-  // still suggest fields from the stored profiles, but a preview needs rows).
-  router.get('/:sourceId/schema', requireAuth, async (req, res) => {
-    try {
-      const schema = await getSourceSchema(req.session.userId, req.params.sourceId);
-      if (!schema) return res.status(404).json({ error: 'Data source not found' });
-      const raw = store.getSourceRawData?.(req.params.sourceId, req.session.userId);
-      // Old sources carry a bare header-name array from before profiling
-      // existed; normalise them to profile shape with unknown type.
-      const columns = (Array.isArray(schema.columns) ? schema.columns : []).map(column =>
-        typeof column === 'string' ? { name: column, type: 'string', unprofiled: true } : column);
-      res.json({ ...schema, columns, live: Boolean(raw), liveRowCount: raw?.rows.length ?? null });
-    } catch (error) {
-      res.status(500).json({ error: 'Could not load the source schema' });
-    }
-  });
-
   router.delete('/:sourceId', requireAuth, async (req,res) => {
     try {
       const { dashboardKeys } = await softDeleteSource(req.session.userId, req.params.sourceId);
@@ -1206,7 +1292,8 @@ export function createDataSourceRouter({ store, requireAuth }) {
   });
 
   router.post('/:sourceId/refresh', requireAuth, async (req,res) => {
-    const spec=await getRefreshableSource(req.session.userId,req.params.sourceId);
+    let spec;
+    try { spec=await getRefreshableSource(req.session.userId,req.params.sourceId); } catch(error) { return fail(res,error); }
     if(!spec) return res.status(404).json({error:'Tableau source not found'});
     try {
       res.json(await refreshSource(spec,req.session.userId,'manual'));
@@ -1224,7 +1311,8 @@ export function createDataSourceRouter({ store, requireAuth }) {
   router.post('/:sourceId/webhook/enable', requireAuth, async (req,res) => {
     const callbackBase=resolveWebhookBaseUrl();
     if(callbackBase.error) return res.status(400).json({error:callbackBase.error});
-    const state=await getSourceWebhookState(req.session.userId,req.params.sourceId);
+    let state;
+    try { state=await getSourceWebhookState(req.session.userId,req.params.sourceId); } catch(error) { return fail(res,error); }
     if(!state) return res.status(404).json({error:'Data source not found'});
     const webhookEvent=WEBHOOK_EVENTS[state.sourceType];
     if(!webhookEvent) return res.status(400).json({error:'Auto-refresh via webhook is only available for Tableau view and data source connections.'});
@@ -1269,7 +1357,8 @@ export function createDataSourceRouter({ store, requireAuth }) {
   });
 
   router.post('/:sourceId/webhook/disable', requireAuth, async (req,res) => {
-    const state=await getSourceWebhookState(req.session.userId,req.params.sourceId);
+    let state;
+    try { state=await getSourceWebhookState(req.session.userId,req.params.sourceId); } catch(error) { return fail(res,error); }
     if(!state) return res.status(404).json({error:'Data source not found'});
     if(state.webhookId||state.webhookFailedId) {
       try {
@@ -1405,7 +1494,9 @@ export function createDataSourceRouter({ store, requireAuth }) {
 
   router.post('/tableau/disconnect', requireAuth, async (req, res) => {
     const current = tableauSessions.get(req.session.email);
-    await setTableauConnectionStatus(req.session.userId, current?.connectionId || req.body?.connectionId, 'disconnected');
+    try {
+      await setTableauConnectionStatus(req.session.userId, current?.connectionId || req.body?.connectionId, 'disconnected');
+    } catch(error) { return fail(res, error); }
     tableauSessions.delete(req.session.email);
     res.json({ ok: true, connected: false });
   });

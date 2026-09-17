@@ -1,470 +1,251 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Login from './Login';
-import MiniViz from '../components/MiniViz';
+import LiveSignal from '../components/LiveSignal';
+import './Landing.css';
+import './LandingLaunch.css';
 
-/**
- * The signed-out front door.
- *
- * A black product tile top to bottom, whichever theme the app is in: the
- * `.landing` block in index.css remaps the app tokens to a dark glass
- * palette, so the real <Login /> card and the shared MiniViz shapes render
- * here without knowing about the page around them.
- *
- * Techniques (epic-design catalogue): six-layer parallax hero with aurora
- * atmosphere, masked line reveal on the headline, elastic drop + float loop
- * on the product, scroll-scrub perspective flatten, floating glass panels at
- * depth 5 in front of the product, mouse parallax, a facts marquee, a bento
- * grid with cursor-tracking glow, word-by-word scroll lighting on the
- * manifesto, IntersectionObserver reveals below the fold.
- *
- * No animation library: the app ships no motion dependency and the
- * presentation deck already chose plain DOM + CSS over a render loop. Every
- * effect is transform / opacity / clip-path from one rAF loop that steps
- * aside for prefers-reduced-motion and drops mouse parallax on coarse
- * pointers.
- */
-
-// Scroll parallax factor per depth level (0 = far background, 5 = foreground).
-const PARALLAX = [0.10, 0.25, 0.50, 0.80, 1.00, 1.20];
-// Mouse parallax amplitude in px per depth. Depth 4 is the reading layer and
-// the login form: it must never drift under the cursor.
-const MOUSE = [6, 12, 18, 14, 0, 30];
-
-// Names and blurbs mirror the server's TEMPLATES registry so the front door
-// and the gallery never describe two different products.
-const BOARDS = [
-  { id: 'opportunity-analytics', name: 'Opportunity Analytics', viz: 'funnel', size: '2x2', blurb: 'Six tabs over the canonical schema: searchable multi-select filters, date ranges, saved views and Top-N tables.', tags: ['Pulse', 'Diagnostics', 'Velocity & Aging', 'Where We Win', 'Rep Performance', 'Accounts & Whitespace'] },
-  { id: 'executive-dashboard', name: 'Executive Dashboard', viz: 'tiles', size: '2x1', blurb: 'Quota attainment, pipeline coverage, forecast and trials. The current quarter at a glance.' },
-  { id: 'win-board', name: 'Win Board', viz: 'bars', blurb: 'Won ARR, win rate, POD and team contribution, period comparison.' },
-  { id: 'loss-board', name: 'Loss Board', viz: 'reasons', blurb: 'ARR lost rate, loss reasons, lost-after-trial.' },
-  { id: 'product-view', name: 'Product View', viz: 'stack', blurb: 'Pipeline by created date, Won ARR by close date, per product.' },
-  { id: 'ae-performance', name: 'AE Performance', viz: 'rank', blurb: 'Ranking by share of closed ARR, with rep-status rules.' },
-  { id: 'am-performance', name: 'AM Performance', viz: 'donut', size: '2x1', blurb: 'Rep ranking by percent of quota achieved, with POD attainment. AE and AM share one tested metric engine.' },
+const QUESTIONS = ['ARR by region', 'Pipeline this quarter', 'Top reps', 'Win rate', 'Forecast'];
+const VIEWS = {
+  'ARR by region': { title: 'Won ARR', unit: '$', suffix: 'M', total: 4.2, change: '+18.6%', labels: ['AMER', 'EMEA', 'APAC'], values: [2.1, 1.35, .75], format: v => `$${v.toFixed(2)}M` },
+  'Pipeline this quarter': { title: 'Open pipeline', unit: '$', suffix: 'M', total: 13.4, change: '+24.2%', labels: ['Qualify', 'Demo', 'Trial', 'Proposal', 'Negotiate'], values: [3.8, 3.2, 2.9, 2.1, 1.4], format: v => `$${v.toFixed(1)}M` },
+  'Top reps': { title: 'Won ARR', unit: '$', suffix: 'M', total: 4.2, change: '+18.6%', labels: ['Riya', 'Dev', 'Sam', 'Alex', 'Jo'], values: [1.2, 1.05, .85, .65, .45], format: v => `$${v.toFixed(2)}M` },
+  'Win rate': { title: 'Win rate', unit: '', suffix: '%', total: 38.4, change: '+6.2 pts', labels: ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'], values: [26, 28, 31, 29, 34, 38.4], format: v => `${v.toFixed(1)}%` },
+  Forecast: { title: 'Forecast', unit: '$', suffix: 'M', total: 1.9, change: '+12.4%', labels: ['Commit', 'Best case', 'Pipeline'], values: [.95, .6, .35], format: v => `$${v.toFixed(2)}M` },
+};
+const TREND = [.18, .23, .21, .31, .29, .38, .34, .43, .4, .52, .49, .64];
+const MONTHS = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'];
+const STORY = [
+  { title: 'From source to signal.', detail: 'Your Tableau data. A whole new perspective.' },
+  { title: 'Ask your data.', detail: 'A question in. A clearer picture out.' },
+  { title: 'Put it on the wall.', detail: 'Live boards for every screen.' },
 ];
 
-// Every line is a documented behaviour, not a marketing claim.
-const TICKER = [
-  'TV walls refetch every 60 seconds',
-  'Tableau webhooks re-pull within moments of a refresh',
-  'Sync cron every 2 hours by default',
-  'Personal access tokens encrypted AES-256-GCM at rest',
-  'Share links open one board, read-only, revocable',
-  'Twelve-column custom dashboard grid',
-  'Saved charts are versioned configs',
-  'Per-column profiles captured at every sync',
-  'Sessions live in Postgres and revoke in bulk',
-  'Rate-limited, timing-equalised sign-in',
-];
+function Arrow() { return <span aria-hidden="true">↗</span>; }
+function Mark() { return <span className="rv-mark" aria-hidden="true"><i /><i /><i /></span>; }
 
-const SOURCES = [
-  { name: 'Tableau published data source', body: 'Read through the VizQL Data Service. Re-pulled on the sync schedule and within moments of a refresh-succeeded webhook.', glyph: 'db' },
-  { name: 'Tableau view', body: 'Pulled as a CSV export on the same schedule. Workbook-embedded sources are deliberately out of scope.', glyph: 'table' },
-  { name: 'File upload', body: 'CSV, TSV, XLSX, XLS or JSON up to 25 MB. Same preview, same mapping, same boards.', glyph: 'file' },
-];
-
-const MANIFESTO = 'Every user sees only the sources they connected. Tokens are encrypted at rest and never reach the browser. A share link opens one board, read-only, and dies the moment you revoke it.';
-
-const CHART_TYPES = ['Bar', 'Time series', 'Donut', 'KPI tile', 'Scatter', 'Table'];
-
-const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-
-function Glyph({ kind }) {
-  const common = { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true };
-  if (kind === 'db') return <svg {...common}><ellipse cx="12" cy="5.5" rx="8" ry="3" /><path d="M4 5.5v13c0 1.7 3.6 3 8 3s8-1.3 8-3v-13" /><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" /></svg>;
-  if (kind === 'table') return <svg {...common}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18M9 10v10M15 10v10" /></svg>;
-  return <svg {...common}><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></svg>;
+function useReducedMotion() {
+  const [reduced, setReduced] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  useEffect(() => {
+    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const update = () => setReduced(query.matches);
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+  return reduced;
 }
 
-function HeroMock() {
+function Counter({ value, reduced }) {
+  const ref = useRef(null);
+  const previous = useRef(value);
+  useEffect(() => {
+    const from = previous.current;
+    previous.current = value;
+    if (reduced || from === value) { ref.current.textContent = value.toFixed(1); return; }
+    let frame;
+    const start = performance.now();
+    const tick = now => {
+      const progress = Math.min((now - start) / 650, 1);
+      ref.current.textContent = (from + (value - from) * (1 - Math.pow(1 - progress, 3))).toFixed(1);
+      if (progress < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [value, reduced]);
+  return <span ref={ref}>{value.toFixed(1)}</span>;
+}
+
+function RevenueBoard({ question, explored, region, setRegion, chartMode, setChartMode, wall = false, intro, reduced, tick, onPresent }) {
+  const view = VIEWS[question];
+  const factor = question === 'Win rate' ? 1 : region === 'AMER' ? .5 : region === 'EMEA' ? .32 : 1;
+  const refresh = tick % 2 ? 1.012 : 1;
+  const regional = explored && question === 'ARR by region' && region !== 'All regions';
+  const rawValues = regional ? [view.values[view.labels.indexOf(region)]] : explored ? view.values : TREND;
+  const values = rawValues.map(v => v * (regional ? 1 : factor) * refresh);
+  const labels = regional ? [region] : explored ? view.labels : MONTHS;
+  const max = Math.max(...(explored ? view.values : TREND)) * 1.13;
+  const points = values.map((v, i) => `${(i / Math.max(1, values.length - 1)) * 600},${170 - v / max * 165}`).join(' ');
   return (
-    <div className="ld-mock" role="img" aria-label="Illustrative preview of the Executive Dashboard with sample numbers">
-      <div className="ld-mock-bar">
-        <span className="ld-mock-brand"><img src="/testmu-bi-logo-v3.png" alt="" /> Executive Dashboard</span>
-        <span className="ld-mock-chips"><i>Q3-2026</i><i>All PODs</i><i>New Business</i></span>
-        <span className="ld-mock-stamp"><b /> Sample data</span>
+    <div className={`rv-board ${wall ? 'is-wall' : ''} ${intro < 2 ? 'is-assembling' : ''}`} aria-label="Interactive revenue board with sample data">
+      <div className="rv-board-chrome">
+        <div className="rv-board-name"><Mark /><span>Workspace <span className="rv-slash">/</span> <strong>Revenue overview</strong></span></div>
+        <span className="rv-board-demo">Sample data</span>
+        <button type="button" className="rv-icon-button" onClick={onPresent} aria-label="Open presentation mode"><span aria-hidden="true">⛶</span></button>
       </div>
-      <div className="ld-mock-kpis">
-        {[['Quota attainment', '84%', '+6 pts vs last quarter'], ['Pipeline coverage', '3.2×', 'against 2.8× target'], ['Forecast', '$1.9M', 'Commit + Best case'], ['Trials in flight', '41', '12 new this week']].map(([k, v, d], i) => (
-          <div className="ld-mock-kpi" key={k} style={{ '--i': i }}><small>{k}</small><b>{v}</b><span>{d}</span></div>
-        ))}
+      <div className="rv-board-heading">
+        <div><span className="rv-overline">THE BIG PICTURE <i className="rv-on-track">ON TRACK ↗</i></span><h3>{wall ? 'Revenue, in the room.' : 'A very good quarter.'}</h3></div>
+        <div className="rv-filters">
+          {!wall && <label className="rv-select"><span className="rv-sr-only">Filter by region</span><select value={region} onChange={e => setRegion(e.target.value)}><option>All regions</option><option>AMER</option><option>EMEA</option></select></label>}
+          <span className="rv-quarter">Q3 2026</span>
+        </div>
       </div>
-      <div className="ld-mock-grid">
-        <div className="ld-mock-card">
-          <h4>Won ARR by month</h4>
-          <div className="ld-bars">{[34, 48, 42, 61, 57, 74, 69, 88, 81, 96].map((h, i) => <i key={i} style={{ '--h': h, '--i': i }} />)}</div>
+      <div className="rv-board-main">
+        <div className="rv-main-metric">
+          <span className="rv-metric-label">{view.title}</span>
+          <div className="rv-big-number" aria-label={`${view.title}: ${view.unit}${(view.total * factor * refresh).toFixed(1)}${view.suffix}`}><span aria-hidden="true">{view.unit}<Counter value={intro < 2 ? 0 : view.total * factor * refresh} reduced={reduced} /><em>{view.suffix}</em></span></div>
+          <span className="rv-gain">↗ {view.change}<span> vs. last quarter</span></span>
+          <div className="rv-quota"><div><span>Quota attainment</span><strong>{region === 'All regions' ? 84 : region === 'AMER' ? 91 : 78}%</strong></div><div className="rv-quota-track"><i style={{ transform: `scaleX(${region === 'All regions' ? .84 : region === 'AMER' ? .91 : .78})` }} /></div><small>A little closer. Every day.</small></div>
         </div>
-        <div className="ld-mock-card ld-mock-line">
-          <h4>Pipeline created</h4>
-          <svg viewBox="0 0 200 70" preserveAspectRatio="none">
-            <path className="area" d="M0 58 C 20 52, 30 40, 50 44 S 80 28, 100 30 S 135 18, 155 14 S 185 6, 200 4 L200 70 L0 70 Z" />
-            <path d="M0 58 C 20 52, 30 40, 50 44 S 80 28, 100 30 S 135 18, 155 14 S 185 6, 200 4" />
-          </svg>
-        </div>
-        <div className="ld-mock-card">
-          <h4>Rep ranking</h4>
-          <div className="ld-rank">
-            {[['Riya', 112], ['Dev', 94], ['Sam', 81], ['Zed', 63]].map(([n, w], i) => <div key={n} style={{ '--w': Math.min(w, 100), '--i': i }}><span>{n}</span><i /><b>{w}%</b></div>)}
+        <div className="rv-chart">
+          <div className="rv-chart-heading"><span>{explored ? question : 'Revenue momentum'}</span>{!wall && !explored ? <div className="rv-chart-switch" aria-label="Chart style"><button type="button" aria-label="Show bar chart" aria-pressed={chartMode === 'bar'} onClick={() => setChartMode('bar')}>▥ <span>Bars</span></button><button type="button" aria-label="Show trend chart" aria-pressed={chartMode === 'line'} onClick={() => setChartMode('line')}>⌁ <span>Trend</span></button></div> : <span><i /> {explored ? 'Current quarter' : 'Won ARR'}</span>}</div>
+          <div className={`rv-chart-plot ${chartMode === 'line' && !explored ? 'rv-chart-as-line' : ''}`} role="group" aria-label={explored ? question : 'Won ARR from April through September'}>
+            <div className="rv-chart-grid" aria-hidden="true"><span>{view.format(max)}</span><span>{view.format(max / 2)}</span><span>0</span></div>
+            {chartMode === 'line' && !explored && <svg className="rv-trend-line" viewBox="0 0 600 170" preserveAspectRatio="none" aria-hidden="true"><polygon points={`0,170 ${points} 600,170`} /><polyline points={points} pathLength="1" /></svg>}
+            <div className="rv-bars" style={{ '--bars': values.length }}>
+              {values.map((v, i) => <div className="rv-bar-column" key={`${question}-${i}`}><button type="button" className="rv-bar" style={{ '--bar-height': v / max, '--delay': `${i * 45}ms` }} aria-label={`${explored ? labels[i] : MONTHS[Math.floor(i / 2)]}: ${view.format(v)}`}><span className="rv-bar-fill" /><span className="rv-tooltip">{explored ? labels[i] : MONTHS[Math.floor(i / 2)]}<strong>{view.format(v)}</strong></span></button></div>)}
+            </div>
           </div>
+          <div className="rv-chart-labels" style={{ '--labels': labels.length }}>{labels.map(l => <span key={l}>{l}</span>)}</div>
         </div>
       </div>
+      <div className="rv-board-bottom">
+        <div><span className="rv-mini-label">Pipeline coverage</span><strong>{(3.2 * (region === 'All regions' ? 1 : 1.06)).toFixed(1)}<em>×</em></strong><span className="rv-tiny-bars" aria-hidden="true">{[25, 40, 33, 60, 52, 80, 72, 95].map((h, i) => <i key={i} style={{ height: `${h}%` }} />)}</span></div>
+        <div><span className="rv-mini-label">Forecast</span><strong>${(1.9 * factor).toFixed(1)}<em>M</em></strong><span className="rv-forecast-note">Looking ahead ↗</span></div>
+        <div><span className="rv-mini-label">Trials in flight</span><strong>{Math.round(41 * factor)}</strong><span className="rv-trials"><i /><i /><i /><i /><i /></span></div>
+      </div>
+      <div className="rv-board-footer"><span><i className="rv-live-dot" /> {wall ? 'LIVE DEMO' : 'TABLEAU · DEMO'}</span><span>Sample data <span aria-hidden="true">·</span> {tick ? 'Updated now' : 'Synced just now'}</span></div>
     </div>
   );
 }
 
 export default function Landing() {
-  const rootRef = useRef(null);
+  const prefersReduced = useReducedMotion();
+  const [motionPaused, setMotionPaused] = useState(false);
+  const reduced = prefersReduced || motionPaused;
+  const journey = useRef(null);
+  const authDialog = useRef(null);
+  const wallDialog = useRef(null);
+  const queryTimer = useRef(null);
+  const typingTimer = useRef(null);
+  const [step, setStep] = useState(0);
+  const [intro, setIntro] = useState(reduced ? 3 : 0);
+  const [question, setQuestion] = useState('ARR by region');
+  const [input, setInput] = useState('ARR by region');
+  const [explored, setExplored] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [queryError, setQueryError] = useState('');
+  const [region, setRegion] = useState('All regions');
+  const [tick, setTick] = useState(0);
+  const [authMode, setAuthMode] = useState(null);
+  const [wallOpen, setWallOpen] = useState(false);
+  const [sourceStep, setSourceStep] = useState(0);
+  const [source, setSource] = useState('Tableau view');
+  const [chartMode, setChartMode] = useState('bar');
 
   useEffect(() => {
-    const root = rootRef.current;
-    if (!root) return undefined;
-    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const coarse = window.matchMedia('(pointer: coarse)').matches;
-    if (reduce) { root.classList.add('ld-static'); return undefined; }
-
-    const io = new IntersectionObserver(entries => {
-      entries.forEach(entry => {
-        if (!entry.isIntersecting) return;
-        entry.target.classList.add('is-in');
-        io.unobserve(entry.target);
+    if (reduced) { setIntro(3); return; }
+    if (intro >= 3) return;
+    let timers = [];
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return;
+      timers = [1, 2, 3].map(n => setTimeout(() => setIntro(n), n * 650));
+      observer.disconnect();
+    }, { threshold: .2 });
+    observer.observe(journey.current.querySelector('.rv-screen-shell'));
+    return () => { observer.disconnect(); timers.forEach(clearTimeout); };
+  }, [reduced]);
+  useEffect(() => {
+    let frame;
+    const update = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const element = journey.current;
+        if (getComputedStyle(element.firstElementChild).position !== 'sticky') return;
+        const travel = element.offsetHeight - window.innerHeight;
+        const progress = Math.max(0, Math.min(1, -element.getBoundingClientRect().top / Math.max(travel, 1)));
+        setStep(progress < .32 ? 0 : progress < .68 ? 1 : 2);
       });
-    }, { rootMargin: '0px 0px -10% 0px', threshold: 0.12 });
-    root.querySelectorAll('[data-reveal]').forEach(el => io.observe(el));
-
-    const hero = root.querySelector('.ld-hero');
-    const layers = Array.from(hero.querySelectorAll('[data-depth]'));
-    const bento = root.querySelector('.ld-grid');
-    const manifesto = root.querySelector('.ld-manifesto');
-    const words = Array.from(root.querySelectorAll('.ld-manifesto .w'));
-
-    let mouseX = 0, mouseY = 0, easedX = 0, easedY = 0;
-    let raf = 0;
-    let litCount = -1;
-
-    const frame = () => {
-      raf = 0;
-      const y = window.scrollY;
-      const vh = window.innerHeight;
-
-      // Hero: scrub progress flattens the product over the first 70vh; layers
-      // drift by depth for scroll and mouse. The two full-bleed background
-      // layers take mouse drift only: a scroll shift would slide their
-      // clipped boxes out below the hero.
-      const heroLive = y < hero.offsetHeight + vh * 0.2;
-      if (heroLive) {
-        hero.style.setProperty('--p', clamp(y / (vh * 0.7), 0, 1).toFixed(4));
-        easedX += (mouseX - easedX) * 0.08;
-        easedY += (mouseY - easedY) * 0.08;
-        layers.forEach(layer => {
-          const depth = Number(layer.dataset.depth);
-          const shift = depth >= 2 ? y * (1 - PARALLAX[depth]) * 0.3 : 0;
-          layer.style.transform = `translate3d(${(easedX * MOUSE[depth]).toFixed(2)}px, ${(shift + easedY * MOUSE[depth]).toFixed(2)}px, 0)`;
-        });
-        hero.classList.add('is-live');
-      } else {
-        hero.classList.remove('is-live');
-      }
-
-      // Manifesto: words light in reading order as the block crosses the
-      // lower third of the viewport.
-      if (manifesto) {
-        const box = manifesto.getBoundingClientRect();
-        if (box.bottom > 0 && box.top < vh) {
-          const t = clamp((vh * 0.8 - box.top) / (box.height + vh * 0.3), 0, 1);
-          const lit = Math.round(t * words.length);
-          if (lit !== litCount) {
-            litCount = lit;
-            words.forEach((w, i) => w.classList.toggle('lit', i < lit));
-          }
-        }
-      }
-
-      const settling = heroLive && (Math.abs(mouseX - easedX) > 0.002 || Math.abs(mouseY - easedY) > 0.002);
-      if (settling) raf = requestAnimationFrame(frame);
     };
-    const request = () => { if (!raf) raf = requestAnimationFrame(frame); };
-
-    const onMove = event => {
-      mouseX = (event.clientX / window.innerWidth - 0.5) * 2;
-      mouseY = (event.clientY / window.innerHeight - 0.5) * 2;
-      request();
-    };
-    const onLeave = () => { mouseX = 0; mouseY = 0; request(); };
-
-    // Bento tiles carry a glow that follows the cursor: two custom
-    // properties on the hovered tile, painted by a radial gradient in CSS.
-    const onTileMove = event => {
-      const tile = event.target.closest('.ld-tile');
-      if (!tile) return;
-      const box = tile.getBoundingClientRect();
-      tile.style.setProperty('--mx', `${Math.round(event.clientX - box.left)}px`);
-      tile.style.setProperty('--my', `${Math.round(event.clientY - box.top)}px`);
-    };
-
-    // In-page links scroll smoothly and hand focus to the target so keyboard
-    // users land in the form, not just next to it.
-    const onAnchor = event => {
-      const link = event.target.closest('a[href^="#"]');
-      if (!link) return;
-      const target = root.querySelector(link.getAttribute('href'));
-      if (!target) return;
-      event.preventDefault();
-      target.scrollIntoView({ behavior: 'smooth', block: link.hash === '#signin' ? 'center' : 'start' });
-      // querySelector with a list returns the first in DOM order, and the card
-      // puts its heading before its inputs: ask for the input first.
-      const field = target.querySelector('input') || target.querySelector('button') || target.querySelector('h2, h3');
-      if (field) {
-        if (!field.hasAttribute('tabindex') && !/^(INPUT|BUTTON)$/.test(field.tagName)) field.setAttribute('tabindex', '-1');
-        field.focus({ preventScroll: true });
-      }
-    };
-
-    window.addEventListener('scroll', request, { passive: true });
-    window.addEventListener('resize', request);
-    root.addEventListener('click', onAnchor);
-    if (!coarse) {
-      hero.addEventListener('pointermove', onMove);
-      hero.addEventListener('pointerleave', onLeave);
-      bento?.addEventListener('pointermove', onTileMove);
-    }
-    request();
-
-    return () => {
-      if (raf) cancelAnimationFrame(raf);
-      io.disconnect();
-      window.removeEventListener('scroll', request);
-      window.removeEventListener('resize', request);
-      root.removeEventListener('click', onAnchor);
-      hero.removeEventListener('pointermove', onMove);
-      hero.removeEventListener('pointerleave', onLeave);
-      bento?.removeEventListener('pointermove', onTileMove);
-    };
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    update();
+    return () => { cancelAnimationFrame(frame); window.removeEventListener('scroll', update); window.removeEventListener('resize', update); };
   }, []);
+  useEffect(() => {
+    if (reduced) return;
+    let visible = true;
+    const observer = new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; });
+    observer.observe(journey.current);
+    const timer = setInterval(() => { if (!document.hidden && (visible || wallDialog.current?.open) && !authDialog.current?.open) setTick(n => n + 1); }, 12000);
+    return () => { clearInterval(timer); observer.disconnect(); };
+  }, [reduced]);
+  useEffect(() => () => { clearTimeout(queryTimer.current); clearInterval(typingTimer.current); }, []);
+  useEffect(() => { if (authMode) authDialog.current.showModal(); }, [authMode]);
+  useEffect(() => { if (wallOpen) wallDialog.current.showModal(); }, [wallOpen]);
+  useEffect(() => {
+    if (!authMode && !wallOpen) return;
+    const old = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = old; };
+  }, [authMode, wallOpen]);
+
+  const goToStep = index => {
+    const top = journey.current.getBoundingClientRect().top + window.scrollY;
+    const compact = getComputedStyle(journey.current.firstElementChild).position !== 'sticky';
+    if (compact) setStep(index);
+    const travel = Math.max(1, journey.current.offsetHeight - window.innerHeight);
+    window.scrollTo({ top: top + (compact ? 0 : travel * [0, .45, .84][index]), behavior: reduced ? 'instant' : 'smooth' });
+  };
+  const ask = (text, type = false) => {
+    clearTimeout(queryTimer.current); clearInterval(typingTimer.current);
+    const match = QUESTIONS.find(q => q.toLowerCase() === text.trim().toLowerCase());
+    if (!match) { setQueryError('Try one of the example questions below.'); setProcessing(false); return; }
+    setQueryError(''); setProcessing(true);
+    if (type && !reduced) {
+      let length = 0;
+      setInput('');
+      typingTimer.current = setInterval(() => { length += 2; setInput(match.slice(0, length)); if (length >= match.length) clearInterval(typingTimer.current); }, 24);
+    } else setInput(match);
+    queryTimer.current = setTimeout(() => { setQuestion(match); setExplored(true); setProcessing(false); }, reduced ? 0 : 650);
+  };
+  const boardProps = { question, explored, region, setRegion, chartMode, setChartMode, intro, reduced, tick, onPresent: () => setWallOpen(true) };
 
   return (
-    <div className="landing" ref={rootRef}>
-      <a className="ld-skip" href="#signin">Skip to sign in</a>
-
-      <header className="ld-nav">
-        <a className="ld-brand" href="#top" aria-label="TestMu BI">
-          <img src="/testmu-bi-logo-v3.png" alt="" width="34" height="34" />
-          <span>TestMu BI</span>
-        </a>
-        <nav className="ld-nav-links" aria-label="Page">
-          <a href="#boards">Boards</a>
-          <a href="#builder">Chart builder</a>
-          <a href="#tv">TV walls</a>
-          <a href="#sources">Sources</a>
-        </nav>
-        <div className="ld-nav-actions">
-          <a className="ld-btn ld-btn-primary ld-btn-sm" href="#signin">Sign in</a>
-        </div>
+    <div className={`revenue-landing rv-launch ${reduced ? 'rv-static' : ''}`}>
+      <a className="rv-skip" href="#signin" onClick={e => { e.preventDefault(); setAuthMode('login'); }}>Skip to sign in</a>
+      <header className="rv-nav">
+        <a className="rv-brand" href="#top" aria-label="TestMu BI home"><Mark /><span>TestMu <b>BI</b></span></a>
+        <nav aria-label="Main navigation"><a href="#experience" onClick={e => { e.preventDefault(); goToStep(0); }}>The experience</a><a href="#connect">Connect your data</a><span className="rv-nav-live"><i /> Always in sync</span></nav>
+        <button type="button" className="rv-nav-signin" onClick={() => setAuthMode('login')}>Sign in <Arrow /></button>
       </header>
-
       <main id="top">
-        {/* ---------------- HERO: six depth layers ---------------- */}
-        <section className="ld-hero scene" data-scene="hero" aria-labelledby="ld-title">
-          <div className="layer depth-0" data-depth="0" aria-hidden="true" />
-          <div className="layer depth-1" data-depth="1" aria-hidden="true">
-            <i className="ld-aurora ld-aurora-1" />
-            <i className="ld-aurora ld-aurora-2" />
-            <i className="ld-aurora ld-aurora-3" />
+        <section className="rv-hero" aria-labelledby="rv-title">
+          <div className="rv-hero-copy">
+          <div className="rv-eyebrow"><span className="rv-live-dot" /> THE REVENUE CONTROL ROOM <span>LIVE</span></div>
+          <h1 id="rv-title">Your revenue.<br /><em>Always live.</em><span className="rv-title-spark" aria-hidden="true">↗</span></h1>
+          <p>Turn Tableau data into live, shareable boards.</p>
+          <div className="rv-hero-actions"><button type="button" className="rv-button" onClick={() => setAuthMode('signup')}>Get started <Arrow /></button><button type="button" className="rv-text-button" onClick={() => goToStep(0)}><span className="rv-play" aria-hidden="true">▶</span> See it live</button></div>
+          <div className="rv-hero-proof"><span className="rv-proof-bars" aria-hidden="true"><i /><i /><i /><i /></span><span>Less reporting.<br /><strong>More perspective.</strong></span><i /><span>One source.<br /><strong>Every screen.</strong></span></div>
           </div>
-
-          <div className="layer depth-4 ld-hero-grid" data-depth="4">
-            <div className="ld-hero-copy">
-              <p className="ld-status" style={{ '--i': 0 }}><i /> Synced from Tableau Cloud · webhooks and a 2 h cron</p>
-              <h1 className="ld-h1" id="ld-title">
-                <span className="ld-line" style={{ '--i': 1 }}><span>Every deal. Every rep.</span></span>
-                <span className="ld-line" style={{ '--i': 2 }}><span className="ld-grad-text">Live on every screen.</span></span>
-              </h1>
-              <p className="ld-sub" style={{ '--i': 3 }}>
-                TestMu BI reads your published Tableau sources and turns them into seven ready-made
-                sales boards, a chart builder for everything else, and TV walls that refresh
-                themselves. No exports. No spreadsheets.
-              </p>
-              <div className="ld-cta-row" style={{ '--i': 4 }}>
-                <a className="ld-btn ld-btn-primary" href="#signin">Sign in</a>
-                <a className="ld-btn ld-btn-ghost" href="#boards">See the boards</a>
-              </div>
-              <p className="ld-trust" style={{ '--i': 5 }}>Work accounts only · Access is invited by your admin</p>
-            </div>
-            <div className="ld-hero-card">
-              <Login embedded />
-            </div>
-          </div>
-
-          <div className="ld-stage">
-            <div className="layer depth-3" data-depth="3">
-              <div className="ld-mock-drop">
-                <div className="ld-mock-float">
-                  <HeroMock />
-                </div>
+          <LiveSignal region={region} onRegion={setRegion} onExplore={() => goToStep(0)} onPresent={() => setWallOpen(true)} reduced={reduced} />
+          <div className="rv-hero-footnote"><span>01 / YOUR DATA, IN MOTION</span><span>EXPLORE THE LIVE WORKSPACE <span aria-hidden="true">↓</span></span></div>
+        </section>
+        <section className="rv-journey" ref={journey} id="experience" aria-label="Explore the product">
+          <div className={`rv-sticky rv-step-${step}`}>
+            <div className="rv-story-top"><div className="rv-chapter"><span>0{step + 1} / THE EXPERIENCE</span><h2>{STORY[step].title}</h2></div><p>{STORY[step].detail}</p></div>
+            <div className="rv-product-stage">
+              <div className="rv-stage-rail"><span className="rv-demo-label"><i /> LIVE WORKSPACE</span><div className="rv-story-tabs" aria-label="Explore the demo stages">{['The board', 'Ask your data', 'On every screen'].map((label, i) => <button key={label} type="button" aria-pressed={step === i} onClick={() => goToStep(i)}><span>0{i + 1}</span> {label}</button>)}</div><button type="button" className="rv-motion-control" onClick={() => setMotionPaused(p => !p)} aria-label={motionPaused ? 'Play animation' : 'Pause animation'} disabled={prefersReduced}>{reduced ? '▶' : 'Ⅱ'}<span>{reduced ? 'Motion off' : 'Pause'}</span></button></div>
+              <div className="rv-workspace"><aside className="rv-workspace-sidebar" aria-label="Demo workspace views"><span className="rv-sidebar-brand"><Mark /><strong>Your workspace</strong></span><span className="rv-sidebar-label">OVERVIEW</span><button type="button" className={!explored ? 'is-selected' : ''} aria-label="View revenue overview" onClick={() => { setExplored(false); setQuestion('ARR by region'); goToStep(0); }}><span>▦</span> Revenue</button><button type="button" className={explored && question === 'Top reps' ? 'is-selected' : ''} aria-label="View rep performance" onClick={() => { ask('Top reps'); goToStep(1); }}><span>◎</span> Rep performance</button><button type="button" className={explored && question === 'Forecast' ? 'is-selected' : ''} aria-label="View revenue forecast" onClick={() => { ask('Forecast'); goToStep(1); }}><span>⌁</span> Forecast</button><div className="rv-sidebar-source"><span className="rv-sidebar-label">YOUR SOURCE</span><strong><span>✳</span> Tableau <i /></strong><small>Sample workspace</small></div></aside><div className="rv-screen-shell"><RevenueBoard {...boardProps} wall={step === 2} /></div></div>
+              <div className="rv-stage-control">
+                {step === 0 && <div className="rv-data-flow" aria-label="Data becomes insight, a board, and a live screen">{['Tableau', 'Insight', 'Your board', 'Live screen'].map((name, i) => <div className={intro >= i ? 'is-connected' : ''} key={name}><span className="rv-flow-node">{i === 0 ? '✳' : i === 3 ? '▣' : i === 2 ? '▥' : '↗'}</span><span>{name}</span>{i < 3 && <i className="rv-flow-line" />}</div>)}</div>}
+                {step === 1 && <div className="rv-ask"><form onSubmit={e => { e.preventDefault(); ask(input); }}><span className="rv-query-symbol" aria-hidden="true">✳</span><label className="rv-sr-only" htmlFor="rv-question">Ask your data</label><input id="rv-question" value={input} onChange={e => { clearInterval(typingTimer.current); clearTimeout(queryTimer.current); setProcessing(false); setInput(e.target.value); setQueryError(''); }} aria-describedby="rv-query-status" /><button type="submit" aria-label="Run example question" disabled={processing}>{processing ? <span className="rv-loading-dots">•••</span> : '↵'}</button></form><div className="rv-prompts">{QUESTIONS.map(q => <button type="button" key={q} aria-pressed={explored && q === question} onClick={() => ask(q, true)}>{q}</button>)}</div><span id="rv-query-status" className={`rv-query-status ${queryError ? 'is-error' : ''}`} role="status">{queryError || (processing ? 'Finding the signal…' : explored ? `Showing ${question.toLowerCase()} · Sample data` : 'Guided demo · Try a question')}</span></div>}
+                {step === 2 && <div className="rv-wall-control"><span><i className="rv-live-dot" /> A room with a view.</span><button type="button" className="rv-text-button" onClick={() => setWallOpen(true)}>Try fullscreen <span aria-hidden="true">⛶</span></button></div>}
               </div>
             </div>
-            {/* Glass panels floating in front of the product. */}
-            <div className="layer depth-5 ld-floats" data-depth="5" aria-hidden="true">
-              <div className="ld-float ld-float-kpi" style={{ '--z': '110px', '--dur': '8s' }}>
-                <small>Won ARR</small><b>$4.2M</b><span className="up">▲ 18% quarter over quarter</span>
-              </div>
-              <div className="ld-float ld-float-ring" style={{ '--z': '90px', '--dur': '11s' }}>
-                <i className="ld-ring"><b>84%</b></i><span><small>Quota attainment</small>Q3 to date</span>
-              </div>
-              <div className="ld-float ld-float-toast" style={{ '--z': '120px', '--dur': '13s' }}>
-                <i className="ld-check" /><span><b>refresh-succeeded</b><small>Tableau webhook · re-pulled in 4 s</small></span>
-              </div>
-              <div className="ld-float ld-float-stamp" style={{ '--z': '70px', '--dur': '10s' }}>
-                <i className="ld-dot" /><span>Data updated 09:41 · TV wall</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="layer depth-5 ld-particles" data-depth="5" aria-hidden="true">
-            {[[8, 22, 0], [18, 68, 3], [31, 14, 6], [57, 82, 2], [72, 26, 5], [88, 60, 1], [94, 18, 4], [44, 48, 7]].map(([x, y, d], i) => (
-              <i key={i} style={{ left: `${x}%`, top: `${y}%`, animationDelay: `-${d}s` }} />
-            ))}
+            <div className="rv-stage-caption"><span><i /> REAL POSSIBILITIES. SAMPLE NUMBERS.</span><span>{step === 0 ? 'Make it yours. Try a filter or chart style. ↑' : step === 1 ? 'Small questions. Big perspective.' : 'Made for the Monday meeting. And every day after.'}</span></div>
           </div>
         </section>
-
-        {/* ---------------- TICKER ---------------- */}
-        <section className="ld-marquee" aria-label="How it runs">
-          <div className="ld-marquee-track">
-            {TICKER.map(t => <span key={t}>{t}</span>)}
-            {TICKER.map(t => <span key={`${t}-dup`} aria-hidden="true">{t}</span>)}
+        <section className="rv-connect" id="connect" aria-labelledby="rv-connect-title">
+          <div className="rv-connect-heading"><span className="rv-overline">YOUR DATA HAS PLACES TO BE.</span><h2 id="rv-connect-title">Connect. Choose.<br /><em>Go live.</em></h2><p>One source. A shared perspective.</p></div>
+          <div className="rv-connection-demo">
+            <div className="rv-connect-steps" aria-label="Connection preview">{['Connect', 'Choose', 'Go live'].map((s, i) => <button type="button" className={sourceStep >= i ? 'is-active' : ''} key={s} aria-pressed={sourceStep === i} onClick={() => setSourceStep(i)}><span>0{i + 1}</span>{s}</button>)}</div>
+            <div className={`rv-connection-map rv-connection-step-${sourceStep}`}><svg className="rv-connection-paths" viewBox="0 0 640 240" preserveAspectRatio="none" aria-hidden="true"><path d="M100 45H185Q205 45 205 65V100Q205 120 225 120H470M100 120H470M100 195H185Q205 195 205 175V140Q205 120 225 120H470" /></svg><div className="rv-source-options" aria-label="Supported data sources">{['Tableau view', 'Published source', 'File upload'].map((s, i) => <button type="button" key={s} aria-pressed={source === s} onClick={() => { setSource(s); setSourceStep(0); }}><span aria-hidden="true">{i === 0 ? '✳' : i === 1 ? '▤' : '↑'}</span>{s}</button>)}</div><div className="rv-connection-core" aria-hidden="true"><Mark /><span>TESTMU BI</span></div><div className="rv-source-surface"><span className="rv-source-icon" aria-hidden="true">{sourceStep === 2 ? '✓' : '▥'}</span><div><span className="rv-overline">{sourceStep === 0 ? 'START WITH WHAT YOU HAVE' : sourceStep === 1 ? 'CHOOSE YOUR PERSPECTIVE' : 'READY FOR THE ROOM'}</span><h3>{sourceStep === 0 ? source : sourceStep === 1 ? 'Revenue overview' : 'Your board is ready.'}</h3><span className="rv-source-detail">{sourceStep === 0 ? 'Your source. Your workspace.' : sourceStep === 1 ? 'Select a view. Make it yours.' : 'Connect your own data to get started.'}</span></div><div className="rv-connection-minichart" aria-hidden="true">{[27, 44, 38, 59, 49, 77, 68, 97].map((h, i) => <i key={i} style={{ height: `${h}%` }} />)}</div><button type="button" className="rv-source-next" aria-label={sourceStep === 2 ? 'Get started with your data' : 'Next connection step'} onClick={() => sourceStep === 2 ? setAuthMode('signup') : setSourceStep(s => s + 1)}>↗</button></div></div><span className="rv-connection-caption">CONNECTION PREVIEW · SIGN IN TO CONNECT</span>
           </div>
         </section>
-
-        {/* ---------------- BOARDS: bento grid ---------------- */}
-        <section className="ld-bento" id="boards" aria-labelledby="ld-boards-title">
-          <div className="ld-section-head" data-reveal>
-            <p className="ld-eyebrow">Fixed boards</p>
-            <h2 id="ld-boards-title">Seven boards, built by hand,<br />wired to your data.</h2>
-            <p className="ld-lead">
-              Each one is a page in the app, not a template you configure. The metric math lives
-              in tested pure functions on the server. The boards just show it.
-            </p>
-          </div>
-          <ul className="ld-grid" data-reveal>
-            {BOARDS.map((b, i) => (
-              <li className={`ld-tile ld-tile-${b.size || '1x1'}`} key={b.id} data-stagger style={{ '--i': i }}>
-                <span className="ld-tile-index">0{i + 1}</span>
-                <h3>{b.name}</h3>
-                <p>{b.blurb}</p>
-                {b.tags && <div className="ld-tile-tabs">{b.tags.map(t => <span key={t}>{t}</span>)}</div>}
-                <MiniViz kind={b.viz} />
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        {/* ---------------- CHART BUILDER ---------------- */}
-        <section className="ld-feature" id="builder" aria-labelledby="ld-builder-title" data-reveal>
-          <div className="ld-feature-copy">
-            <p className="ld-eyebrow">Chart builder</p>
-            <h2 id="ld-builder-title">For everything the boards don't cover.</h2>
-            <p className="ld-lead">
-              Pick any connected source. Chart types the dataset cannot satisfy are greyed out with
-              the reason. Slots arrive pre-filled from the column profiles and stay overridable, filters
-              apply before aggregation, and every bar opens the raw rows behind it.
-            </p>
-            <ul className="ld-checks">
-              <li data-stagger style={{ '--i': 0 }}>Bar, time series, donut, KPI tile, scatter and table</li>
-              <li data-stagger style={{ '--i': 1 }}>Saved charts are versioned configs, so they follow every sync</li>
-              <li data-stagger style={{ '--i': 2 }}>Custom dashboards: a twelve-column grid, one chart on many boards</li>
-            </ul>
-          </div>
-          <div className="ld-feature-visual ld-builder" aria-hidden="true">
-            <div className="ld-builder-side">
-              <div className="ld-builder-types">
-                {CHART_TYPES.map((t, i) => <i key={t} className={i === 1 ? 'is-on' : i === 4 ? 'is-off' : ''}>{t}</i>)}
-              </div>
-              {[['Category', 'Region'], ['Value', 'ARR · sum'], ['Series', 'Product'], ['Date', 'Close date · month']].map(([k, v], i) => (
-                <div className="ld-slot" key={k} data-stagger style={{ '--i': i + 1 }}><small>{k}</small><b>{v}</b></div>
-              ))}
-              <div className="ld-slot ld-slot-filter" data-stagger style={{ '--i': 5 }}><small>Filter</small><b>Type is New Business</b></div>
-            </div>
-            <div className="ld-builder-preview">
-              <div className="ld-builder-head"><b>ARR by region</b><span>Live preview</span></div>
-              <MiniViz kind="bars" className="viz-series" />
-              <div className="ld-builder-rows"><b>Click a bar</b><span>opens the rows behind it · filter chart to this</span></div>
-            </div>
-          </div>
-        </section>
-
-        {/* ---------------- TV WALLS ---------------- */}
-        <section className="ld-feature is-flipped" id="tv" aria-labelledby="ld-tv-title" data-reveal>
-          <div className="ld-feature-copy">
-            <p className="ld-eyebrow">Presentation mode</p>
-            <h2 id="ld-tv-title">Put it on the wall. Leave it there.</h2>
-            <p className="ld-lead">
-              Every board has a 16:9 presentation mode with auto-rotating slides, a screen wake lock,
-              and a "Data updated" stamp that turns red the moment the network drops. Failed refreshes
-              keep the last good numbers. The stalled stamp is the signal.
-            </p>
-            <ul className="ld-checks">
-              <li data-stagger style={{ '--i': 0 }}>Share links open one board with no login</li>
-              <li data-stagger style={{ '--i': 1 }}>Tokens are stored hash-only and scoped to exactly that board</li>
-              <li data-stagger style={{ '--i': 2 }}>Revoke from the Account page, or let it expire</li>
-            </ul>
-          </div>
-          <div className="ld-feature-visual ld-tv" aria-hidden="true">
-            <div className="ld-tv-frame">
-              <div className="ld-tv-screen">
-                <div className="ld-tv-top"><b>Win Board</b><span className="ld-tv-stamp"><i /> Data updated 09:41</span></div>
-                <div className="ld-tv-kpis">{[['Won ARR', '$4.2M'], ['Win rate', '31%'], ['Deals', '128']].map(([k, v]) => <div key={k}><small>{k}</small><b>{v}</b></div>)}</div>
-                <MiniViz kind="bars" className="viz-tv" />
-                <div className="ld-tv-dots"><i className="on" /><i /><i /><i /></div>
-              </div>
-            </div>
-            <div className="ld-tv-link"><b>/tv/…</b><span>one board · read-only · revocable</span></div>
-          </div>
-        </section>
-
-        {/* ---------------- SOURCES ---------------- */}
-        <section className="ld-sources" id="sources" aria-labelledby="ld-sources-title" data-reveal>
-          <div className="ld-section-head">
-            <p className="ld-eyebrow">Data sources</p>
-            <h2 id="ld-sources-title">Three ways in. One canonical schema.</h2>
-            <p className="ld-lead">
-              Preview, auto-mapped field suggestions against the opportunity schema, fill rates and
-              samples per column, then commit to one or more boards. Re-committing the same source
-              supersedes its previous binding.
-            </p>
-          </div>
-          <ul className="ld-source-grid">
-            {SOURCES.map((s, i) => (
-              <li className="ld-source" key={s.name} data-stagger style={{ '--i': i }}>
-                <span className="ld-source-glyph"><Glyph kind={s.glyph} /></span>
-                <h3>{s.name}</h3>
-                <p>{s.body}</p>
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        {/* ---------------- MANIFESTO: word-by-word lighting ---------------- */}
-        <section className="ld-manifesto-wrap" aria-label="Tenancy and security">
-          <p className="ld-manifesto">
-            {MANIFESTO.split(' ').map((w, i) => <span className="w" key={i}>{w} </span>)}
-          </p>
-        </section>
-
-        {/* ---------------- FINAL CTA ---------------- */}
-        <section className="ld-final" aria-labelledby="ld-final-title" data-reveal>
-          <div className="ld-final-panel">
-            <p className="ld-eyebrow">Ready when your data is</p>
-            <h2 id="ld-final-title">Connect a Tableau source.<br />Open a board.</h2>
-            <p className="ld-lead">Sign in with your work account. If you do not have one yet, your admin issues a temporary password that you change on first sign-in.</p>
-            <div className="ld-cta-row ld-cta-center">
-              <a className="ld-btn ld-btn-primary" href="#signin">Sign in</a>
-            </div>
-          </div>
-        </section>
+        <section className="rv-final" aria-labelledby="rv-final-title"><div className="rv-final-orbit" aria-hidden="true"><i /><i /><i /><span>↗</span></div><div className="rv-final-display" aria-hidden="true"><span><i /> LIVE ON EVERY SCREEN</span><div className="rv-final-value">4.2<em>M</em></div><div className="rv-final-bars">{[23, 41, 32, 58, 47, 79, 69, 100].map((h, i) => <i key={i} style={{ height: `${h}%` }} />)}</div><small>EVERY DEAL. EVERY REP.</small></div><div className="rv-final-copy"><span className="rv-overline">THE NEXT BIG PICTURE IS YOURS.</span><h2 id="rv-final-title">Put your data<br /><em>on the wall.</em></h2><button type="button" className="rv-button" onClick={() => setAuthMode('signup')}>Get started <Arrow /></button></div></section>
       </main>
-
-      <footer className="ld-footer">
-        <span>TestMu BI · Sales analytics on live Tableau data</span>
-        <span>Built for desk browsers and 16:9 TVs</span>
-      </footer>
+      <footer className="rv-footer"><a className="rv-brand" href="#top"><Mark /><span>TestMu <b>BI</b></span></a><span>A shared view of what’s next.</span><span>© {new Date().getFullYear()} TestMu BI</span></footer>
+      <dialog className="rv-auth-dialog" ref={authDialog} aria-label="Access your workspace" onClose={() => setAuthMode(null)} onClick={e => { if (e.target === e.currentTarget) e.currentTarget.close(); }}><div className="rv-auth-inner"><div className="rv-auth-top"><span className="rv-brand"><Mark /><span>TestMu <b>BI</b></span></span><button type="button" className="rv-close" aria-label="Close sign in" onClick={() => authDialog.current.close()}>×</button></div><span className="rv-overline">YOUR NEXT CLEAR PICTURE STARTS HERE.</span>{authMode && <Login embedded initialMode={authMode} />}</div></dialog>
+      <dialog className="rv-wall-dialog" ref={wallDialog} aria-label="Presentation preview" onClose={() => setWallOpen(false)}><div className="rv-wall-top"><span><i className="rv-live-dot" /> LIVE BOARD · SAMPLE DATA</span><button type="button" className="rv-close" aria-label="Exit presentation mode" onClick={() => wallDialog.current.close()}>×</button></div>{wallOpen && <RevenueBoard {...boardProps} wall intro={3} />}<div className="rv-wall-bottom"><span>TestMu BI</span><span>Every deal. Every rep. In the room.</span><span>ESC TO EXIT</span></div></dialog>
     </div>
   );
 }

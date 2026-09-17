@@ -11,11 +11,12 @@ No `TODO`/`FIXME` comments exist in the source (verified by repo-wide search,
 - Revocable TV share tokens (`/tv/:token`) for template boards
 - Webhook failure watch → sources marked `stale`; delivery dedupe; 2 h poll default
 - Dataset column profiling at sync + raw-row retention
-- Chart builder: catalogue, suggestion, live preview, saved chart configs
-- Custom dashboards: drag/resize grid, gallery section
-- Chart filters + click-to-drill (rows behind an element, filter-to-this)
-- Custom dashboards on TV share links
 - Documentation rewrite (this file and siblings)
+
+## Done (2026-09-14 removal)
+
+- Removed My dashboards, Chart builder and custom TV targets from UI and code.
+- Added migration 017 and isolated database/API/browser regression coverage.
 
 ## In progress
 
@@ -34,7 +35,6 @@ No `TODO`/`FIXME` comments exist in the source (verified by repo-wide search,
 
 - Move business rows into typed Postgres `datasets` tables (kills the
   restart gap and memory ceiling; revisit when off free tiers)
-- Dashboard-level filters applied across every tile of a custom dashboard
 - Playlists: rotate several dashboards on one TV token
 - Email verification, to allow self-signup safely
 - Multi-instance safety: move rate limiting + webhook dedupe to Postgres

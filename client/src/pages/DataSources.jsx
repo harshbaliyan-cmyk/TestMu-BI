@@ -1,9 +1,10 @@
 // client/src/pages/DataSources.jsx
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTemplates, fieldsByTemplate } from '../hooks/useTemplates';
 import api from '../lib/api';
-import ThemeToggle from '../components/ThemeToggle';
+import Icon from '../components/WorkspaceIcon';
+import { PageHeading, EmptyState, Notice, ActionMenu, useConfirmDialog } from '../components/WorkspaceUI';
 
 // Registry and field sets both come from /api/templates now. They were
 // duplicated here, and a dashboard missing from either copy was invisible with
@@ -43,6 +44,13 @@ function formatRefreshTime(value) {
 
 export default function DataSources() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const view = searchParams.get('view') === 'add' ? 'add' : 'connected';
+  const setView = next => setSearchParams(current => { const nextParams = new URLSearchParams(current); if (next === 'add') nextParams.set('view', 'add'); else nextParams.delete('view'); return nextParams; });
+  const [sourceQuery, setSourceQuery] = useState('');
+  const [sourceStatus, setSourceStatus] = useState('all');
+  const [savedStatus, setSavedStatus] = useState('loading');
+  const { confirm, dialog } = useConfirmDialog();
   const { templates } = useTemplates();
   const [tab, setTab] = useState('upload');
   const [preview, setPreview] = useState(null);
@@ -61,8 +69,10 @@ export default function DataSources() {
   const [webhookBusySource, setWebhookBusySource] = useState(null);
   const [syncHistoryOpen, setSyncHistoryOpen] = useState(false);
 
-  const loadSavedSources = () => api.get('/datasources')
-    .then(({ data }) => setSavedSources(data.sources || [])).catch(() => {});
+  const loadSavedSources = () => {
+    setSavedStatus('loading');
+    return api.get('/datasources').then(({ data }) => { setSavedSources(data.sources || []); setSavedStatus('ready'); }).catch(() => setSavedStatus('error'));
+  };
   const loadSyncRuns = () => api.get('/datasources/sync-history')
     .then(({data})=>setSyncRuns(data.runs||[])).catch(()=>{});
 
@@ -154,25 +164,23 @@ export default function DataSources() {
     setWorkflowStep('mapping');
   }
 
+  const visibleSources = savedSources.filter(source => String(source.name).toLowerCase().includes(sourceQuery.toLowerCase()) && (sourceStatus === 'all' || (source.status === 'loaded') === (sourceStatus === 'loaded')));
   return (
-    <div className="wrap">
-      <div className="top-nav" style={{ margin: '-18px -18px 18px' }}>
-        <div className="brand"><img className="brand-logo" src="/testmu-bi-logo-v3.png" alt="TestMu BI" /><span>TestMu BI</span></div>
-        <div className="user-pill"><ThemeToggle /><button className="btn-secondary" onClick={() => navigate('/gallery')}>
-          Back to templates
-        </button></div>
-      </div>
+    <div className="wrap ux-page ux-sources">
+      <PageHeading title="Data sources" description="Connect your data, manage mappings, and keep your dashboards up to date.">
+        {!preview && view === 'connected' && <button className="btn-primary" onClick={() => setView('add')}><Icon name="plus" />Add data source</button>}
+        {!preview && view === 'add' && <button className="btn-secondary" onClick={() => setView('connected')}>View connected sources</button>}
+      </PageHeading>
+      {!preview && <div className="ux-source-tabs ux-segments" role="group" aria-label="Data source views"><button aria-pressed={view === 'connected'} onClick={() => setView('connected')}>Connected sources{savedStatus === 'ready' && <span>{savedSources.length}</span>}</button><button aria-pressed={view === 'add'} onClick={() => setView('add')}>Add a source</button></div>}
 
-      <div className="gallery-header"><h2>Data Sources</h2></div>
-
-      {!preview && (
+      {!preview && view === 'add' && (
         <>
-          <nav className="tabs" style={{ marginBottom: 16 }}>
-            <button className={tab === 'upload' ? 'on' : ''} onClick={() => setTab('upload')}>
-              Upload file
+          <nav className="ux-connection-choices" aria-label="Source connection type">
+            <button aria-pressed={tab === 'upload'} onClick={() => setTab('upload')}>
+              <Icon name="upload" /><span>Upload file<small>CSV, Excel, TSV or JSON</small></span>
             </button>
-            <button className={tab === 'tableau' ? 'on' : ''} onClick={() => setTab('tableau')}>
-              Connect Tableau
+            <button aria-pressed={tab === 'tableau'} onClick={() => setTab('tableau')}>
+              <Icon name="source" /><span>Connect Tableau<small>Published sources and views</small></span>
             </button>
           </nav>
 
@@ -183,10 +191,7 @@ export default function DataSources() {
       )}
 
       {error && (
-        <div className="card" style={{ borderLeft: '3px solid var(--red)', marginTop: 16 }}>
-          <b style={{ color: 'var(--red)' }}>Error</b>
-          <p style={{ fontSize: 13, marginTop: 4 }}>{error}</p>
-        </div>
+        <Notice error>{error}</Notice>
       )}
 
       {preview && workflowStep === 'preview' && (
@@ -244,14 +249,17 @@ export default function DataSources() {
         </div>
       )}
 
-      {!preview && savedSources.length > 0 && (
-        <div className="card" style={{ marginTop: 16 }}>
-          <h3>Connected data sources</h3>
-          <div className="hint">Metadata and mappings are stored in Neon; uploaded business rows remain in runtime memory.</div>
-          <div className="scroll" style={{ marginTop: 12 }}>
+      {!preview && view === 'connected' && savedStatus === 'loading' && <p className="ux-loading" role="status">Loading connected sources…</p>}
+      {!preview && view === 'connected' && savedStatus === 'error' && <Notice error action={<button className="btn-secondary" onClick={loadSavedSources}>Try again</button>}>Connected sources couldn’t be loaded.</Notice>}
+      {!preview && view === 'connected' && savedStatus === 'ready' && !savedSources.length && <EmptyState icon="source" title="Bring your data into the workspace" action={<button className="btn-primary" onClick={() => setView('add')}>Add data source</button>}>Upload a file or connect Tableau. You can preview and map the fields before loading any data.</EmptyState>}
+      {!preview && view === 'connected' && savedSources.length > 0 && (
+        <div className="card ux-sources-card" style={{ marginTop: 16 }}>
+          <div className="ux-section-heading"><h2>Connected data sources</h2><button className="btn-secondary" disabled={savedStatus === 'loading'} onClick={loadSavedSources}>Refresh list</button></div>
+          <div className="ux-table-toolbar"><label className="ux-search"><Icon name="search" /><input type="search" value={sourceQuery} onChange={event => setSourceQuery(event.target.value)} placeholder="Search sources" aria-label="Search connected sources" /></label><select aria-label="Filter source status" value={sourceStatus} onChange={event => setSourceStatus(event.target.value)}><option value="all">All statuses</option><option value="loaded">Loaded</option><option value="other">Needs attention</option></select></div>
+          <div className="scroll" role="region" aria-label="Connected data sources" tabIndex={0} style={{ marginTop: 12 }}>
             <table>
-              <thead><tr><th>Source</th><th>Type</th><th>Rows</th><th>Dashboards</th><th>Status</th><th>Last refreshed</th><th /></tr></thead>
-              <tbody>{savedSources.map(source => <tr key={source.id}>
+              <thead><tr><th>Source</th><th>Type</th><th>Rows</th><th>Dashboards</th><th>Status</th><th>Last refreshed</th><th aria-label="Actions" /></tr></thead>
+              <tbody>{visibleSources.map(source => <tr key={source.id}>
                 <td><b>{source.name}</b></td>
                 <td>{String(source.sourceType || '').replaceAll('_', ' ')}</td>
                 <td>{Number(source.rowCount || 0).toLocaleString()}</td>
@@ -262,9 +270,9 @@ export default function DataSources() {
                         {labelFor(templates, key)} ↗
                       </button>)}</div>
                   : 'Not assigned'}</td>
-                <td><span className="pill">{source.status}</span></td>
+                <td><span className={`ux-badge${source.status === 'loaded' ? ' is-ready' : ''}`}>{source.status}</span></td>
                 <td>{formatRefreshTime(source.lastSync)}</td>
-                <td style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                <td><ActionMenu label={`Actions for ${source.name}`}>
                   <button className="btn-secondary"
                     title="Change which source column feeds each dashboard field, and which dashboards this source serves — no re-upload or re-pull"
                     disabled={remapSource===source.id||refreshingSource===source.id||deletingSource===source.id}
@@ -292,19 +300,19 @@ export default function DataSources() {
                     }}>{webhookBusySource===source.id?'Working…':source.webhookEnabled?'Auto-refresh: On':'Enable auto-refresh'}</button>}
                   <button className="btn-secondary" style={{color:'var(--red)'}}
                     disabled={refreshingSource===source.id||deletingSource===source.id} onClick={async()=>{
-                      if(!window.confirm(`Delete "${source.name}"? This removes it from every dashboard it's bound to.`))return;
+                      if(!await confirm({ title: `Delete ${source.name}?`, description: 'This removes the source from every dashboard it is connected to. Existing dashboards will remain available.', label: 'Delete source', danger: true }))return;
                       setDeletingSource(source.id);setError(null);
                       try{await api.delete(`/datasources/${source.id}`);await loadSavedSources();}
                       catch(error){setError(error.response?.data?.error||error.message);}
                       finally{setDeletingSource(null);}
                     }}>{deletingSource===source.id?'Deleting…':'Delete'}</button>
-                </td>
-              </tr>)}</tbody>
+                </ActionMenu></td>
+              </tr>)}{!visibleSources.length && <tr><td colSpan={7}>No sources match these filters.</td></tr>}</tbody>
             </table>
           </div>
         </div>
       )}
-      {!preview && syncRuns.length>0 && <div className="card" style={{marginTop:16}}>
+      {!preview && view === 'connected' && syncRuns.length>0 && <div className="card" style={{marginTop:16}}>
         <button type="button" className="btn-secondary" onClick={()=>setSyncHistoryOpen(open=>!open)}
           style={{display:'flex',alignItems:'center',justifyContent:'space-between',width:'100%'}}>
           <span>Sync history ({syncRuns.length})</span><span>{syncHistoryOpen?'▲':'▼'}</span>
@@ -315,6 +323,7 @@ export default function DataSources() {
             <td>{Number(run.rowsRead||0).toLocaleString()}</td><td>{new Date(run.startedAt).toLocaleString()}</td>
             <td>{run.error||'—'}</td></tr>)}</tbody></table></div>}
       </div>}
+      {dialog}
     </div>
   );
 }
@@ -503,8 +512,12 @@ function UploadPanel({ onPreview, setError, setBusy, busy }) {
   const [dragging, setDragging] = useState(false);
 
   async function send(fileList) {
+    if (busy) return;
     const files = Array.from(fileList || []);
     if (!files.length) return;
+    if (files.length > 10) { setError('Choose up to 10 files at a time.'); return; }
+    if (files.some(file => file.size > 25 * 1024 * 1024)) { setError('Each file must be 25 MB or smaller.'); return; }
+    if (files.some(file => !/\.(csv|tsv|xlsx|xls|json)$/i.test(file.name))) { setError('Choose a CSV, TSV, Excel or JSON file.'); return; }
     setBusy(true); setError(null);
     try {
       const form = new FormData();
@@ -521,7 +534,7 @@ function UploadPanel({ onPreview, setError, setBusy, busy }) {
       <h3>Upload files</h3>
       <div className="hint">Select up to 10 CSV, TSV, Excel or JSON files. Max 25 MB each.</div>
 
-      <div
+      <button type="button" className="ux-upload-zone" disabled={busy}
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
         onDrop={(e) => { e.preventDefault(); setDragging(false); send(e.dataTransfer.files); }}
@@ -532,13 +545,14 @@ function UploadPanel({ onPreview, setError, setBusy, busy }) {
           borderRadius: 'var(--r)', padding: '40px 20px', textAlign: 'center',
           cursor: 'pointer', transition: 'all .15s', marginTop: 12,
         }}>
+        <Icon name="upload" width="28" height="28" />
         <div style={{ fontSize: 14, fontWeight: 600 }}>
           {busy ? 'Reading file…' : 'Drop a file here, or click to browse'}
         </div>
         <div style={{ fontSize: 12, color: 'var(--txt-3)', marginTop: 4 }}>
           You'll see a preview of the mapped data before anything loads.
         </div>
-      </div>
+      </button>
 
       <input ref={inputRef} type="file" multiple accept=".csv,.tsv,.xlsx,.xls,.json"
         style={{ display: 'none' }}
@@ -631,30 +645,30 @@ function TableauPanel({ onPreview, setError, setBusy, busy }) {
 
   if (!status.connected) {
     return (
-      <div className="card">
+      <form className="card ux-tableau-connect" onSubmit={event => { event.preventDefault(); if (!busy && form.server && form.patName && form.patSecret) connect(); }}>
         <h3>Connect to Tableau Cloud</h3>
         <div className="hint">
           Credentials go only to this app's server. The token secret is encrypted before it is saved
           and is never returned to the browser.
         </div>
 
-        <Field label="Server URL" value={form.server} onChange={v => setForm({ ...form, server: v })}
+        <Field label="Server URL" required value={form.server} onChange={v => setForm({ ...form, server: v })}
           placeholder="https://prod-apsoutheast-b.online.tableau.com"
           note="Host only — no /#/site/... path." />
         <Field label="Site ID" value={form.siteId} onChange={v => setForm({ ...form, siteId: v })}
           placeholder="lambdatest"
           note="The part after /site/ in your Tableau URL. Blank for the default site." />
-        <Field label="Token name" value={form.patName} onChange={v => setForm({ ...form, patName: v })}
+        <Field label="Token name" required value={form.patName} onChange={v => setForm({ ...form, patName: v })}
           placeholder="command-center" />
-        <Field label="Token secret" type="password" value={form.patSecret}
+        <Field label="Token secret" required type="password" value={form.patSecret}
           onChange={v => setForm({ ...form, patSecret: v })} placeholder="••••••••••••"
           note="My Account Settings → Personal Access Tokens. Shown only once." />
 
-        <button className="btn-primary" style={{ marginTop: 14 }}
-          disabled={busy || !form.server || !form.patName || !form.patSecret} onClick={connect}>
+        <button type="submit" className="btn-primary" style={{ marginTop: 14 }}
+          disabled={busy || !form.server || !form.patName || !form.patSecret}>
           {busy ? 'Connecting…' : 'Connect'}
         </button>
-      </div>
+      </form>
     );
   }
 
@@ -1071,14 +1085,15 @@ const noticeStyle = {
   borderRadius: 8, padding: '10px 12px', fontSize: 12.5, marginTop: 10,
 };
 
-function Field({ label, note, type = 'text', value, onChange, placeholder }) {
+function Field({ label, note, type = 'text', value, onChange, placeholder, required = false }) {
+  const id = useId();
   return (
     <div style={{ marginTop: 12 }}>
-      <label style={labelStyle}>{label}</label>
-      <input type={type} value={value} placeholder={placeholder}
+      <label htmlFor={id} style={labelStyle}>{label}</label>
+      <input id={id} required={required} aria-describedby={note ? `${id}-note` : undefined} type={type} value={value} placeholder={placeholder}
         onChange={e => onChange(e.target.value)} style={inputStyle}
         autoComplete={type === 'password' ? 'new-password' : 'off'} />
-      {note && <div style={{ fontSize: 11.5, color: 'var(--txt-3)', marginTop: 3 }}>{note}</div>}
+      {note && <div id={`${id}-note`} style={{ fontSize: 11.5, color: 'var(--txt-3)', marginTop: 3 }}>{note}</div>}
     </div>
   );
 }

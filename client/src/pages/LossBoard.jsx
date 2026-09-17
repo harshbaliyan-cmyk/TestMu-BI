@@ -2,13 +2,10 @@ import {useEffect,useId,useMemo,useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {getLossBoardSnapshot,getOptions,getDashboardState,saveDashboardState} from '../lib/api';
 import {MultiSelect,ChartCard,fmtNumber,fmtPercent,ComparisonProvider} from '../components/charts';
-import ThemeToggle from '../components/ThemeToggle';
-import DashboardSwitcher from '../components/DashboardSwitcher';
 import RefreshDataButton from '../components/RefreshDataButton';
 import { Hideable } from '../components/Hideable';
 import AppLoader from '../components/AppLoader';
-import AdvancedDateRange, {rangeFor,isoDate} from '../components/AdvancedDateRange';
-import {useAuth} from '../hooks/useAuth';
+import AdvancedDateRange,{rangeFor,isoDate,refreshPreset} from '../components/AdvancedDateRange';
 import {
   PERCENTAGE_VIEWS, percentageView, sortMetricRows, KpiDelta, shortDate,
   TrendChart, RankFunnel, PercentChart, OrgTypeFillBars, PodRadialScorecards,
@@ -93,10 +90,9 @@ const savedLossBoardState=()=>{
 
 export default function LossBoard({user}){
   const navigate=useNavigate();
-  const {signOut}=useAuth();
   const [filters,setFilters]=useState(()=>{
     const local=savedLossBoardState().filters;
-    return local?Object.fromEntries(FILTER_KEYS.map(key=>[key,local[key]??EMPTY[key]])):EMPTY;
+    return local?refreshPreset(Object.fromEntries(FILTER_KEYS.map(key=>[key,local[key]??EMPTY[key]])),'createdFrom','createdTo'):EMPTY;
   });
   const [options,setOptions]=useState({region:[],orgType:[],industry:[],type:[]});
   const [optionsReady,setOptionsReady]=useState(false);
@@ -120,11 +116,11 @@ export default function LossBoard({user}){
   });
 
   useEffect(()=>{getDashboardState(TEMPLATE).then(state=>{
-    if(state?.filters)setFilters(Object.fromEntries(FILTER_KEYS.map(key=>[key,state.filters[key]??EMPTY[key]])));
+    if(state?.filters)setFilters(refreshPreset(Object.fromEntries(FILTER_KEYS.map(key=>[key,state.filters[key]??EMPTY[key]])),'createdFrom','createdTo'));
     if(Number.isFinite(Number(state?.tableTops?.lossReason)))setReasonTopN(Number(state.tableTops.lossReason));
     if([0,5,10,20].includes(Number(state?.tableTops?.pod)))setPodTopN(Number(state.tableTops.pod));
     if(LOSS_VIEW_KEYS.includes(state?.tableSorting?.percentageMetric))setPercentageMetric(state.tableSorting.percentageMetric);
-  }).finally(()=>setHydrated(true));},[]);
+  }).catch(()=>{}).finally(()=>setHydrated(true));},[]);
   useEffect(()=>{if(!hydrated)return;const timer=setTimeout(()=>{
     const state={view:'loss-board',filters,tableTops:{lossReason:reasonTopN,pod:podTopN},tableSorting:{percentageMetric}};
     localStorage.setItem(`testmu-dashboard-state-${TEMPLATE}`,JSON.stringify(state));
@@ -153,7 +149,11 @@ export default function LossBoard({user}){
   useEffect(()=>{if(!optionsReady)return;setFilters(current=>{
     let changed=false;const next={...current};
     for(const key of ['region','orgType','industry','type']){
-      const valid=new Set(options[key]||[]);
+      // An empty list is "no options known" (request failed, rows not loaded
+      // yet after a restart), not "nothing is valid": pruning against it
+      // erased the saved selection and the autosave made that permanent.
+      if(!(options[key]||[]).length)continue;
+      const valid=new Set(options[key]);
       const selected=(current[key]||[]).filter(value=>valid.has(value));
       if(selected.length!==(current[key]||[]).length){next[key]=selected;changed=true;}
     }
@@ -194,20 +194,17 @@ export default function LossBoard({user}){
     window.open('/present/loss-board','_blank','noopener');
   };
 
-  return <ComparisonProvider value={comparison}><div className="wrap win-board-wrap"><div className="top-nav" style={{margin:'-18px -18px 18px'}}>
-    <div className="brand" onClick={()=>navigate('/gallery')} style={{cursor:'pointer'}}><img className="brand-logo" src="/testmu-bi-logo-v3.png" alt="TestMu BI"/><span>TestMu BI</span></div>
-    <div className="user-pill"><ThemeToggle/><DashboardSwitcher/><RefreshDataButton templateId={TEMPLATE} onRefreshed={()=>setReloadTick(tick=>tick+1)}/><span>{user?.name||'User'}</span><button className="btn-secondary" onClick={signOut}>Sign out</button></div></div>
-    <header className="top"><div className="top-row"><div><h1>Loss Board</h1><div className="sub">Where business is being lost. Lost ARR is the primary measure; opportunity loss rate is supporting context.</div>
+  return <ComparisonProvider value={comparison}><div className="wrap win-board-wrap db-page db-loss"><header className="top"><div className="top-row"><div><h1>Loss Board</h1><div className="sub">Where business is being lost. Lost ARR is the primary measure; opportunity loss rate is supporting context.</div>
       {/* Mirrors the Win Board note, against Lost ARR — the two boards use the
           same word for the same shape of calculation on opposite outcomes. */}
       {/* Mirrors the Win Board note against Lost ARR, with a loss reason as the
           example since that is the chart people read first on this board. */}
-      <div className="metric-definition">
+      <details className="db-definition"><summary>How these metrics are calculated</summary><div className="metric-definition">
         <b>Loss ARR contribution %</b> — how much of the total Lost ARR each loss reason, POD or org type accounts for.
         <span className="metric-definition-example">Example: a reason showing <b>18%</b> accounts for <b>$18 of every $100</b> of Lost ARR on screen. It does <b>not</b> mean 18% of those deals were lost.</span>
         <span className="metric-definition-note">Every slice on a chart adds up to 100%.</span>
-      </div></div>
-      <button type="button" className="present-button" onClick={startPresentation}>▶ Present</button></div>
+      </div></details></div>
+      <div className="db-header-actions"><RefreshDataButton templateId={TEMPLATE} onRefreshed={()=>setReloadTick(tick=>tick+1)}/><button type="button" className="present-button" onClick={startPresentation}>▶ Present</button></div></div>
       <div className="filters win-board-filter-shelf">{filterDefs.map(([key,label])=><MultiSelect key={key} label={label} options={options[key]||[]} value={filters[key]} onChange={value=>updateFilter(key,value)}/>) }
         <LossPercentageViewSelect value={percentageMetric} onChange={setPercentageMetric}/>
         <AdvancedDateRange filters={filters} setFilters={setFilters}/>
@@ -220,15 +217,15 @@ export default function LossBoard({user}){
     </div> : <>
       <LossRateSummary overall={overall} comparison={comparison}/>
 
-      <div className="g2">
-        <ChartCard showComparison={false} title="Lost after trial" hint="Of the closed opportunities that reached a trial, the share that were lost — the deals a trial didn't save.">
-          <LostAfterTrialCard stat={overall.lostAfterTrial} changePoints={comparison.lostAfterTrialRatePointChange}/>
-        </ChartCard>
-        <ChartCard showComparison={false} title={`${percentageDefinition.label} trend`} hint={`Tracks ${percentageDefinition.plain} across ${metrics.trendYear||'the'} year, month by month or quarter by quarter — compared with ${comparison.previousTrendYear||'the prior year'}.`}>
+      <div className="db-chart-grid db-trend-row">
+<ChartCard showComparison={false} title={`${percentageDefinition.label} trend`} hint={`Tracks ${percentageDefinition.plain} across ${metrics.trendYear||'the'} year, month by month or quarter by quarter — compared with ${comparison.previousTrendYear||'the prior year'}.`}>
           <TrendChart trend={metrics.trend} previousTrend={comparison.previousTrend} metric={percentageMetric} year={metrics.trendYear} previousYear={comparison.previousTrendYear}/>
         </ChartCard>
+<ChartCard showComparison={false} title="Lost after trial" hint="Of the closed opportunities that reached a trial, the share that were lost — the deals a trial didn't save.">
+          <LostAfterTrialCard stat={overall.lostAfterTrial} changePoints={comparison.lostAfterTrialRatePointChange}/>
+        </ChartCard>
       </div>
-      <div className="g2">
+      <div className="db-chart-grid db-breakdown-row">
         <ChartCard showComparison={false} title={`Top loss reasons by ${percentageDefinition.label}`} hint={`The reasons behind the highest ${percentageDefinition.plain}, ranked highest first.`}
           controls={<select className="table-top-select" value={reasonTopN} onChange={event=>setReasonTopN(Number(event.target.value))}><option value="5">Top 5</option><option value="10">Top 10</option><option value="20">Top 20</option><option value="0">All</option></select>}>
           {reasonTopN===5

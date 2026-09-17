@@ -1,13 +1,5 @@
-// Per-column dataset schema, captured at sync/upload time. This is what the
-// chart builder runs on: field suggestion, greying out chart types a dataset
-// cannot satisfy, and pre-filling slots all read these profiles rather than
-// rescanning rows.
-//
-// Inference here answers "what IS this column" (for the builder's catalogue);
-// datasources.js's coercers answer "convert this value" (for the fixed
-// dashboards' mapping pipeline). They are deliberately independent: a column
-// that is 90% numbers with a few blanks should still profile as a number
-// column, which is a judgement call a per-value coercer never makes.
+// Per-column schema for uploaded and synchronized data sources. Profiling
+// tolerates incomplete rows; dashboard field mapping applies its own coercion.
 
 const NUMBER_RE = /^\(?-?[$€£₹]?\s?[\d,]+(\.\d+)?\)?%?$/;
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}([T ]|$)/;

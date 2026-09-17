@@ -25,13 +25,6 @@ const TEMPLATES = [
   { id: 'am-performance', name: 'AM Performance', description: 'AM rep ranking by % of quota achieved, with POD attainment', tags: ['Tableau', 'Quota'] },
   { id: 'ae-performance', name: 'AE Performance', description: 'AE rep ranking by share of closed ARR, with period comparison', tags: ['Tableau', 'ARR Contribution'] },
 ];
-const CUSTOM = [
-  { id: 11, name: 'AMER weekly review', updatedAt: '2026-09-01T10:00:00Z', layout: [
-    { chartId: 'a', x: 0, y: 0, w: 6, h: 6 }, { chartId: 'b', x: 6, y: 0, w: 6, h: 6 },
-    { chartId: 'c', x: 0, y: 6, w: 4, h: 5 }, { chartId: 'd', x: 4, y: 6, w: 8, h: 5 }, { chartId: 'e', x: 0, y: 11, w: 12, h: 4 },
-  ] },
-  { id: 12, name: 'Trials watch', updatedAt: '2026-08-28T10:00:00Z', layout: [] },
-];
 
 async function mockApi(page: Page) {
   await page.route('**/api/**', route => {
@@ -39,7 +32,6 @@ async function mockApi(page: Page) {
     const json = (body: unknown) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     if (url.includes('/api/auth/me')) return json(USER);
     if (url.includes('/api/templates')) return json(TEMPLATES);
-    if (url.includes('/api/custom-dashboards')) return json({ items: CUSTOM });
     if (url.includes('/api/datasources')) return json({ sources: [{ id: 1 }, { id: 2 }, { id: 3 }] });
     if (url.includes('/api/auth/config')) return json({ googleClientId: null, selfSignupEnabled: false });
     return json({ items: [] });
@@ -49,37 +41,24 @@ async function mockApi(page: Page) {
 test.describe('Gallery', () => {
   test.use({ viewport: { width: 1600, height: 1000 } });
 
-  test('greets the person, counts their workspace, and draws every board', async ({ page }) => {
+  test('lists every existing board with native links and dashboard previews', async ({ page }) => {
     const errors: string[] = [];
     page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
     await mockApi(page);
     await page.goto(BASE + '/gallery');
 
-    await expect(page.getByRole('heading', { level: 1 })).toContainText(/Good (morning|afternoon|evening), Synthetic\./);
-    const stats = page.getByRole('group', { name: 'Your workspace' }).or(page.locator('.gl-stats'));
-    await expect(stats.locator('.gl-stat')).toHaveCount(3);
-    await expect(stats).toContainText('Custom dashboards');
-    await expect(stats).toContainText('Sources connected');
-    await expect(stats.locator('dd').nth(0)).toHaveText('2');
-    await expect(stats.locator('dd').nth(1)).toHaveText('9');
-    await expect(stats.locator('dd').nth(2)).toHaveText('3');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Dashboards');
+    await expect(page.getByRole('group', { name: 'Filter dashboards' }).getByRole('button', { name: /All boards/ })).toHaveText('All boards9');
 
     // The headings and buttons the rest of the app links to are unchanged.
-    await expect(page.getByRole('heading', { name: 'My Dashboards' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Dashboard Templates' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Build a chart' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'New dashboard' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Connect data' })).toBeVisible();
-
-    // Custom dashboards draw their saved layout; an empty one shows placeholders.
-    const amer = page.getByRole('link', { name: 'Open AMER weekly review' });
-    await expect(amer.locator('.gl-layout i')).toHaveCount(5);
-    await expect(amer).toContainText('5 charts');
-    await expect(page.getByRole('link', { name: 'Open Trials watch' }).locator('.gl-layout.is-empty')).toBeVisible();
-    await expect(page.getByRole('link', { name: 'New dashboard' })).toContainText('Assemble your own');
+    await expect(page.getByRole('heading', { name: 'My dashboards' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Dashboard templates' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Build a chart', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /New dashboard|Create.*dashboard/i })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Connect data' })).toBeVisible();
 
     // Nine templates, each with its own shape, and the shapes animate in.
-    const templates = page.locator('.gl-grid').nth(1);
+    const templates = page.getByRole('region', { name: 'Dashboard templates' }).locator('.gl-grid');
     await expect(templates.locator('.template-card')).toHaveCount(9);
     await expect(templates.locator('.viz')).toHaveCount(9);
     await expect(templates).toHaveClass(/is-in/);
@@ -104,7 +83,7 @@ test.describe('Gallery', () => {
     await mockApi(page);
     await page.goto(BASE + '/gallery');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-    await expect(page.locator('.gl-grid').nth(1).locator('.template-card')).toHaveCount(9);
+    await expect(page.getByRole('region', { name: 'Dashboard templates' }).locator('.template-card')).toHaveCount(9);
     await expect(page.locator('.viz-funnel i').last()).toHaveCSS('transform', 'none', { timeout: 8000 });
     await page.screenshot({ path: `${SHOTS}/gallery_light.png`, fullPage: true });
   });
@@ -115,13 +94,12 @@ test.describe('Gallery', () => {
       const json = (body: unknown) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
       if (url.includes('/api/auth/me')) return json(USER);
       if (url.includes('/api/templates')) return json([{ id: 'win-board', name: 'Win Board' }, { id: 'mystery', name: 'Mystery Board' }]);
-      if (url.includes('/api/custom-dashboards')) return json({ items: [] });
       return route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"down"}' });
     });
     await page.goto(BASE + '/gallery');
     await expect(page.getByRole('link', { name: 'Open Mystery Board' })).toBeVisible();
-    // Unknown ids fall back to bars; a failed sources request hides that stat rather than showing zero.
+    // Unknown ids retain a useful preview and a direct link.
     await expect(page.getByRole('link', { name: 'Open Mystery Board' }).locator('.viz-bars')).toBeVisible();
-    await expect(page.locator('.gl-stat')).toHaveCount(2);
+    await expect(page.getByRole('link', { name: 'Open Mystery Board' })).toHaveAttribute('href', '/dashboard/mystery');
   });
 });

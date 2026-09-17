@@ -1,10 +1,9 @@
 # TestMu BI
 
-Sales analytics for a small internal team, built on live Tableau data. Five
-hand-built dashboards (Opportunity Analytics, Win Board, Loss Board, AE
-Performance, AM Performance), a chart builder for assembling custom dashboards
-from any connected dataset's raw columns, TV presentation modes with revocable
-no-login share links, and webhook-driven auto-refresh from Tableau Cloud.
+Sales analytics for an internal team, built on live Tableau data. Nine built-in
+dashboards cover opportunities, events, tenant health, wins, losses, AE and AM
+performance, products, and executive metrics. TV presentation modes provide
+revocable no-login share links, with automatic refresh from Tableau Cloud.
 
 React 18 + Vite client (`client/`), Express server (`server/`, plain ESM
 JavaScript, raw `pg`), PostgreSQL on Neon. Deployed as a static client on
@@ -54,3 +53,12 @@ and diff the reports.
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Vercel + Render + Neon runbook |
 | [SECURITY.md](SECURITY.md) | Credential rotation |
 | [CLAUDE.md](CLAUDE.md) | Operating instructions for AI coding sessions |
+
+## Removed features
+
+My dashboards and Chart builder are retired. Their pages, APIs, rendering code
+and layout dependency have been removed. Old page bookmarks return to the
+gallery. Migration `017_remove_dashboard_builder.sql` removes their saved
+charts, custom dashboards and custom TV tokens on the next server startup.
+Built-in dashboards, sources, saved views, filters and template TV tokens remain.
+Historical migrations are retained so existing installations upgrade safely.

@@ -20,7 +20,10 @@ export function previousEqualPeriod(from,to,preset='custom',count=1,unit='quarte
     // calendar quarter. This makes its "previous period" identical to the
     // values shown when the user explicitly selects Previous quarter.
     previousTo=new Date(start.getTime()-DAY);
-  } else if(preset==='previousQuarter'){
+  } else if(preset==='previousQuarter'||preset==='wholeQuarter'){
+    // wholeQuarter runs to the quarter's last day, future included; counting
+    // its days back from the start landed the previous window inside the
+    // quarter before last.
     previousFrom=new Date(Date.UTC(start.getUTCFullYear(),start.getUTCMonth()-3,1));
     previousTo=new Date(start.getTime()-DAY);
   } else if(preset==='currentYear'||preset==='previousYear'){
@@ -127,6 +130,14 @@ export function buildGenericComparison(rows, query = {}) {
     return true;
   });
 
+  // The other date bound still applies. With both ranges set the tiles are
+  // computed over rows inside both; dropping the close range here meant the
+  // comparison's "current" set was not the set on screen, and the pulse
+  // highlight quoted one's rate against the other's count.
+  if (hasCreated && hasClose) {
+    filtered = filtered.filter(row => row.closeDate && row.closeDate >= query.closeFrom && row.closeDate <= query.closeTo);
+  }
+
   const inRange = (row, start, end) => row[dateField] && row[dateField] >= start && row[dateField] <= end;
   const currentRows = filtered.filter(row => inRange(row, period.currentFrom, period.currentTo));
   const previousRows = filtered.filter(row => inRange(row, period.previousFrom, period.previousTo));
@@ -170,16 +181,18 @@ export function compareLossArr(currentRows,previousRows,period){
     arrChangePct:previous.arr ? (current.arr-previous.arr)/previous.arr*100 : null,
     lostArrGrowthPct:previous.lostArr ? (current.lostArr-previous.lostArr)/previous.lostArr*100 : null,
     closedArrGrowthPct:previous.closedArr ? (current.closedArr-previous.closedArr)/previous.closedArr*100 : null,
-    arrLostRatePointChange:previous.closedArr ? current.arrLostRate-previous.arrLostRate : null,
-    lossOppRatePointChange:previous.closedOpportunities
+    // A rate needs its denominator on BOTH sides (see compareArr above); with
+    // nothing closed this period the change read as a 100-point plunge.
+    arrLostRatePointChange:previous.closedArr&&current.closedArr ? current.arrLostRate-previous.arrLostRate : null,
+    lossOppRatePointChange:previous.closedOpportunities&&current.closedOpportunities
       ? current.lossOppRate-previous.lossOppRate
       : null,
-    lossOppRateOfAllPointChange:previous.opportunities
+    lossOppRateOfAllPointChange:previous.opportunities&&current.opportunities
       ? current.lossOppRateOfAll-previous.lossOppRateOfAll
       : null,
-    openArrPctPointChange:previous.arr ? current.openArrPct-previous.openArrPct : null,
-    openOppRatePointChange:previous.opportunities ? current.openOppRate-previous.openOppRate : null,
-    lostAfterTrialRatePointChange:previous.trialClosedOpportunities
+    openArrPctPointChange:previous.arr&&current.arr ? current.openArrPct-previous.openArrPct : null,
+    openOppRatePointChange:previous.opportunities&&current.opportunities ? current.openOppRate-previous.openOppRate : null,
+    lostAfterTrialRatePointChange:previous.trialClosedOpportunities&&current.trialClosedOpportunities
       ? current.lostAfterTrialRate-previous.lostAfterTrialRate
       : null,
   };

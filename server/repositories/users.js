@@ -71,11 +71,23 @@ export async function createInvitedUser({ email, displayName, passwordHash, role
   return rows[0];
 }
 
+// Returns null when the change would leave no active admin. The route checks
+// that too, but read-then-write let two admins demote each other in the same
+// instant: each count saw the other still active and both updates landed.
+// Locking the active admin rows serialises the second behind the first, and
+// the guard is re-evaluated inside the same statement.
 export async function updateUserAccess(userId, { role, status }) {
-  const { rows } = await query(`UPDATE users SET
-    role = COALESCE($2, role), status = COALESCE($3, status), updated_at = now()
-    WHERE id=$1 RETURNING ${USER_COLUMNS}`, [userId, role ?? null, status ?? null]);
-  return rows[0] || null;
+  return transaction(async client => {
+    await client.query(`SELECT id FROM users WHERE role='admin' AND status='active' FOR UPDATE`);
+    const { rows } = await client.query(`UPDATE users SET
+      role = COALESCE($2, role), status = COALESCE($3, status), updated_at = now()
+      WHERE id=$1 AND (
+        NOT (role='admin' AND status='active'
+             AND (COALESCE($2, role) <> 'admin' OR COALESCE($3, status) <> 'active'))
+        OR EXISTS (SELECT 1 FROM users o WHERE o.role='admin' AND o.status='active' AND o.id <> $1)
+      ) RETURNING ${USER_COLUMNS}`, [userId, role ?? null, status ?? null]);
+    return rows[0] || null;
+  });
 }
 
 // Guard against locking everyone out of administration. Counting only ACTIVE

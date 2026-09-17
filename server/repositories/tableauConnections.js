@@ -37,7 +37,10 @@ export async function getRestorableTableauConnection(userId, connectionId = null
   if (connectionId) { params.push(connectionId); condition = 'AND id=$2'; }
   const { rows } = await query(`SELECT ${publicColumns}, encrypted_pat_secret AS "encryptedPatSecret"
     FROM tableau_connections WHERE owner_user_id=$1 ${condition} AND deleted_at IS NULL
+      AND status <> 'disconnected'
     ORDER BY last_connected_at DESC NULLS LAST LIMIT 1`, params);
+  // Disconnect only flips status; without this filter the next page load
+  // restored the very connection the user had just disconnected.
   return rows[0] || null;
 }
 

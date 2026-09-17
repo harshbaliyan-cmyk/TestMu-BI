@@ -7,6 +7,13 @@ const getTheme = () => document.documentElement.dataset.theme ||
 export default function ThemeToggle() {
   const [theme, setTheme] = useState(getTheme);
 
+  // The workspace and existing page controls share one saved preference.
+  useEffect(() => {
+    const sync = () => setTheme(getTheme());
+    window.addEventListener('themechange', sync);
+    return () => window.removeEventListener('themechange', sync);
+  }, []);
+
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem('testmu-theme', theme);

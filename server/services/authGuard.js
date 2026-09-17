@@ -67,7 +67,9 @@ export function recordAuthFailure(ip, email) {
 }
 
 export function clearAuthFailures(ip, email) {
-  buckets.delete(`ip:${ip}`);
+  // Only the account's own counter is forgiven. Wiping the address bucket
+  // too let anyone holding one valid account reset the per-IP spraying limit
+  // every 19 guesses simply by signing in as themselves.
   buckets.delete(`email:${String(email || '').toLowerCase()}`);
 }
 

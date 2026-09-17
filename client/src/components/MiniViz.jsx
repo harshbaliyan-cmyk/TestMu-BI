@@ -20,6 +20,7 @@ export const VIZ_BY_TEMPLATE = {
   'product-view': 'stack',
   'executive-dashboard': 'tiles',
   'am-performance': 'donut',
+  'bdr-funnel': 'rank',
   'ae-performance': 'rank',
 };
 

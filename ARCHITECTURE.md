@@ -22,7 +22,7 @@ Vercel ── static files + /api proxy ──► Render        │   ▼
   webhook dedupe, and the auth rate-limiter all live in process memory.
 - **Neon Postgres** stores everything that must survive a restart: users,
   sessions, connections (encrypted PATs), source metadata + column profiles,
-  field mappings, bindings, saved charts/dashboards, share-token hashes, sync
+  field mappings, bindings, saved dashboard state and views, share-token hashes, sync
   runs, audit/access/error logs. Deliberately NOT the business rows.
 - **Tableau Cloud** is the system of record for business data. The server
   pulls rows (VDS for published data sources, CSV export for views) and
@@ -34,11 +34,10 @@ Vercel ── static files + /api proxy ──► Render        │   ▼
 2. `requireAuth` resolves the session (Postgres-backed); admin routes add a
    role check; TV reads instead accept an `X-Share-Token` header resolved
    against hashed, dashboard-scoped tokens (`req.shareAuth`, never the session).
-3. Dashboard/chart endpoints read rows from the in-memory cache — mapped
-   canonical rows for the fixed boards (`userScope(userId, templateKey)`),
-   raw rows for builder charts (`runtimeSourceRawData`, ownership re-checked) —
-   aggregate in pure functions (`services/*Metrics.js`, `services/chartEngine.js`),
-   and return JSON. No SQL touches business rows; no string-built queries exist.
+3. Dashboard endpoints read mapped canonical rows from the in-memory cache
+   (`userScope(userId, templateKey)`), aggregate in pure metric functions
+   (`services/*Metrics.js`), and return JSON. Raw source rows remain available
+   for data previews and remapping. No SQL touches business rows.
 
 ## Where state lives
 

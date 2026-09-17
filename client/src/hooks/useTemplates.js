@@ -21,8 +21,10 @@ const FALLBACK = [
   { id: 'tenant-health', name: 'Tenant Health' },
   { id: 'win-board', name: 'Win Board' },
   { id: 'loss-board', name: 'Loss Board' },
+  { id: 'product-view', name: 'Product View' },
   { id: 'am-performance', name: 'AM Performance' },
   { id: 'ae-performance', name: 'AE Performance' },
+  { id: 'bdr-funnel', name: 'BDR Funnel' },
   { id: 'executive-dashboard', name: 'Executive Dashboard' },
 ];
 

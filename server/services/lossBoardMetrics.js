@@ -2,7 +2,11 @@ import {previousEqualPeriod,compareLossArr} from './periodComparison.js';
 import {distinctOpportunityRows,resolveTrendYear} from './winBoardMetrics.js';
 
 const sumArr = rows => rows.reduce((total, row) => total + (Number(row.arr) || 0), 0);
-const percent = (numerator, denominator) => denominator ? numerator / denominator * 100 : 0;
+// null, not 0, when nothing closed: the Win Board's percent (see there) makes
+// the same distinction and fmtPercent renders it as a dash. A 0 here drew a
+// real 0% loss rate for a month with no closed deals and a fabricated point
+// change against it.
+const percent = (numerator, denominator) => denominator ? numerator / denominator * 100 : null;
 
 // Loss Board's mirror of winBoardMetrics.js's summarizeWinRows: same shape,
 // three metrics renamed to their loss equivalents (lossOppRate/arrLostRate/
@@ -126,12 +130,13 @@ function compareGroup(currentItems, previousItems, metric) {
   return currentItems.map(item => {
     const previous = previousByLabel.get(item.label);
     const hasPrevious = Boolean(previous);
-    const currentLossOppRate = Number(item.lossOppRate) || 0;
-    const currentArrLostRate = Number(item.arrLostRate) || 0;
-    const currentLossContribution = Number(item.lossContribution) || 0;
-    const previousLossOppRate = hasPrevious ? (Number(previous.lossOppRate) || 0) : null;
-    const previousArrLostRate = hasPrevious ? (Number(previous.arrLostRate) || 0) : null;
-    const previousLossContribution = hasPrevious ? (Number(previous.lossContribution) || 0) : null;
+    const rateOf = value => (value === null || value === undefined || value === '' ? null : (Number(value) || 0));
+    const currentLossOppRate = rateOf(item.lossOppRate);
+    const currentArrLostRate = rateOf(item.arrLostRate);
+    const currentLossContribution = rateOf(item.lossContribution);
+    const previousLossOppRate = hasPrevious ? rateOf(previous.lossOppRate) : null;
+    const previousArrLostRate = hasPrevious ? rateOf(previous.arrLostRate) : null;
+    const previousLossContribution = hasPrevious ? rateOf(previous.lossContribution) : null;
     const currentByMetric = {
       lossOppRate: currentLossOppRate,
       arrLostRate: currentArrLostRate,
@@ -142,7 +147,7 @@ function compareGroup(currentItems, previousItems, metric) {
       arrLostRate: previousArrLostRate,
       lossContribution: previousLossContribution,
     };
-    const pointChange = (currentValue, previousValue) => hasPrevious ? currentValue - previousValue : null;
+    const pointChange = (currentValue, previousValue) => hasPrevious && currentValue !== null && previousValue !== null ? currentValue - previousValue : null;
     const lossOppRatePointChange = pointChange(currentLossOppRate, previousLossOppRate);
     const arrLostRatePointChange = pointChange(currentArrLostRate, previousArrLostRate);
     const lossContributionPointChange = pointChange(currentLossContribution, previousLossContribution);

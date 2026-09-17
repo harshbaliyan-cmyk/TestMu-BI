@@ -5,8 +5,7 @@ August 2026.**
 
 > ⚠️ **This file is no longer the source of truth.** The app has since been
 > deployed (Vercel + Render + Neon), the legacy worksheet sync it describes was
-> removed, and TV share links, webhook failure handling, and the chart builder
-> were added. Current documentation lives in [README.md](README.md),
+> removed, and TV share links and webhook failure handling were added. Current documentation lives in [README.md](README.md),
 > [SPEC.md](SPEC.md), [ARCHITECTURE.md](ARCHITECTURE.md),
 > [DATA_MODEL.md](DATA_MODEL.md), [API.md](API.md) and
 > [DECISIONS.md](DECISIONS.md). Kept for historical context only.

@@ -134,12 +134,16 @@ function compareGroup(currentItems,previousItems,metric){
   return currentItems.map(item=>{
     const previous=previousByLabel.get(item.label);
     const hasPrevious=Boolean(previous);
-    const currentDealWinRate=Number(item.dealWinRate)||0;
-    const currentArrWinRate=Number(item.arrWinRate)||0;
-    const currentContribution=Number(item.contribution)||0;
-    const previousDealWinRate=hasPrevious?(Number(previous.dealWinRate)||0):null;
-    const previousArrWinRate=hasPrevious?(Number(previous.arrWinRate)||0):null;
-    const previousContribution=hasPrevious?(Number(previous.contribution)||0):null;
+    // A null rate (nothing closed on that side) stays null: coercing it to 0
+    // manufactured a 100-point swing for a team whose previous period had
+    // only open deals.
+    const rateOf=value=>(value===null||value===undefined||value===''?null:(Number(value)||0));
+    const currentDealWinRate=rateOf(item.dealWinRate);
+    const currentArrWinRate=rateOf(item.arrWinRate);
+    const currentContribution=rateOf(item.contribution);
+    const previousDealWinRate=hasPrevious?rateOf(previous.dealWinRate):null;
+    const previousArrWinRate=hasPrevious?rateOf(previous.arrWinRate):null;
+    const previousContribution=hasPrevious?rateOf(previous.contribution):null;
     const currentByMetric={
       dealWinRate:currentDealWinRate,
       arrWinRate:currentArrWinRate,
@@ -150,7 +154,7 @@ function compareGroup(currentItems,previousItems,metric){
       arrWinRate:previousArrWinRate,
       contribution:previousContribution,
     };
-    const pointChange=(currentValue,previousValue)=>hasPrevious?currentValue-previousValue:null;
+    const pointChange=(currentValue,previousValue)=>hasPrevious&&currentValue!==null&&previousValue!==null?currentValue-previousValue:null;
     const dealWinRatePointChange=pointChange(currentDealWinRate,previousDealWinRate);
     const arrWinRatePointChange=pointChange(currentArrWinRate,previousArrWinRate);
     const contributionPointChange=pointChange(currentContribution,previousContribution);

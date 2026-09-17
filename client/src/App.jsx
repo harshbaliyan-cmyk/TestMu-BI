@@ -14,19 +14,19 @@ import WinBoard from './pages/WinBoard';
 import LossBoard from './pages/LossBoard';
 import AePerformance from './pages/AePerformance';
 import AmPerformance from './pages/AmPerformance';
+import BdrFunnel from './pages/BdrFunnel';
 import AePerformancePresentation from './pages/AePerformancePresentation';
 import AmPerformancePresentation from './pages/AmPerformancePresentation';
 import AccountSettings from './pages/AccountSettings';
 import TvDisplay from './pages/TvDisplay';
-import ChartBuilder from './pages/ChartBuilder';
 import ProductView from './pages/ProductView';
 import ExecutiveDashboard from './pages/ExecutiveDashboard';
 import ProductPipelinePresentation from './pages/ProductPipelinePresentation';
 import ProductWonPresentation from './pages/ProductWonPresentation';
-import CustomDashboard from './pages/CustomDashboard';
+import WorkspaceFrame from './components/WorkspaceShell';
 
 function App() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, signOut } = useAuth();
   // An admin-issued temporary password gets you to exactly one page. The server
   // enforces this too (requireAuth returns 403 password_change_required); this
   // is the matching client half, so the user lands somewhere useful instead of
@@ -37,14 +37,23 @@ function App() {
     <div className="app-shell">
       {isLoading ? (
         <AppLoader fullscreen label="Initializing TestMu BI…" />
+      ) : mustChangePassword ? (
+        // Its own route tree, not a "*" entry in the main one: react-router 6
+        // ranks routes by specificity, so a catch-all loses to every named
+        // path and the holder landed on a gallery whose every request was
+        // quietly failing with 403 instead of on the page that fixes it.
+        // The TV wall stays reachable because a display cannot change
+        // anyone's password.
+        <Routes>
+          <Route path="/tv/:token" element={<TvDisplay />} />
+          <Route path="*" element={<AccountSettings user={user} />} />
+        </Routes>
       ) : (
+        <WorkspaceFrame user={user} onSignOut={signOut}>
         <Routes>
           {/* The TV wall route authenticates with the share token in the URL,
-              not a session — it must stay reachable with nobody signed in,
-              and it outranks the must-change-password catch-all because a
-              wall display cannot change anyone's password. */}
+              not a session — it must stay reachable with nobody signed in. */}
           <Route path="/tv/:token" element={<TvDisplay />} />
-          {mustChangePassword && <Route path="*" element={<AccountSettings user={user} />} />}
           {/* Signed out, "/" is the landing page with the sign-in card embedded
               in its hero; "/login" keeps the bare form for bookmarks and for
               anyone who wants no scrolling between them and the button. */}
@@ -59,10 +68,8 @@ function App() {
           <Route path="/dashboard/executive-dashboard" element={user ? <ExecutiveDashboard user={user} /> : <Navigate to="/" />} />
           <Route path="/dashboard/ae-performance" element={user ? <AePerformance user={user} /> : <Navigate to="/" />} />
           <Route path="/dashboard/am-performance" element={user ? <AmPerformance user={user} /> : <Navigate to="/" />} />
+          <Route path="/dashboard/bdr-funnel" element={user ? <BdrFunnel user={user} /> : <Navigate to="/" />} />
           <Route path="/dashboard/:templateId" element={user ? <Dashboard user={user} /> : <Navigate to="/" />} />
-          <Route path="/charts/new" element={user ? <ChartBuilder /> : <Navigate to="/" />} />
-          <Route path="/charts/:chartId/edit" element={user ? <ChartBuilder /> : <Navigate to="/" />} />
-          <Route path="/dashboards/custom/:dashboardId" element={user ? <CustomDashboard /> : <Navigate to="/" />} />
           <Route path="/present/win-board" element={user ? <WinBoardPresentation /> : <Navigate to="/" />} />
           <Route path="/present/loss-board" element={user ? <LossBoardPresentation /> : <Navigate to="/" />} />
           <Route path="/present/product-pipeline" element={user ? <ProductPipelinePresentation /> : <Navigate to="/" />} />
@@ -75,6 +82,7 @@ function App() {
           <Route path="/data-sources" element={user ? <DataSources /> : <Navigate to="/" />} />
           <Route path="/admin/logs" element={user?.role === 'admin' ? <AdminLogs /> : <Navigate to="/gallery" />} />
         </Routes>
+        </WorkspaceFrame>
       )}
     </div>
   );

@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   changePassword, listUsers, inviteUser, updateUserAccess, resetUserPassword,
   deleteMyAccount, deleteUser, listTvLinks, revokeTvLink,
 } from '../lib/api';
 import ThemeToggle from '../components/ThemeToggle';
 import { useAuth } from '../hooks/useAuth';
+import Icon from '../components/WorkspaceIcon';
+import { PageHeading, EmptyState, ActionMenu, useConfirmDialog } from '../components/WorkspaceUI';
 
 const shortDate = value => (value ? new Date(value).toLocaleDateString() : '—');
 
@@ -89,8 +91,12 @@ function UsersCard({ me }) {
   const [busyId, setBusyId] = useState('');
   const [secret, setSecret] = useState(null);
   const [invite, setInvite] = useState({ name: '', email: '', role: 'user', open: false });
+  const [query, setQuery] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [inviting, setInviting] = useState(false);
+  const { confirm, dialog } = useConfirmDialog();
 
-  const load = () => listUsers().then(setUsers).catch(e => setError(e.response?.data?.error || 'Could not load users'));
+  const load = () => { setLoading(true); setError(''); return listUsers().then(setUsers).catch(e => setError(e.response?.data?.error || 'Could not load users')).finally(() => setLoading(false)); };
   useEffect(() => { load(); }, []);
 
   const act = async (id, fn) => {
@@ -102,6 +108,8 @@ function UsersCard({ me }) {
 
   const submitInvite = async event => {
     event.preventDefault();
+    if (inviting) return;
+    setInviting(true);
     setError('');
     try {
       const result = await inviteUser({ name: invite.name, email: invite.email, role: invite.role });
@@ -109,6 +117,7 @@ function UsersCard({ me }) {
       setInvite({ name: '', email: '', role: 'user', open: false });
       await load();
     } catch (e) { setError(e.response?.data?.error || 'Could not create the account'); }
+    finally { setInviting(false); }
   };
 
   return <section className="card account-card">
@@ -117,7 +126,7 @@ function UsersCard({ me }) {
         <h3>Team</h3>
         <p className="hint">Everyone who can sign in. Each person sees only the data sources they connect.</p>
       </div>
-      <button type="button" className="btn-primary" onClick={() => setInvite({ ...invite, open: !invite.open })}>
+      <button type="button" className="btn-primary" disabled={inviting} onClick={() => setInvite({ ...invite, open: !invite.open })}>
         {invite.open ? 'Cancel' : 'Add person'}
       </button>
     </div>
@@ -135,11 +144,12 @@ function UsersCard({ me }) {
           <option value="admin">Admin — also manages people and audit logs</option>
         </select>
       </label>
-      <button className="btn-primary" type="submit">Create account</button>
+      <button className="btn-primary" type="submit" disabled={inviting}>{inviting ? 'Creating account…' : 'Create account'}</button>
     </form>}
 
     {secret && <OneTimeSecret {...secret} onDismiss={() => setSecret(null)} />}
     {error && <div className="account-error" role="alert">{error}</div>}
+    <div className="ux-table-toolbar"><label className="ux-search"><Icon name="search" /><input type="search" aria-label="Search team" placeholder="Search by name or email" value={query} onChange={event => setQuery(event.target.value)} /></label><button className="btn-secondary" onClick={load} disabled={loading}>Refresh team</button></div>
 
     <div className="account-table-scroll">
       <table className="account-table">
@@ -147,7 +157,7 @@ function UsersCard({ me }) {
           <th>Person</th><th>Role</th><th>Status</th><th>Last sign-in</th><th aria-label="Actions" />
         </tr></thead>
         <tbody>
-          {users.map(user => {
+          {users.filter(user => `${user.displayName || ''} ${user.email}`.toLowerCase().includes(query.toLowerCase())).map(user => {
             const self = user.id === me?.id;
             const busy = busyId === user.id;
             return <tr key={user.id} className={user.status === 'disabled' ? 'is-disabled' : ''}>
@@ -157,7 +167,7 @@ function UsersCard({ me }) {
                 {user.mustChangePassword && <em className="account-flag">must set a new password</em>}
               </td>
               <td>
-                <select value={user.role} disabled={self || busy}
+                <select aria-label={`Role for ${user.email}`} value={user.role} disabled={self || busy}
                   title={self ? 'You cannot change your own role' : undefined}
                   onChange={e => act(user.id, () => updateUserAccess(user.id, { role: e.target.value }))}>
                   <option value="user">User</option>
@@ -166,7 +176,7 @@ function UsersCard({ me }) {
               </td>
               <td><span className={`account-pill ${user.status}`}>{user.status}</span></td>
               <td>{shortDate(user.lastLoginAt)}</td>
-              <td className="account-row-actions">
+              <td><ActionMenu label={`Actions for ${user.email}`}>
                 <button type="button" className="btn-secondary" disabled={busy}
                   onClick={() => act(user.id, async () => {
                     const result = await resetUserPassword(user.id);
@@ -179,17 +189,20 @@ function UsersCard({ me }) {
                   }))}>{user.status === 'active' ? 'Disable' : 'Enable'}</button>
                 <button type="button" className="btn-danger" disabled={self || busy}
                   title={self ? 'Delete your own account below' : undefined}
-                  onClick={() => {
-                    if (window.confirm(`Delete ${user.email}? Their connected sources transfer to you. This cannot be undone.`)) {
+                  onClick={async () => {
+                    if (await confirm({ title: `Remove ${user.email}?`, description: 'Their connected sources will transfer to you. This account removal cannot be undone.', label: 'Remove person', danger: true })) {
                       act(user.id, () => deleteUser(user.id));
                     }
                   }}>Remove</button>
-              </td>
+              </ActionMenu></td>
             </tr>;
           })}
+          {!loading && !users.filter(user => `${user.displayName || ''} ${user.email}`.toLowerCase().includes(query.toLowerCase())).length && <tr><td colSpan={5}>No people match your search.</td></tr>}
+          {loading && <tr><td colSpan={5} role="status">Loading team…</td></tr>}
         </tbody>
       </table>
     </div>
+    {dialog}
   </section>;
 }
 
@@ -201,8 +214,10 @@ function TvLinksCard() {
   const [links, setLinks] = useState([]);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState('');
+  const [loading, setLoading] = useState(true);
+  const { confirm, dialog } = useConfirmDialog();
 
-  const load = () => listTvLinks().then(setLinks).catch(e => setError(e.response?.data?.error || 'Could not load TV links'));
+  const load = () => { setLoading(true); setError(''); return listTvLinks().then(setLinks).catch(e => setError(e.response?.data?.error || 'Could not load TV links')).finally(() => setLoading(false)); };
   useEffect(() => { load(); }, []);
 
   const revoke = async id => {
@@ -212,7 +227,7 @@ function TvLinksCard() {
     finally { setBusyId(''); }
   };
 
-  if (!links.length && !error) return null;
+  if (!links.length && !error) return loading ? <p className="ux-loading" role="status">Loading TV share links…</p> : <EmptyState icon="screen" title="No TV links yet" action={<Link to="/gallery" className="btn-secondary">Open dashboards</Link>}>Use “Copy TV link” on a dashboard to display it on another screen. You can manage those links here.</EmptyState>;
   return <section className="card account-card">
     <div className="account-card-head"><div>
       <h3>TV share links</h3>
@@ -221,7 +236,7 @@ function TvLinksCard() {
         dashboard it was created for, with your data. Revoking takes effect on the display within a
         minute — at its next auto-refresh.
       </p>
-    </div></div>
+    </div><button className="btn-secondary" onClick={load} disabled={loading}>Refresh links</button></div>
     {error && <div className="account-error" role="alert">{error}</div>}
     <div className="account-table-scroll">
       <table className="account-table">
@@ -231,17 +246,18 @@ function TvLinksCard() {
             <td><b>{link.dashboardName || link.templateKey}</b>{link.label && <span>{link.label}</span>}</td>
             <td>{shortDate(link.createdAt)}</td>
             <td>{shortDate(link.lastUsedAt)}</td>
-            <td><span className={`account-pill ${link.revokedAt ? 'disabled' : 'active'}`}>
+            <td><span className={`account-pill ${link.revokedAt || link.expiresAt && new Date(link.expiresAt) <= new Date() ? 'disabled' : 'active'}`}>
               {link.revokedAt ? 'revoked' : link.expiresAt && new Date(link.expiresAt) <= new Date() ? 'expired' : 'active'}
             </span></td>
             <td className="account-row-actions">
               {!link.revokedAt && <button type="button" className="btn-danger" disabled={busyId === link.id}
-                onClick={() => revoke(link.id)}>Revoke</button>}
+                onClick={async () => { if (await confirm({ title: 'Revoke this TV link?', description: 'The display using this link will stop updating within a minute. The dashboard itself will remain available.', label: 'Revoke link', danger: true })) revoke(link.id); }}>Revoke</button>}
             </td>
           </tr>)}
         </tbody>
       </table>
     </div>
+    {dialog}
   </section>;
 }
 
@@ -297,28 +313,31 @@ export default function AccountSettings({ user }) {
   const navigate = useNavigate();
   const { signOut } = useAuth();
   const forced = Boolean(user?.mustChangePassword);
+  const [params, setParams] = useSearchParams();
+  const sections = [['security', 'Profile & security', 'shield'], ...(user?.role === 'admin' ? [['team', 'Team members', 'account']] : []), ['tv', 'TV share links', 'screen'], ['appearance', 'Appearance', 'grid'], ['danger', 'Account actions', 'alert']];
+  const section = sections.some(([id]) => id === params.get('section')) ? params.get('section') : 'security';
+  const selectSection = id => setParams(current => { const next = new URLSearchParams(current); next.set('section', id); return next; });
 
-  return <div className="wrap account-wrap">
-    <div className="top-nav" style={{ margin: '-18px -18px 18px' }}>
+  return <div className="wrap account-wrap ux-page ux-account">
+    {forced && <div className="top-nav" style={{ margin: '-18px -18px 18px' }}>
       <div className="brand" onClick={() => !forced && navigate('/gallery')} style={{ cursor: forced ? 'default' : 'pointer' }}>
         <img className="brand-logo" src="/testmu-bi-logo-v3.png" alt="TestMu BI" /><span>TestMu BI</span>
       </div>
       <div className="user-pill"><ThemeToggle /><span>{user?.name || 'User'}</span>
         <button className="btn-secondary" onClick={signOut}>Sign out</button></div>
-    </div>
+    </div>}
 
-    <header className="top"><div className="top-row"><div>
-      <h1>Account</h1>
-      <div className="sub">{forced
-        ? 'Choose your own password before continuing — the one you were given is temporary.'
-        : 'Your sign-in details, and who else can reach this workspace.'}</div>
+    <PageHeading title="Account" description={forced ? 'Set a new password to continue to your workspace.' : 'Manage your profile, workspace access and preferences.'} />
+    <div className={`ux-settings-layout${forced ? ' is-forced' : ''}`}>
+      {!forced && <nav className="ux-settings-nav" aria-label="Account sections">{sections.map(([id, title, icon]) => <button key={id} type="button" aria-current={section === id ? 'page' : undefined} onClick={() => selectSection(id)}><Icon name={icon} />{title}</button>)}</nav>}
+      <div className="ux-settings-content">
+        <div hidden={!forced && section !== 'security'}>
+          {!forced && <section className="card ux-profile-card"><span className="ux-profile-avatar">{String(user.name || 'U').split(/\s+/).map(word => word[0]).slice(0,2).join('')}</span><div><h2>{user.name || 'Your account'}</h2><p>{user.email}</p><span className="ux-badge">{user.role === 'admin' ? 'Workspace admin' : 'Workspace member'}</span></div></section>}
+          <ChangePasswordCard user={user} forced={forced} />
+        </div>
+        {user?.role === 'admin' && !forced && <div hidden={section !== 'team'}><UsersCard me={user} /></div>}
+        {!forced && <><div hidden={section !== 'tv'}><TvLinksCard /></div><div hidden={section !== 'appearance'}><section className="card ux-appearance"><h2>Appearance</h2><p className="hint">Choose the look you prefer. Your selection is saved on this device.</p><div className="ux-theme-preview" aria-hidden="true"><i /><div><b /><span /><span /><span /></div></div><ThemeToggle /></section></div><div hidden={section !== 'danger'}><DeleteAccountCard user={user} /></div></>}
+      </div>
     </div>
-      {!forced && <button type="button" className="btn-secondary" onClick={() => navigate('/gallery')}>Back to dashboards</button>}
-    </div></header>
-
-    <ChangePasswordCard user={user} forced={forced} />
-    {user?.role === 'admin' && !forced && <UsersCard me={user} />}
-    {!forced && <TvLinksCard />}
-    {!forced && <DeleteAccountCard user={user} />}
   </div>;
 }

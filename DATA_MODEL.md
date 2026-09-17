@@ -49,19 +49,11 @@ boot, recorded in `schema_migrations`). All ids are `uuid`, all timestamps
   (`manual`|`scheduled`|`startup`|`webhook`), `status`
   (`running`|`succeeded`|`failed`), row counts, error message.
 
-## Chart builder
-
-- **saved_charts** — a chart is a CONFIG, never data: `data_source_id`,
-  `chart_type`, `config` jsonb (`{version, type, slots, filters}`),
-  `config_version`. Rendering = `chartEngine.buildChartData(rows, config)`.
-- **custom_dashboards** — `name` + `layout` jsonb
-  (`[{chartId, x, y, w, h}]` in 12-column grid units).
-
 ## Sharing
 
 - **share_tokens** — TV wall credentials: `token_hash` (SHA-256; raw token
-  shown once), exactly one of `dashboard_id` (template) or
-  `custom_dashboard_id` (CHECK-enforced), `label`, `expires_at`,
+  shown once), required `dashboard_id` referencing one built-in template,
+  `label`, `expires_at`,
   `revoked_at`, `last_used_at`.
 
 ## Observability
@@ -81,7 +73,8 @@ users ─┬─< tableau_connections ─< data_sources ─┬─< field_mappings
        ├─< data_sources                          ├─< sync_runs
        ├─< saved_dashboard_states >─ dashboards  ├─< uploaded_files (file kind)
        ├─< saved_views / saved_reports           └─< dashboard_source_bindings >─ dashboards
-       ├─< saved_charts >─ data_sources
-       ├─< custom_dashboards ─< (layout references saved_charts by id)
-       └─< share_tokens ─── dashboards ⊕ custom_dashboards (exactly one)
+       └─< share_tokens >─ dashboards
 ```
+
+Migration 017 removes the retired builder tables and their custom TV tokens.
+Migrations 013 and 014 remain as upgrade history, not as active features.

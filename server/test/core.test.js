@@ -489,13 +489,13 @@ test('Loss Board lost-after-trial matches COUNTD(trial AND Closed Lost) over COU
   assert.equal(result.overall.lostAfterTrial.rate,50);
 });
 
-test('Loss Board lost-after-trial rate is zero (not NaN) with no trial data at all',()=>{
+test('Loss Board lost-after-trial rate is null (not NaN, not a real 0%) with no trial data at all',()=>{
   const result=buildLossBoardMetrics([
     {id:'1',isClosed:true,isWon:false,arr:100,createdDate:'2026-01-01'},
   ]);
   assert.equal(result.overall.lostAfterTrial.trialClosedCount,0);
   assert.equal(result.overall.lostAfterTrial.count,0);
-  assert.equal(result.overall.lostAfterTrial.rate,0);
+  assert.equal(result.overall.lostAfterTrial.rate,null);
 });
 
 test('Loss Board category comparisons expose all three selectable percentage views',()=>{
@@ -1426,4 +1426,22 @@ test('autoMap tells the Opp + Product look-alike columns apart', () => {
   assert.equal(fieldMapping.type, 'Opportunity Type');
   assert.equal(fieldMapping.orgType, null, 'no Org Type column here — nothing may fuzzy-match one');
   assert.equal(fieldMapping.quotaCurrent, null, 'quota stays manual');
+});
+
+test('whole-quarter comparison uses the preceding calendar quarter, not a day count back from its start',()=>{
+  assert.deepEqual(previousEqualPeriod('2026-07-01','2026-09-30','wholeQuarter'),{
+    currentFrom:'2026-07-01',currentTo:'2026-09-30',
+    previousFrom:'2026-04-01',previousTo:'2026-06-30',days:92,
+  });
+});
+
+test('loss-rate point changes are null when either period has nothing closed',()=>{
+  const period=previousEqualPeriod('2026-04-01','2026-04-01');
+  const loss=compareLossArr([{arr:100,isClosed:false}],[{arr:100,isClosed:true,isWon:false}],period);
+  // Nothing closed this period: there is no rate to compare, not a 100-point plunge.
+  assert.equal(loss.lossOppRatePointChange,null);
+  assert.equal(loss.arrLostRatePointChange,null);
+  // ...whereas the rate over ALL opportunities has its denominator on both sides, so it does move.
+  assert.equal(loss.lossOppRateOfAllPointChange,-100);
+  assert.equal(loss.lostAfterTrialRatePointChange,null);
 });

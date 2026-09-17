@@ -6,9 +6,6 @@ import {
   getOpportunitySnapshot, getOptions, getDashboardState, saveDashboardState,
   listSavedViews, createSavedView, createSavedReport,
 } from '../lib/api';
-import { useAuth } from '../hooks/useAuth';
-import ThemeToggle from '../components/ThemeToggle';
-import DashboardSwitcher from '../components/DashboardSwitcher';
 import RefreshDataButton from '../components/RefreshDataButton';
 import AppLoader from '../components/AppLoader';
 import {
@@ -131,7 +128,6 @@ const EMPTY_SNAPSHOT = { rowCount: 0, metrics: null, comparison: { available: fa
 export default function Dashboard({ user }) {
   const { templateId } = useParams();
   const navigate = useNavigate();
-  const { signOut } = useAuth();
   const [snapshot, setSnapshot] = useState({ loading: true, loaded: false, error: '', ...EMPTY_SNAPSHOT });
   const [tab, setTab] = useState(() => knownTab(savedDashboardState(templateId).view));
   const [filters, setFilters] = useState(() => hydrateFilters(savedDashboardState(templateId).filters));
@@ -423,7 +419,9 @@ export default function Dashboard({ user }) {
   const applySavedView = id => {
     const saved=savedViews.find(view=>view.id===id); if(!saved) return;
     const config=saved.configuration||{};
-    if(config.view)setTab(config.view); if(config.filters)setFilters(hydrateFilters(config.filters));
+    // knownTab, as on hydrate: a view saved before a tab was removed pointed
+    // at nothing and the board rendered only its header.
+    if(config.view)setTab(knownTab(config.view)); if(config.filters)setFilters(hydrateFilters(config.filters));
     Object.entries(config.tableTops||{}).forEach(([key,value])=>tables[key]?.setTop(value));
   };
 
@@ -467,22 +465,7 @@ export default function Dashboard({ user }) {
   const isEmpty = M && M.pulse.total === 0;
 
   return (
-    <div className="wrap">
-      <div className="top-nav" style={{ margin: '-18px -18px 18px' }}>
-        <div className="brand" style={{ cursor: 'pointer' }} onClick={() => navigate('/gallery')}>
-          <img className="brand-logo" src="/testmu-bi-logo-v3.png" alt="TestMu BI" />
-          <span>TestMu BI</span>
-        </div>
-        <div className="user-pill">
-          <ThemeToggle />
-          <DashboardSwitcher />
-          <RefreshDataButton templateId={templateId} onRefreshed={() => setReloadTick(tick => tick + 1)} />
-          <span>{user?.name || 'User'}</span>
-          {user?.picture && <img src={user.picture} alt="" />}
-          <button className="btn-secondary" onClick={signOut}>Sign out</button>
-        </div>
-      </div>
-
+    <div className="wrap db-page db-opportunity">
       <header className="top pv-top">
         <div className="top-row">
           <div className="pv-title-block">
@@ -496,8 +479,8 @@ export default function Dashboard({ user }) {
               {comparison.available && comparison.period && <span>compared with {shortDate(comparison.period.previousFrom)} – {shortDate(comparison.period.previousTo)} by {comparison.dateField === 'closeDate' ? 'close' : 'created'} date</span>}
             </div>
           </div>
-          <div className="dashboard-actions">
-            <select className="table-top-select" defaultValue="" onChange={event=>{applySavedView(event.target.value);event.target.value='';}}>
+          <div className="dashboard-actions"><RefreshDataButton templateId={templateId} onRefreshed={() => setReloadTick(tick => tick + 1)} />
+            <select className="table-top-select" aria-label="Saved views" defaultValue="" onChange={event=>{applySavedView(event.target.value);event.target.value='';}}>
               <option value="">Saved views</option>{savedViews.map(view=><option key={view.id} value={view.id}>{view.name}</option>)}
             </select>
             <button type="button" className="btn-secondary" onClick={saveCustomView}>Save view</button>
@@ -523,10 +506,10 @@ export default function Dashboard({ user }) {
         {loading && <div className="pv-progress" role="progressbar" aria-label="Updating dashboard" />}
       </header>
 
-      <nav className="tabs">
-        {TABS.map((t, i) => (
-          <button key={t.key} className={tab === t.key ? 'on' : ''} onClick={() => setTab(t.key)}>
-            <span className="num">{i + 1}</span>{t.label}
+      <nav className="tabs" aria-label="Dashboard views">
+        {TABS.map(t => (
+          <button key={t.key} className={tab === t.key ? 'on' : ''} aria-current={tab === t.key ? 'page' : undefined} onClick={() => setTab(t.key)}>
+            {t.label}
           </button>
         ))}
       </nav>
@@ -1013,13 +996,15 @@ function DateRangeFilter({ filters, setFilters }) {
     if (!open) return;
     const measure = () => {
       const r = wrapRef.current?.getBoundingClientRect();
-      if (r) setRect({ left: r.left, top: r.bottom + 6 });
+      if (r) setRect({ left: Math.max(12, Math.min(r.left, window.innerWidth - 352)), top: Math.max(12, Math.min(r.bottom + 6, window.innerHeight - 470)) });
     };
     measure();
     const onDown = e => { if (!wrapRef.current?.contains(e.target) && !popRef.current?.contains(e.target)) setOpen(false); };
+    const onKey = e => { if (e.key === 'Escape') { setOpen(false); wrapRef.current?.querySelector('button')?.focus(); } };
     document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
     window.addEventListener('resize', measure);
-    return () => { document.removeEventListener('mousedown', onDown); window.removeEventListener('resize', measure); };
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); window.removeEventListener('resize', measure); };
   }, [open]);
 
   const set = patch => setFilters(s => ({ ...s, ...patch }));
@@ -1052,7 +1037,7 @@ function DateRangeFilter({ filters, setFilters }) {
       </button>
 
       {open && rect && createPortal(
-        <div ref={popRef} role="dialog" aria-label="Date range" style={{ position: 'fixed', left: rect.left, top: rect.top, zIndex: 1000, width: 340, background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,.18)', padding: 14, color: 'var(--txt)' }}>
+        <div ref={popRef} role="dialog" aria-label="Date range" style={{ position: 'fixed', left: rect.left, top: rect.top, zIndex: 1000, width: 340, maxWidth: 'calc(100vw - 24px)', maxHeight: 'calc(100dvh - 100px)', overflowY: 'auto', background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,.18)', padding: 14, color: 'var(--txt)' }}>
           <div style={popLabel}>Apply quick ranges to</div>
           <div style={{ display: 'flex', gap: 4, marginTop: 6, marginBottom: 12 }}>
             {[['created', 'Created date'], ['close', 'Close date']].map(([k, lbl]) => (
@@ -1091,12 +1076,12 @@ function DateRangeFilter({ filters, setFilters }) {
 function RangeInputs({ from, to, onFrom, onTo }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5 }}>
-      <input type="date" value={from} max={to || undefined} onChange={e => onFrom(e.target.value)} style={dateInput} />
+      <input type="date" aria-label="Start date" value={from} max={to || undefined} onChange={e => onFrom(e.target.value)} style={dateInput} />
       <span style={{ color: 'var(--txt-3)', fontSize: 12 }}>→</span>
-      <input type="date" value={to} min={from || undefined} onChange={e => onTo(e.target.value)} style={dateInput} />
+      <input type="date" aria-label="End date" value={to} min={from || undefined} onChange={e => onTo(e.target.value)} style={dateInput} />
     </div>
   );
 }
 
 const popLabel = { fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.5px', color: 'var(--txt-3)', fontWeight: 650 };
-const dateInput = { flex: 1, padding: '7px 9px', border: '1px solid var(--line)', borderRadius: 6, fontSize: 12.5, fontFamily: 'inherit', background: 'var(--card)', color: 'var(--txt)', colorScheme: 'light' };
+const dateInput = { flex: 1, minWidth: 0, padding: '7px 9px', border: '1px solid var(--line)', borderRadius: 6, fontSize: 12.5, fontFamily: 'inherit', background: 'var(--card)', color: 'var(--txt)' };

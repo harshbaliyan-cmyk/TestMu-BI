@@ -3,13 +3,10 @@ import {useNavigate} from 'react-router-dom';
 import Chart from 'chart.js/auto';
 import {getProductPipelineSnapshot,getProductWonSnapshot,getOptions,getDashboardState,saveDashboardState} from '../lib/api';
 import {MultiSelect,ChartCard,fmtNumber,fmtPercent,fmtCurrency,baseOptions,Pill,rateTone,Th} from '../components/charts';
-import ThemeToggle from '../components/ThemeToggle';
-import DashboardSwitcher from '../components/DashboardSwitcher';
 import RefreshDataButton from '../components/RefreshDataButton';
 import AdvancedDateRange,{isoDate,rangeFor} from '../components/AdvancedDateRange';
 import AppLoader from '../components/AppLoader';
 import {Hideable} from '../components/Hideable';
-import {useAuth} from '../hooks/useAuth';
 
 export const TEMPLATE='product-view';
 const [DEFAULT_QUARTER_START,DEFAULT_QUARTER_TODAY]=rangeFor('currentQuarter');
@@ -682,7 +679,6 @@ export function Highlights({view,metrics}){
 
 export default function ProductView({user}){
   const navigate=useNavigate();
-  const {signOut}=useAuth();
   const [tab,setTab]=useState(()=>savedState().view==='product-won'?'won':'pipeline');
   const [pipelineFilters,setPipelineFilters]=useState(()=>hydratePipeline(savedState().filters?.pipeline));
   const [wonFilters,setWonFilters]=useState(()=>hydrateWon(savedState().filters?.won));
@@ -771,13 +767,9 @@ export default function ProductView({user}){
   });
   const hasSource=CATEGORY_KEYS.some(key=>(options[key]||[]).length>0);
   const isEmpty=!active.loading&&!active.error&&!metrics.overall.openOppCount&&!metrics.overall.closedWonCount&&!metrics.overall.closedLostCount;
-  const granularityToggle=<div className="pv-toggle"><button className={granularity==='monthly'?'on':''} onClick={()=>setGranularity('monthly')}>M</button><button className={granularity==='quarterly'?'on':''} onClick={()=>setGranularity('quarterly')}>Q</button></div>;
+  const granularityToggle=<div className="pv-toggle" role="group" aria-label="Trend interval"><button type="button" aria-pressed={granularity==='monthly'} className={granularity==='monthly'?'on':''} onClick={()=>setGranularity('monthly')}>Monthly</button><button type="button" aria-pressed={granularity==='quarterly'} className={granularity==='quarterly'?'on':''} onClick={()=>setGranularity('quarterly')}>Quarterly</button></div>;
 
-  return <div className="wrap win-board-wrap"><div className="top-nav" style={{margin:'-18px -18px 18px'}}>
-    <div className="brand" onClick={()=>navigate('/gallery')} style={{cursor:'pointer'}}><img className="brand-logo" src="/testmu-bi-logo-v3.png" alt="TestMu BI"/><span>TestMu BI</span></div>
-    <div className="user-pill"><ThemeToggle/><DashboardSwitcher/><RefreshDataButton templateId={TEMPLATE} onRefreshed={()=>setReloadTick(tick=>tick+1)}/><span>{user?.name||'User'}</span><button className="btn-secondary" onClick={signOut}>Sign out</button></div></div>
-
-    <header className="top pv-top"><div className="top-row"><div className="pv-title-block"><h1>Product View</h1>
+  return <div className="wrap win-board-wrap db-page db-product"><header className="top pv-top"><div className="top-row"><div className="pv-title-block"><h1>Product View</h1>
       <div className="sub">{tab==='won'
         ?<>Actual Won ARR by product — scoped by <strong>Opp Close Date</strong>. Open pipe, Commit and Best Case are deliberately absent: open deals have tentative close dates.</>
         :<>Pipeline built by product — scoped by <strong>Opp Created Date</strong>.</>}</div>
@@ -786,7 +778,7 @@ export default function ProductView({user}){
         <strong>{scopeRange}</strong>
         {period&&<span>compared with {shortDate(period.previousFrom)} – {shortDate(period.previousTo)}</span>}
       </div></div>
-      <div className="pv-header-actions">
+      <div className="pv-header-actions"><RefreshDataButton templateId={TEMPLATE} onRefreshed={()=>setReloadTick(tick=>tick+1)}/>
         {/* Each tab previews its own view's headline under its own filters,
             so the inactive view is never a mystery box. */}
         <div className="pv-seg" role="tablist" aria-label="Product View views">

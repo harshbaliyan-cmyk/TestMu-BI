@@ -120,14 +120,19 @@ export async function getRefreshableSource(userId, sourceId) {
   const { rows } = await query(`SELECT ds.id,ds.source_type AS "sourceType",ds.external_id AS "externalId",
     ds.source_name AS "sourceName",ds.tableau_connection_id AS "connectionId",
     tc.server_url AS server,tc.site_id AS "siteId",tc.pat_name AS "patName",
-    tc.encrypted_pat_secret AS "encryptedPatSecret",fm.mapping,
-    array_agg(d.template_key) AS dashboards
+    tc.encrypted_pat_secret AS "encryptedPatSecret",
+    (SELECT fm.mapping FROM dashboard_source_bindings b2 JOIN field_mappings fm ON fm.id=b2.field_mapping_id
+       WHERE b2.data_source_id=ds.id AND b2.enabled=true ORDER BY fm.mapping_version DESC LIMIT 1) AS mapping,
+    array_agg(DISTINCT d.template_key) AS dashboards
     FROM data_sources ds JOIN tableau_connections tc ON tc.id=ds.tableau_connection_id
     JOIN dashboard_source_bindings b ON b.data_source_id=ds.id AND b.enabled=true
     JOIN dashboards d ON d.id=b.dashboard_id
-    JOIN field_mappings fm ON fm.id=b.field_mapping_id
     WHERE ds.owner_user_id=$1 AND ds.id=$2 AND ds.deleted_at IS NULL
-    GROUP BY ds.id,tc.id,fm.id`,[userId,sourceId]);
+    GROUP BY ds.id,tc.id`,[userId,sourceId]);
+  // Each bound dashboard has its own field_mappings row, so grouping by
+  // mapping id split a source across N rows and rows[0] refreshed only one
+  // dashboard's cache; the others kept the previous pull until the next
+  // remap. The mapping is taken once, latest version, as getSourceForRemap does.
   return rows[0]||null;
 }
 
@@ -198,19 +203,11 @@ export async function finishSyncRun(runId,sourceId,{status,rowCount=0,error=null
 }
 
 // Column profiles are recomputed on every refresh — the upstream Tableau
-// source can gain, lose, or retype columns between pulls, and the chart
-// builder's suggestions must describe the data that is actually loaded.
+// source can gain, lose, or retype columns between pulls; stored metadata
+// must describe the data that is actually loaded.
 export async function updateSourceSchema(sourceId, columnProfiles) {
   await query(`UPDATE data_sources SET column_metadata=$2::jsonb, updated_at=now() WHERE id=$1`,
     [sourceId, JSON.stringify(columnProfiles || [])]);
-}
-
-export async function getSourceSchema(userId, sourceId) {
-  const { rows } = await query(`SELECT id, source_name AS "name", source_type AS "sourceType", status,
-      column_metadata AS "columns", last_row_count AS "rowCount",
-      last_successful_sync_at AS "lastSync"
-    FROM data_sources WHERE id=$1 AND owner_user_id=$2 AND deleted_at IS NULL`, [sourceId, userId]);
-  return rows[0] || null;
 }
 
 export async function softDeleteSource(userId, sourceId) {
@@ -260,7 +257,7 @@ export async function getSourceForRemap(userId, sourceId) {
 }
 
 // Re-map IN PLACE: the same data_sources row keeps its sync history, its
-// webhook registration and every saved chart that references it. Each
+// webhook registration and dashboard bindings. Each
 // selected dashboard gets a new mapping version; a dashboard left unticked
 // is unbound and reported back so the caller can drop its rows from memory.
 export async function updateSourceMapping({ userId, sourceId, dashboardKeys, mapping, rowCount, columnProfiles = null }) {

@@ -1,171 +1,52 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth';
-import ThemeToggle from '../components/ThemeToggle';
-import DashboardSwitcher, { hueFor } from '../components/DashboardSwitcher';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { hueFor } from '../lib/dashboardColor';
+import Icon from '../components/WorkspaceIcon';
 import MiniViz, { VIZ_BY_TEMPLATE } from '../components/MiniViz';
+import { PageHeading, EmptyState } from '../components/WorkspaceUI';
 import { useTemplates } from '../hooks/useTemplates';
-import { listCustomDashboards, createCustomDashboard, listDataSources } from '../lib/api';
-
-// The gallery renders whatever the server registers. It used to keep its own
-// copy of this list, which meant a new dashboard had to be added in two places
-// and silently went missing from one of them.
-
-const greetingFor = hour => (hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening');
-
-// A custom dashboard's saved layout, drawn as it is: twelve columns, one
-// block per tile at its real x/y/w/h. Nothing to invent, nothing to keep in
-// sync with the grid page.
-function LayoutPreview({ layout }) {
-  const tiles = Array.isArray(layout) ? layout.filter(t => Number.isFinite(+t.w) && Number.isFinite(+t.h)) : [];
-  if (!tiles.length) {
-    return (
-      <div className="gl-layout is-empty" aria-hidden="true">
-        <i style={{ gridColumn: '1 / span 6', gridRow: '1 / span 6' }} />
-        <i style={{ gridColumn: '7 / span 6', gridRow: '1 / span 6' }} />
-        <i style={{ gridColumn: '1 / span 12', gridRow: '7 / span 5' }} />
-      </div>
-    );
-  }
-  return (
-    <div className="gl-layout" aria-hidden="true">
-      {tiles.map((t, i) => (
-        <i key={t.chartId ?? i} style={{ gridColumn: `${+t.x + 1} / span ${+t.w}`, gridRow: `${+t.y + 1} / span ${+t.h}`, '--i': i }} />
-      ))}
-    </div>
-  );
-}
-
-function pressable(go) {
-  return {
-    role: 'link', tabIndex: 0, onClick: go,
-    onKeyDown: event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); go(); } },
-  };
-}
+import { useWorkspaceFavorites } from '../hooks/useWorkspaceFavorites';
 
 export default function Gallery({ user }) {
-  const { templates: TEMPLATES } = useTemplates();
-  const navigate = useNavigate();
-  const { signOut } = useAuth();
-  const [custom, setCustom] = useState([]);
-  // null = not known yet; the stat stays hidden rather than showing a zero
-  // that may be a failed request.
-  const [sourceCount, setSourceCount] = useState(null);
-  // Shape animations run from a mount-time class switch, not from first
-  // paint, so the bars visibly grow rather than appearing already grown.
-  const [live, setLive] = useState(false);
-
-  useEffect(() => { listCustomDashboards().then(setCustom).catch(() => {}); }, []);
-  useEffect(() => { listDataSources().then(list => setSourceCount(Array.isArray(list) ? list.length : null)).catch(() => {}); }, []);
-  useEffect(() => { const id = requestAnimationFrame(() => setLive(true)); return () => cancelAnimationFrame(id); }, []);
-
-  const newDashboard = async () => {
-    const name = window.prompt('Name the new dashboard');
-    if (!name?.trim()) return;
-    try {
-      const created = await createCustomDashboard(name.trim());
-      navigate(`/dashboards/custom/${created.id}`);
-    } catch { /* the gallery stays; nothing was created */ }
-  };
-
-  const firstName = String(user?.name || '').trim().split(/\s+/)[0] || 'there';
-  const today = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
-
-  return (
-    <div className="wrap gallery">
-      <div className="top-nav" style={{ margin: '-18px -18px 18px' }}>
-        <div className="brand">
-          <img className="brand-logo" src="/testmu-bi-logo-v3.png" alt="TestMu BI" />
-          <span>TestMu BI</span>
-        </div>
-        <div className="user-pill">
-          <ThemeToggle />
-          <DashboardSwitcher />
-          {user?.role === 'admin' && <button className="btn-secondary" onClick={() => navigate('/admin/logs')}>Logs</button>}
-          <button className="btn-secondary" onClick={() => navigate('/account')}>Account</button>
-          <span>{user?.name || 'User'}</span>
-          <button className="btn-secondary" onClick={signOut}>Sign out</button>
-        </div>
-      </div>
-
-      <header className="gl-hero">
-        <div>
-          <p className="gl-hero-eyebrow">{today}</p>
-          <h1>{greetingFor(new Date().getHours())}, {firstName}.</h1>
-          <p>Your boards read the sources you connected. Nobody else's.</p>
-        </div>
-        <dl className="gl-stats" aria-label="Your workspace">
-          <div className="gl-stat"><dt>Custom dashboards</dt><dd>{custom.length}</dd></div>
-          <div className="gl-stat"><dt>Templates</dt><dd>{TEMPLATES.length}</dd></div>
-          {sourceCount !== null && <div className="gl-stat"><dt>Sources connected</dt><dd>{sourceCount}</dd></div>}
-        </dl>
-      </header>
-
-      <div className="gallery-header">
-        <h2>My Dashboards</h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button className="btn-secondary" onClick={() => navigate('/charts/new')}>Build a chart</button>
-          <button className="btn-primary" onClick={newDashboard}>New dashboard</button>
-        </div>
-      </div>
-
-      <div className={`template-grid gl-grid${live ? ' is-in' : ''}`}>
-        {custom.map((dashboard, i) => {
-          const hue = hueFor(dashboard.name);
-          const count = (dashboard.layout || []).length;
-          return (
-            <div key={dashboard.id} className="template-card gl-card" style={{ '--accent': `hsl(${hue} 84% 58%)`, '--i': i }}
-              {...pressable(() => navigate(`/dashboards/custom/${dashboard.id}`))} aria-label={`Open ${dashboard.name}`}>
-              <div className="gl-card-viz"><LayoutPreview layout={dashboard.layout} /></div>
-              <div className="template-info">
-                <div className="gl-card-head"><h3>{dashboard.name}</h3><span className="gl-open" aria-hidden="true">Open →</span></div>
-                <p>{count} chart{count === 1 ? '' : 's'}{dashboard.updatedAt ? ` · edited ${new Date(dashboard.updatedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}` : ''}</p>
-                <div className="tags"><span className="tag">Custom</span></div>
-              </div>
-            </div>
-          );
-        })}
-        <div className="template-card gl-card gl-create gallery-empty-card" {...pressable(newDashboard)} aria-label="New dashboard">
-          <span className="gl-create-plus" aria-hidden="true">+</span>
-          <div className="template-info">
-            <h3>Assemble your own</h3>
-            <p>Pick a dataset, build charts, and arrange them on a grid — no blank canvas, the fields suggest themselves.</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="gallery-header">
-        <h2>Dashboard Templates</h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span className="gl-count">{TEMPLATES.length} available</span>
-          <button className="btn-primary" onClick={() => navigate('/data-sources')}>Connect data</button>
-        </div>
-      </div>
-
-      <div className={`template-grid gl-grid${live ? ' is-in' : ''}`}>
-        {TEMPLATES.map((t, i) => {
-          const hue = hueFor(t.name);
-          return (
-            <div key={t.id} className="template-card gl-card" style={{ '--accent': `hsl(${hue} 84% 58%)`, '--i': i }}
-              {...pressable(() => navigate(`/dashboard/${t.id}`))} aria-label={`Open ${t.name}`}>
-              <div className="gl-card-viz"><MiniViz kind={VIZ_BY_TEMPLATE[t.id] || 'bars'} /></div>
-              {/* A registry entry is only guaranteed to carry an id and a name.
-                  useTemplates renders a FALLBACK of exactly that shape until
-                  /api/templates lands - and keeps it if the request fails - so
-                  anything richer has to be optional here. This read `t.tags.map`
-                  bare, which threw on the very first paint, every time, and took
-                  the whole gallery to the error boundary. */}
-              <div className="template-info">
-                <div className="gl-card-head"><h3>{t.name}</h3><span className="gl-open" aria-hidden="true">Open →</span></div>
-                {t.description && <p>{t.description}</p>}
-                <div className="tags">
-                  {(t.tags || []).map(tag => <span key={tag} className="tag">{tag}</span>)}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+  const { templates } = useTemplates();
+  const [query, setQuery] = useState('');
+  const [category, setCategory] = useState('all');
+  const [view, setView] = useState(() => {
+    try { return localStorage.getItem('testmu-gallery-view') === 'list' ? 'list' : 'grid'; } catch { return 'grid'; }
+  });
+  const { favorites, toggleFavorite } = useWorkspaceFavorites(user.id);
+  const changeView = next => { setView(next); try { localStorage.setItem('testmu-gallery-view', next); } catch { /* session preference */ } };
+  const boards = templates.map(item => ({ ...item, to: '/dashboard/' + item.id }));
+  const starredCount = boards.filter(item => favorites.includes(item.to)).length;
+  const visible = boards.filter(item => {
+    const text = [item.name, item.description || '', ...(item.tags || [])].join(' ').toLowerCase();
+    return text.includes(query.trim().toLowerCase()) && (category === 'all' || favorites.includes(item.to));
+  });
+  const reset = () => { setCategory('all'); setQuery(''); };
+  return <div className={'wrap gallery ws-gallery ux-page ux-gallery ux-gallery-' + view}>
+    <PageHeading title="Dashboards" description="Open a board, or star the dashboards you use most."><Link className="btn-primary" to="/data-sources?view=add"><Icon name="source" />Connect data</Link></PageHeading>
+    <div className="ux-gallery-toolbar">
+      <div className="ux-segments" role="group" aria-label="Filter dashboards">{[['all', 'All boards', boards.length], ['starred', 'Starred', starredCount]].map(([id, label, count]) => <button type="button" key={id} aria-pressed={category === id} onClick={() => setCategory(id)}>{label}<span>{count}</span></button>)}</div>
+      <div className="ux-toolbar-end"><label className="ux-search"><Icon name="search" /><input type="search" aria-label="Filter dashboard list" placeholder="Search dashboards" value={query} onChange={event => setQuery(event.target.value)} /></label><div className="ux-view-toggle" role="group" aria-label="Dashboard display"><button aria-label="Grid view" aria-pressed={view === 'grid'} onClick={() => changeView('grid')}><Icon name="grid" /></button><button aria-label="List view" aria-pressed={view === 'list'} onClick={() => changeView('list')}><Icon name="list" /></button></div></div>
     </div>
-  );
+    {visible.length > 0 && <section aria-label="Dashboard templates" className="ux-board-section">
+      <div className="ux-section-heading"><h2>Dashboard templates</h2><span>{visible.length} dashboard{visible.length === 1 ? '' : 's'}</span></div>
+      <div className="template-grid gl-grid is-in">{visible.map(item => {
+        const starred = favorites.includes(item.to);
+        return <article key={item.to} className="ux-board-item">
+          <Link to={item.to} className="template-card gl-card" style={{ '--accent': 'hsl(' + hueFor(item.name) + ' 42% 47%)' }} aria-label={'Open ' + item.name}>
+            <div className="gl-card-viz"><MiniViz kind={VIZ_BY_TEMPLATE[item.id] || 'bars'} /></div>
+            <div className="template-info"><div className="gl-card-head"><h3>{item.name}</h3><span className="gl-open" aria-hidden="true"><Icon name="arrow" /></span></div>
+              <p>{item.description || 'Open this dashboard to explore your connected data.'}</p>
+              <div className="tags">{(item.tags || []).map(tag => <span key={tag} className="tag">{tag}</span>)}</div>
+            </div>
+          </Link>
+          <button type="button" className="ux-favorite" aria-label={(starred ? 'Unstar ' : 'Star ') + item.name} aria-pressed={starred} onClick={() => toggleFavorite(item.to)} title={starred ? 'Remove from starred' : 'Add to starred'}><Icon name="star" /></button>
+        </article>;
+      })}</div>
+    </section>}
+    {!visible.length && <EmptyState icon={category === 'starred' ? 'star' : 'search'} title={category === 'starred' && !query ? 'Keep your go-to dashboards here' : 'No dashboards found'} action={<button className="btn-secondary" onClick={reset}>Show all dashboards</button>}>
+      {category === 'starred' && !query ? 'Select the star on any dashboard to keep it close in your sidebar.' : 'Try a different name or clear your filters.'}
+    </EmptyState>}
+  </div>;
 }

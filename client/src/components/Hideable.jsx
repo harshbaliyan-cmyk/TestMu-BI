@@ -39,18 +39,22 @@ export function useHiddenTiles(templateId, { share = false, refreshTick = 0 } = 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templateId, share ? refreshTick : 0]);
 
+  // The PUT is issued outside the state updater: React may run an updater
+  // twice (StrictMode does, deliberately), which sent two whole-row writes
+  // per click with the second able to overwrite baseRef with a stale reply.
+  const hiddenRef = useRef(hidden);
+  hiddenRef.current = hidden;
   const toggle = useCallback(key => {
     if (share) return;
-    setHidden(current => {
-      const next = new Set(current);
-      if (next.has(key)) next.delete(key); else next.add(key);
-      const base = baseRef.current || {};
-      saveDashboardState(templateId, {
-        ...base,
-        presentationSettings: { ...(base.presentationSettings || {}), hiddenTiles: [...next] },
-      }).then(saved => { baseRef.current = saved; }).catch(() => {});
-      return next;
-    });
+    const next = new Set(hiddenRef.current);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    hiddenRef.current = next;
+    setHidden(next);
+    const base = baseRef.current || {};
+    saveDashboardState(templateId, {
+      ...base,
+      presentationSettings: { ...(base.presentationSettings || {}), hiddenTiles: [...next] },
+    }).then(saved => { baseRef.current = saved; }).catch(() => {});
   }, [templateId, share]);
 
   return { share, hidden, toggle };

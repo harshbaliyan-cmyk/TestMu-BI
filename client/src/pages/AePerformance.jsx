@@ -3,13 +3,10 @@ import {useNavigate} from 'react-router-dom';
 import {getAePerformanceSnapshot,getOptions,getDashboardState,saveDashboardState} from '../lib/api';
 // No fmtCurrency: this board reports shares and counts, never ARR amounts.
 import {MultiSelect,ChartCard,fmtNumber,fmtPercent,ComparisonProvider} from '../components/charts';
-import ThemeToggle from '../components/ThemeToggle';
-import DashboardSwitcher from '../components/DashboardSwitcher';
 import RefreshDataButton from '../components/RefreshDataButton';
 import AppLoader from '../components/AppLoader';
 import RankBadge from '../components/RankBadge';
-import AdvancedDateRange, {rangeFor,isoDate} from '../components/AdvancedDateRange';
-import {useAuth} from '../hooks/useAuth';
+import AdvancedDateRange,{rangeFor,isoDate,refreshPreset} from '../components/AdvancedDateRange';
 import {KpiDelta} from './WinBoard';
 
 const TEMPLATE='ae-performance';
@@ -186,10 +183,9 @@ const savedAePerformanceState=()=>{
 
 export default function AePerformance({user}){
   const navigate=useNavigate();
-  const {signOut}=useAuth();
   const [filters,setFilters]=useState(()=>{
     const local=savedAePerformanceState().filters;
-    return local?Object.fromEntries(FILTER_KEYS.map(key=>[key,local[key]??EMPTY[key]])):EMPTY;
+    return local?refreshPreset(Object.fromEntries(FILTER_KEYS.map(key=>[key,local[key]??EMPTY[key]])),'closeFrom','closeTo'):EMPTY;
   });
   const [options,setOptions]=useState({region:[],orgType:[],type:[]});
   const [optionsReady,setOptionsReady]=useState(false);
@@ -211,10 +207,10 @@ export default function AePerformance({user}){
   const [filterPanelOpen,setFilterPanelOpen]=useState(false);
 
   useEffect(()=>{getDashboardState(TEMPLATE).then(state=>{
-    if(state?.filters)setFilters(Object.fromEntries(FILTER_KEYS.map(key=>[key,state.filters[key]??EMPTY[key]])));
+    if(state?.filters)setFilters(refreshPreset(Object.fromEntries(FILTER_KEYS.map(key=>[key,state.filters[key]??EMPTY[key]])),'closeFrom','closeTo'));
     if([0,5,10,20].includes(Number(state?.tableTops?.rep)))setRepTopN(Number(state.tableTops.rep));
     if([0,5,10,20].includes(Number(state?.tableTops?.pod)))setPodTopN(Number(state.tableTops.pod));
-  }).finally(()=>setHydrated(true));},[]);
+  }).catch(()=>{}).finally(()=>setHydrated(true));},[]);
   useEffect(()=>{if(!hydrated)return;const timer=setTimeout(()=>{
     const state={view:'ae-performance',filters,tableTops:{rep:repTopN,pod:podTopN}};
     localStorage.setItem(`testmu-dashboard-state-${TEMPLATE}`,JSON.stringify(state));
@@ -245,7 +241,11 @@ export default function AePerformance({user}){
   useEffect(()=>{if(!optionsReady)return;setFilters(current=>{
     let changed=false;const next={...current};
     for(const key of ['region','orgType','type']){
-      const valid=new Set(options[key]||[]);
+      // An empty list is "no options known" (request failed, rows not loaded
+      // yet after a restart), not "nothing is valid": pruning against it
+      // erased the saved selection and the autosave made that permanent.
+      if(!(options[key]||[]).length)continue;
+      const valid=new Set(options[key]);
       const selected=(current[key]||[]).filter(value=>valid.has(value));
       if(selected.length!==(current[key]||[]).length){next[key]=selected;changed=true;}
     }
@@ -256,6 +256,10 @@ export default function AePerformance({user}){
   // the POD ranking shipped returns metrics with no `pods` key at all, which
   // replaces EMPTY_METRICS wholesale and would crash on pods.length.
   const {overall}=metrics;
+  // Loaded-ness is whether any option list came back, not whether the
+  // current date slice has wins: a week with no closed deals used to hide
+  // the whole board behind "connect a data source".
+  const hasSource=['region','orgType','type'].some(key=>(options[key]||[]).length>0);
   // The ranking reads from quotaMetrics, which is built from the whole quarter
   // rather than the date-filtered slice. metrics still drives the pipeline
   // counts in the filter panel, which SHOULD follow the picker.
@@ -296,11 +300,8 @@ export default function AePerformance({user}){
     window.open('/present/ae-performance','_blank','noopener');
   };
 
-  return <ComparisonProvider value={comparison}><div className="wrap win-board-wrap"><div className="top-nav" style={{margin:'-18px -18px 18px'}}>
-    <div className="brand" onClick={()=>navigate('/gallery')} style={{cursor:'pointer'}}><img className="brand-logo" src="/testmu-bi-logo-v3.png" alt="TestMu BI"/><span>TestMu BI</span></div>
-    <div className="user-pill"><ThemeToggle/><DashboardSwitcher/><RefreshDataButton templateId={TEMPLATE} onRefreshed={()=>setReloadTick(tick=>tick+1)}/><span>{user?.name||'User'}</span><button className="btn-secondary" onClick={signOut}>Sign out</button></div></div>
-    <header className="top"><div className="top-row"><div><h1>AE Performance</h1><div className="sub">Ranks AE reps by <strong>% of quota achieved</strong> for {quota?.currentQuarter||'the current quarter'}. <strong>Owned by an AE-prefixed role only.</strong></div><div className="board-scope-note">Opp type = New Business, New Business AM, Existing Business - Up-sell</div></div>
-      <button type="button" className="present-button" onClick={startPresentation}>▶ Present</button></div>
+  return <ComparisonProvider value={comparison}><div className="wrap win-board-wrap db-page db-reps"><header className="top"><div className="top-row"><div><h1>AE Performance</h1><div className="sub">Ranks AE reps by <strong>% of quota achieved</strong> for {quota?.currentQuarter||'the current quarter'}. <strong>Owned by an AE-prefixed role only.</strong></div><div className="board-scope-note">Opp type = New Business, New Business AM, Existing Business - Up-sell</div></div>
+      <div className="db-header-actions"><RefreshDataButton templateId={TEMPLATE} onRefreshed={()=>setReloadTick(tick=>tick+1)}/><button type="button" className="present-button" onClick={startPresentation}>▶ Present</button></div></div>
       <div className="filters win-board-filter-shelf">{filterDefs.map(([key,label])=><MultiSelect key={key} label={label} options={options[key]||[]} value={filters[key]} onChange={value=>updateFilter(key,value)}/>) }
         <AdvancedDateRange filters={filters} setFilters={setFilters} fromKey="closeFrom" toKey="closeTo"
           label="Opportunity close date" title="Opp Close Date" emptyLabel="All close dates"/>
@@ -312,7 +313,7 @@ export default function AePerformance({user}){
           </select></label>
         <button className="btn-secondary filter-reset-button" onClick={()=>setFilters(EMPTY)}>Reset</button></div></header>
 
-    {!loading && (loadError || !overall.wins) ? <div className="card win-board-empty">
+    {!loading && (loadError || (!overall.wins && !hasSource)) ? <div className="card win-board-empty">
       <div className="win-board-empty-icon">↻</div><div><h3>{loadError ? 'AE Performance could not load' : 'No AE Performance data is loaded'}</h3>
         <p>{loadError || 'Connect a data source to AE Performance from Data Sources, and make sure its field mapping includes Owner, Owner role (Role Name) and POD.'}</p></div>
       <button type="button" className="btn-primary" onClick={()=>navigate('/data-sources')}>Open data sources</button>
@@ -387,7 +388,7 @@ export default function AePerformance({user}){
         <button type="button" className="btn-secondary" onClick={()=>navigate('/data-sources')}>Open data sources</button>
       </div>}
 
-      <div className="g2">
+      <div className="db-chart-grid db-ranking-row">
         <ChartCard className="ae-performance-card" showComparison={false} title="AE Quota Attainment" hint={`Won ARR closed in ${quota?.currentQuarter||'the quarter'} divided by each rep’s quota. ${measured.length} of ${reps.length} rep${reps.length===1?'':'s'} carry a target.`}
           controls={<select className="table-top-select" aria-label="Number of reps to display" value={repTopN} onChange={event=>setRepTopN(Number(event.target.value))}><option value="5">Top 5</option><option value="10">Top 10</option><option value="20">Top 20</option><option value="0">All</option></select>}>
           <RepLeaderboard reps={reps} comparisons={groupComparisons.reps} topN={repTopN}/>

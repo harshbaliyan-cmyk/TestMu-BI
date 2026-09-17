@@ -35,8 +35,7 @@ deletion and diff `.playwright/baseline/report.json`.
 The earlier draft described a different app (self-hosted Node, DuckDB,
 model-generated SQL, LLM API keys). None of that exists: the app is Vercel +
 Render + Neon, there is no AI layer, and the planned `duckdb-analysis` skill
-is moot. `chart-spec` is also moot — the chart catalogue lives in
-`server/services/chartCatalog.js` as code, which beats a prose skill.
+is moot. The chart builder has also been retired.
 
 ## What to add next
 

@@ -39,22 +39,24 @@ unexpected failures are 500 `{ error: 'Unexpected server error' }`.
 
 | Method & path | Auth | Notes |
 |---|---|---|
-| GET `/templates` | session | the five system boards + field sets |
+| GET `/templates` | session | the nine system boards + field sets |
 | GET `/dashboards/:templateId/state` | session **+token** | token must match the template |
 | PUT `/dashboards/:templateId/state` | session | |
 | GET/POST `/dashboards/:templateId/saved-views` (and `saved-reports`) | session | |
 | DELETE `/saved-views/:id` (and `saved-reports/:id`) | session | |
-| POST `/share-tokens` | session | exactly one of `{templateId}` or `{customDashboardId}`, optional `label`, `expiresDays` → `{token}` shown once |
-| GET `/share-tokens` | session | list mine, both kinds |
+| POST `/share-tokens` | session | required `{templateId}`, optional `label`, `expiresDays` → `{token}` shown once |
+| GET `/share-tokens` | session | list my template TV links |
 | DELETE `/share-tokens/:id` | session | revoke |
-| GET `/share/resolve` | public+token | `{templateKey, customDashboardId}` for a valid token; 401 otherwise |
+| GET `/share/resolve` | public+token | `{templateKey}` for a valid token; 401 otherwise |
 
 ## Board data (all GET, session **+token** scoped to that board)
 
 `/data/:templateId` (filtered canonical rows) · `/options/:templateId`
 (session only; filter menus) · `/win-board/metrics|snapshot` ·
 `/loss-board/metrics|snapshot` · `/ae-performance/metrics|snapshot` ·
-`/am-performance/metrics|snapshot` · `/comparison/:templateId`.
+`/am-performance/metrics|snapshot` · `/comparison/:templateId` ·
+`/bdr-funnel/snapshot?asOf=YYYY-MM-DD` (session only, no wall view; `asOf`
+pins Weeks Measured and Avg Leads per Week, default today).
 POST `/data/:templateId/load` (admin) loads a JSON row array into the caller's
 own scope — dev/testing helper.
 
@@ -68,7 +70,6 @@ own scope — dev/testing helper.
 | GET `staged` / POST `staged/clear` | session | staging survives page reloads, not restarts |
 | GET `/` | session | my sources with bindings, webhook state, last sync |
 | GET `sync-history?sourceId=` | session | last 100 runs |
-| GET `/:sourceId/schema` | session | column profiles + `live` (rows in memory now) |
 | DELETE `/:sourceId` | session | soft delete + unbind |
 | POST `/:sourceId/refresh` | session | re-pull now; 502 with actionable Tableau error |
 | POST `/:sourceId/webhook/enable|disable` | session | registers success+failure webhooks; needs `APP_BASE_URL` |
@@ -77,19 +78,7 @@ own scope — dev/testing helper.
 | GET `tableau/connections|status|views|datasources` | session | 409 when not connected |
 | POST `tableau/preview`, `tableau/datasource-preview` | session | stage a view (CSV) or datasource (VDS) |
 
-## Chart builder (`/charts`)
+## Retired routes
 
-| Method & path | Auth | Notes |
-|---|---|---|
-| GET `options/:sourceId` | session | catalogue + per-type availability/reason + suggested bindings + columns |
-| POST `preview` | session | `{sourceId, config}` → render data; 409 if rows not loaded |
-| POST `inspect` | session | `{chartId | sourceId+config, where}` → raw rows behind an element (≤100) |
-| POST `/` · GET `/` · GET `/:chartId` · PUT `/:chartId` · DELETE `/:chartId` | session | config is validated structurally; version must match |
-| GET `/:chartId/data` | session **+token** | token must be a custom-dashboard token whose layout contains this chart |
-
-## Custom dashboards (`/custom-dashboards`)
-
-| Method & path | Auth | Notes |
-|---|---|---|
-| POST `/` · GET `/` · PUT `/:id` · DELETE `/:id` | session | layout validated (`[{chartId,x,y,w,h}]`, ≤40 tiles) |
-| GET `/:id` | session **+token** | token must target exactly this dashboard; includes resolved charts |
+`/charts/*`, `/custom-dashboards/*` and the builder-only
+`/datasources/:sourceId/schema` endpoint are removed and return 404.

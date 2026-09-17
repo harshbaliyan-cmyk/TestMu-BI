@@ -1,4 +1,5 @@
 import { previousEqualPeriod } from './periodComparison.js';
+import { STAGE_ORDER } from './opportunityMetrics.js';
 
 // Product View works on PRODUCT LINE rows: one opportunity can appear on
 // several rows, one per product it contains. Every ARR figure therefore sums
@@ -42,13 +43,17 @@ const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct',
 // Early → late, per the pipeline stacks. Unknown stage names slot in after
 // the known open stages (alphabetically, for a stable render) but always
 // before the closed pair.
-const STAGE_ORDER = ['Prospecting','Qualification','Discovery','Demo','Evaluation','Trial','Proof of Concept','Proposal','Negotiation','Commit','Closed Won','Closed Lost'];
+// The order is the source's real stage list from opportunityMetrics; a local
+// copy here named stages the data never uses (Discovery, Evaluation) and
+// missed the ones it does (Pre-Trial, Work In Progress, Confirmed), which
+// the heatmap then sorted alphabetically after Negotiation.
+const FIRST_CLOSED = STAGE_ORDER.findIndex(stage => /closed/i.test(stage));
 export function orderStages(stages) {
   const known = new Map(STAGE_ORDER.map((stage, index) => [stage.toLowerCase(), index]));
   const rank = stage => {
     const index = known.get(String(stage).toLowerCase());
     if (index !== undefined) return index;
-    return String(stage).toLowerCase().includes('closed') ? STAGE_ORDER.length + 1 : STAGE_ORDER.length - 3.5;
+    return String(stage).toLowerCase().includes('closed') ? STAGE_ORDER.length + 1 : FIRST_CLOSED - 0.5;
   };
   return [...stages].sort((a, b) => rank(a) - rank(b) || String(a).localeCompare(String(b)));
 }

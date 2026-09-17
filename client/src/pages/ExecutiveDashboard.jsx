@@ -7,12 +7,9 @@ import {
   MultiSelect, ChartCard, Donut, MiniBar, NeonColumns, Th, useTableSort,
   fmtNumber, fmtPercent, fmtCurrency, baseOptions, valueLabels, seriesColor,
 } from '../components/charts';
-import ThemeToggle from '../components/ThemeToggle';
-import DashboardSwitcher from '../components/DashboardSwitcher';
 import RefreshDataButton from '../components/RefreshDataButton';
 import AdvancedDateRange, { isoDate, rangeFor } from '../components/AdvancedDateRange';
 import AppLoader from '../components/AppLoader';
-import { useAuth } from '../hooks/useAuth';
 
 // Chart.js paints on canvas, where CSS custom properties cannot reach, so the
 // palette tokens are read off the root element at build time (theme-aware).
@@ -426,7 +423,6 @@ function useSnapshot(filters, ready, reloadTick) {
 
 function ExecutiveBoard({ user }) {
   const navigate = useNavigate();
-  const { signOut } = useAuth();
   const tips = useContext(TooltipContext);
   const [filters, setFilters] = useState(emptyFilters);
   const [ready, setReady] = useState(false);
@@ -541,11 +537,7 @@ function ExecutiveBoard({ user }) {
   const activeNote = metrics && (!metrics.trialFilters.oppActive || !metrics.trialFilters.ownerActive)
     ? `Source has no ${!metrics.trialFilters.oppActive ? 'opportunity Active' : 'User Active'} flag mapped — that filter is not applied.` : null;
 
-  return <div className="wrap win-board-wrap exec-wrap"><div className="top-nav" style={{ margin: '-18px -18px 18px' }}>
-    <div className="brand" onClick={() => navigate('/gallery')} style={{ cursor: 'pointer' }}><img className="brand-logo" src="/testmu-bi-logo-v3.png" alt="TestMu BI" /><span>TestMu BI</span></div>
-    <div className="user-pill"><ThemeToggle /><DashboardSwitcher /><RefreshDataButton templateId={TEMPLATE} onRefreshed={() => setReloadTick(tick => tick + 1)} /><span>{user?.name || 'User'}</span><button className="btn-secondary" onClick={signOut}>Sign out</button></div></div>
-
-    <header className="top pv-top"><div className="top-row"><div className="pv-title-block"><h1>Executive Dashboard</h1>
+  return <div className="wrap win-board-wrap exec-wrap db-page db-executive"><header className="top pv-top"><div className="top-row"><div className="pv-title-block"><h1>Executive Dashboard</h1>
       <div className="sub">Quota attainment, pipeline coverage, forecast and trials — one row per opportunity × product line, opportunity values read once per deal.</div>
       <div className="exec-note" role="note">Opp Type: {typeLine} · KPI tiles are fixed to {quarter.label || 'the current quarter'}, whatever the close-date range says</div>
       <div className="pv-scope">
@@ -553,7 +545,7 @@ function ExecutiveBoard({ user }) {
         <strong>{filters.closeFrom || filters.closeTo ? `${shortDate(filters.closeFrom) || 'Start'} – ${shortDate(filters.closeTo) || 'Today'}` : 'All dates'}</strong>
         <span>segment by <strong>{SELECTOR_LABEL[filters.segmentBy]}</strong></span>
         {metrics && <span><strong>{fmtNumber(metrics.counts.opportunities)}</strong> opportunities · <strong>{fmtNumber(metrics.counts.users)}</strong> quota holders in scope</span>}
-      </div></div></div>
+      </div></div><div className="db-header-actions"><RefreshDataButton templateId={TEMPLATE} onRefreshed={() => setReloadTick(tick => tick + 1)} /></div></div>
       <div className="filters win-board-filter-shelf">
         {filterControls('shelf')}
         <button className="btn-secondary filter-reset-button" onClick={reset}>Reset</button>
@@ -569,7 +561,7 @@ function ExecutiveBoard({ user }) {
       : metrics && <div className={`pv-board${snapshot.loading ? ' is-updating' : ''}`} aria-busy={snapshot.loading}>
       {isEmpty && <div className="empty">Nothing matches these filters and this close-date range — the source is loaded, the current selection is just empty.</div>}
 
-      <div className="kpis exec-kpis-5">
+      <div className="kpis exec-kpis-5 db-primary-metrics">
         <Tile tone="teal" label="Quota vs Achievement" note={`These values are only for ${quarter.label}`} value={fmtShare(k.quotaAttainment)}
           pair={`${fmtCurrency(k.currentQuarterWonArr)} / ${fmtCurrency(k.targetArr)}`} sub="Current-quarter Won ARR ÷ Target ARR"
           aside={<Ring pct={(k.quotaAttainment || 0) * 100} color={execColor(1)} />} />

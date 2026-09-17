@@ -96,28 +96,13 @@ export function setShareToken(token) {
 
 export const resolveShareToken = () => api.get('/share/resolve').then(r => r.data);
 
-// ===== Chart builder =====
-export const listDataSources = () => api.get('/datasources').then(r => r.data.sources);
+// ===== Data sources and TV links =====
+export const listDataSources = () => api.get('/datasources').then(r => r.data?.sources || []);
 // A full VDS re-pull, so this can run for tens of seconds on a big source.
 export const refreshDataSource = sourceId => api.post(`/datasources/${sourceId}/refresh`).then(r => r.data);
-export const getChartOptions = sourceId => api.get(`/charts/options/${sourceId}`).then(r => r.data);
-export const previewChart = (sourceId, config) => api.post('/charts/preview', { sourceId, config }).then(r => r.data);
-export const createChart = body => api.post('/charts', body).then(r => r.data);
-export const inspectChart = body => api.post('/charts/inspect', body).then(r => r.data);
-export const listCharts = () => api.get('/charts').then(r => r.data.items);
-export const getChart = id => api.get(`/charts/${id}`).then(r => r.data);
-export const getChartData = id => api.get(`/charts/${id}/data`).then(r => r.data);
-export const updateChart = (id, body) => api.put(`/charts/${id}`, body).then(r => r.data);
-export const deleteChart = id => api.delete(`/charts/${id}`).then(r => r.data);
-export const createCustomDashboard = name => api.post('/custom-dashboards', { name }).then(r => r.data);
-export const listCustomDashboards = () => api.get('/custom-dashboards').then(r => r.data.items);
-export const getCustomDashboard = id => api.get(`/custom-dashboards/${id}`).then(r => r.data);
-export const updateCustomDashboard = (id, body) => api.put(`/custom-dashboards/${id}`, body).then(r => r.data);
-export const deleteCustomDashboard = id => api.delete(`/custom-dashboards/${id}`).then(r => r.data);
-// target: a template key string, or { customDashboardId } for a custom board.
-export const createTvLink = (target, options = {}) => api.post('/share-tokens',
-  { ...(typeof target === 'string' ? { templateId: target } : target), ...options }).then(r => r.data);
-export const listTvLinks = () => api.get('/share-tokens').then(r => r.data.items);
+export const createTvLink = (templateId, options = {}) => api.post('/share-tokens',
+  { templateId, ...options }).then(r => r.data);
+export const listTvLinks = () => api.get('/share-tokens').then(r => r.data?.items || []);
 export const revokeTvLink = id => api.delete(`/share-tokens/${id}`).then(r => r.data);
 
 export async function verifyGoogleToken(credential, intent = 'login') {
@@ -164,7 +149,7 @@ export async function saveDashboardState(templateId, state) {
   return data;
 }
 
-export const listSavedViews = templateId => api.get(`/dashboards/${templateId}/saved-views`).then(r=>r.data.items);
+export const listSavedViews = templateId => api.get(`/dashboards/${templateId}/saved-views`).then(r=>r.data?.items || []);
 export const createSavedView = (templateId, body) => api.post(`/dashboards/${templateId}/saved-views`,body).then(r=>r.data);
 export const createSavedReport = (templateId, body) => api.post(`/dashboards/${templateId}/saved-reports`,body).then(r=>r.data);
 export const getWinBoardMetrics = filters => api.get('/win-board/metrics', { params: filters, paramsSerializer: serializer }).then(r=>r.data);
@@ -190,6 +175,7 @@ export const getOpportunitySnapshot = (templateId, filters) => api.get(`/dashboa
 export const getProductPipelineSnapshot = filters => api.get('/product-view/pipeline/snapshot', {params:filters,paramsSerializer:serializer}).then(r=>r.data);
 export const getProductWonSnapshot = filters => api.get('/product-view/won/snapshot', {params:filters,paramsSerializer:serializer}).then(r=>r.data);
 export const getExecutiveSnapshot = filters => api.get('/executive-dashboard/snapshot', {params:filters,paramsSerializer:serializer}).then(r=>r.data);
+export const getBdrFunnelSnapshot = asOf => api.get('/bdr-funnel/snapshot', { params: asOf ? { asOf } : {} }).then(r => r.data);
 export async function getLossBoardSnapshot(filters) {
   const config={params:filters,paramsSerializer:serializer};
   return (await api.get('/loss-board/snapshot',config)).data;

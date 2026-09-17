@@ -4,13 +4,10 @@ import {useNavigate} from 'react-router-dom';
 import Chart from 'chart.js/auto';
 import {getWinBoardSnapshot,getOptions,getDashboardState,saveDashboardState} from '../lib/api';
 import {MultiSelect,ChartCard,ChartScroll,fmtNumber,fmtPercent,valueLabels,baseOptions,ComparisonProvider} from '../components/charts';
-import ThemeToggle from '../components/ThemeToggle';
-import DashboardSwitcher from '../components/DashboardSwitcher';
 import RefreshDataButton from '../components/RefreshDataButton';
 import { Hideable } from '../components/Hideable';
 import AppLoader from '../components/AppLoader';
-import AdvancedDateRange, {rangeFor,isoDate} from '../components/AdvancedDateRange';
-import {useAuth} from '../hooks/useAuth';
+import AdvancedDateRange,{rangeFor,isoDate,refreshPreset} from '../components/AdvancedDateRange';
 
 const TEMPLATE='win-board';
 // Win Board defaults to Current quarter (rather than All dates) so previous-period
@@ -1202,10 +1199,9 @@ const savedWinBoardState = () => {
 
 export default function WinBoard({user}){
   const navigate=useNavigate();
-  const {signOut}=useAuth();
   const [filters,setFilters]=useState(()=>{
     const local=savedWinBoardState().filters;
-    return local?Object.fromEntries(FILTER_KEYS.map(key=>[key,local[key]??EMPTY[key]])):EMPTY;
+    return local?refreshPreset(Object.fromEntries(FILTER_KEYS.map(key=>[key,local[key]??EMPTY[key]])),'createdFrom','createdTo'):EMPTY;
   });
   const [options,setOptions]=useState({region:[],orgType:[],industry:[],type:[]});
   const [optionsReady,setOptionsReady]=useState(false);
@@ -1229,11 +1225,11 @@ export default function WinBoard({user}){
   });
 
   useEffect(()=>{getDashboardState(TEMPLATE).then(state=>{
-    if(state?.filters)setFilters(Object.fromEntries(FILTER_KEYS.map(key=>[key,state.filters[key]??EMPTY[key]])));
+    if(state?.filters)setFilters(refreshPreset(Object.fromEntries(FILTER_KEYS.map(key=>[key,state.filters[key]??EMPTY[key]])),'createdFrom','createdTo'));
     if(Number.isFinite(Number(state?.tableTops?.industry)))setTopN(Number(state.tableTops.industry));
     if([0,5,10,20].includes(Number(state?.tableTops?.pod)))setPodTopN(Number(state.tableTops.pod));
     if(PERCENTAGE_VIEWS[state?.tableSorting?.percentageMetric])setPercentageMetric(state.tableSorting.percentageMetric);
-  }).finally(()=>setHydrated(true));},[]);
+  }).catch(()=>{}).catch(()=>{}).finally(()=>setHydrated(true));},[]);
   useEffect(()=>{if(!hydrated)return;const timer=setTimeout(()=>{
     const state={view:'win-board',filters,tableTops:{industry:topN,pod:podTopN},tableSorting:{percentageMetric}};
     localStorage.setItem(`testmu-dashboard-state-${TEMPLATE}`,JSON.stringify(state));
@@ -1262,7 +1258,11 @@ export default function WinBoard({user}){
   useEffect(()=>{if(!optionsReady)return;setFilters(current=>{
     let changed=false;const next={...current};
     for(const key of ['region','orgType','industry','type']){
-      const valid=new Set(options[key]||[]);
+      // An empty list is "no options known" (request failed, rows not loaded
+      // yet after a restart), not "nothing is valid": pruning against it
+      // erased the saved selection and the autosave made that permanent.
+      if(!(options[key]||[]).length)continue;
+      const valid=new Set(options[key]);
       const selected=(current[key]||[]).filter(value=>valid.has(value));
       if(selected.length!==(current[key]||[]).length){next[key]=selected;changed=true;}
     }
@@ -1303,22 +1303,19 @@ export default function WinBoard({user}){
     window.open('/present/win-board','_blank','noopener');
   };
 
-  return <ComparisonProvider value={comparison}><div className="wrap win-board-wrap"><div className="top-nav" style={{margin:'-18px -18px 18px'}}>
-    <div className="brand" onClick={()=>navigate('/gallery')} style={{cursor:'pointer'}}><img className="brand-logo" src="/testmu-bi-logo-v3.png" alt="TestMu BI"/><span>TestMu BI</span></div>
-    <div className="user-pill"><ThemeToggle/><DashboardSwitcher/><RefreshDataButton templateId={TEMPLATE} onRefreshed={()=>setReloadTick(tick=>tick+1)}/><span>{user?.name||'User'}</span><button className="btn-secondary" onClick={signOut}>Sign out</button></div></div>
-    <header className="top"><div className="top-row"><div><h1>Win Board</h1><div className="sub">Won ARR is the primary measure; deal win rate is supporting context. <strong>Opportunity type = New Business, New Business AM and Existing Business Up-Sell.</strong></div>
+  return <ComparisonProvider value={comparison}><div className="wrap win-board-wrap db-page db-win"><header className="top"><div className="top-row"><div><h1>Win Board</h1><div className="sub">Won ARR is the primary measure; deal win rate is supporting context. <strong>Opportunity type = New Business, New Business AM and Existing Business Up-Sell.</strong></div>
       {/* Spelled out on the board itself: "contribution" reads like a rate to
           anyone who has not been told otherwise, and the share-of-total
           reading is the one that makes the charts add up. */}
       {/* Named categories and a worked example rather than a formula: the
           confusion this clears up is "share of the total" vs "win rate", and
           a concrete number settles that faster than ÷ and × ever will. */}
-      <div className="metric-definition">
+      <details className="db-definition"><summary>How these metrics are calculated</summary><div className="metric-definition">
         <b>Won ARR contribution %</b> — how much of the total Won ARR each team, industry, org type or POD brought in.
         <span className="metric-definition-example">Example: a POD showing <b>40%</b> won <b>$40 of every $100</b> of Won ARR on screen. It does <b>not</b> mean it won 40% of its deals.</span>
         <span className="metric-definition-note">Every slice on a chart adds up to 100%.</span>
-      </div></div>
-      <button type="button" className="present-button" onClick={startPresentation}>▶ Present</button></div>
+      </div></details></div>
+      <div className="db-header-actions"><RefreshDataButton templateId={TEMPLATE} onRefreshed={()=>setReloadTick(tick=>tick+1)}/><button type="button" className="present-button" onClick={startPresentation}>▶ Present</button></div></div>
       <div className="filters win-board-filter-shelf">{filterDefs.map(([key,label])=><MultiSelect key={key} label={label} options={options[key]||[]} value={filters[key]} onChange={value=>updateFilter(key,value)}/>) }
         <PercentageViewSelect value={percentageMetric} onChange={setPercentageMetric}/>
         <AdvancedDateRange filters={filters} setFilters={setFilters}/>
@@ -1331,10 +1328,10 @@ export default function WinBoard({user}){
     </div> : <>
       <WinRateSummary overall={overall} comparison={comparison}/>
 
-      <div className="g2"><ChartCard showComparison={false} title={`${percentageDefinition.label} trend`} hint={`Tracks ${percentageDefinition.plain} across ${metrics.trendYear||'the'} year, month by month or quarter by quarter — compared with ${comparison.previousTrendYear||'the prior year'}.`}>
+      <div className="db-chart-grid db-trend-row"><ChartCard showComparison={false} title={`${percentageDefinition.label} trend`} hint={`Tracks ${percentageDefinition.plain} across ${metrics.trendYear||'the'} year, month by month or quarter by quarter — compared with ${comparison.previousTrendYear||'the prior year'}.`}>
         <TrendChart trend={metrics.trend} previousTrend={comparison.previousTrend} metric={percentageMetric} year={metrics.trendYear} previousYear={comparison.previousTrendYear}/></ChartCard>
         <ChartCard showComparison={false} title={`${percentageDefinition.label} by team`} hint={`Shows ${percentageDefinition.plain}, broken down by team. ${percentageMetric==='contribution'?'Segments add up to the whole.':'Each team has its own independent 0-100% gauge.'}`}><TeamContributionDonut items={teams} comparisons={groupComparisons.teams} metric={percentageMetric}/></ChartCard></div>
-      <div className="g2"><ChartCard showComparison={false} title={`Top industries by ${percentageDefinition.label}`} hint={`The industries with the highest ${percentageDefinition.plain}, ranked highest first.`}
+      <div className="db-chart-grid db-breakdown-row"><ChartCard showComparison={false} title={`Top industries by ${percentageDefinition.label}`} hint={`The industries with the highest ${percentageDefinition.plain}, ranked highest first.`}
         controls={<select className="table-top-select" value={topN} onChange={event=>setTopN(Number(event.target.value))}><option value="5">Top 5</option><option value="10">Top 10</option><option value="20">Top 20</option><option value="0">All</option></select>}>
         {topN===5?<RankFunnel items={industries} comparisons={groupComparisons.industries} metric={percentageMetric}/>:<PercentChart items={industries} comparisons={groupComparisons.industries} metric={percentageMetric} label={percentageDefinition.shortLabel} heading="Industry performance"/>}</ChartCard>
         <ChartCard showComparison={false} title={`${percentageDefinition.label} by org type`} hint={`Shows ${percentageDefinition.plain}, broken down by org type. The small circle marks where it stood last period.`}><OrgTypeFillBars items={orgTypes} comparisons={groupComparisons.orgTypes} metric={percentageMetric}/></ChartCard></div>

@@ -26,10 +26,14 @@ export async function saveDashboardState(userId, templateKey, state) {
     ON CONFLICT (user_id,dashboard_id) DO UPDATE SET
       selected_view=EXCLUDED.selected_view, filters=EXCLUDED.filters,
       table_top_n=EXCLUDED.table_top_n, table_sorting=EXCLUDED.table_sorting,
-      presentation_settings=EXCLUDED.presentation_settings,
+      presentation_settings=saved_dashboard_states.presentation_settings || EXCLUDED.presentation_settings,
       version=saved_dashboard_states.version+1, updated_at=now()
     RETURNING selected_view AS "view", filters, table_top_n AS "tableTops",
       table_sorting AS "tableSorting", presentation_settings AS "presentationSettings", version`,
     [userId,dashboardId,state.view||'pulse',state.filters||{},state.tableTops||{},state.tableSorting||{},state.presentationSettings||{}]);
   return { ...rows[0], persisted: true };
 }
+// presentation_settings is merged key by key (jsonb ||) rather than replaced:
+// the desk boards autosave filters without it, and the Present button writes
+// only {view}, so a replace wiped hiddenTiles every time the owner merely
+// opened the desk board and the wall's hidden KPIs came back on the next tick.

@@ -3,7 +3,6 @@ import { useParams } from 'react-router-dom';
 import { setShareToken, resolveShareToken, getDashboardState } from '../lib/api';
 import AppLoader from '../components/AppLoader';
 import Presentation from './Presentation';
-import TvCustomDashboard from './TvCustomDashboard';
 import WinBoardPresentation from './WinBoardPresentation';
 import LossBoardPresentation from './LossBoardPresentation';
 import AePerformancePresentation from './AePerformancePresentation';
@@ -44,13 +43,34 @@ export default function TvDisplay() {
   useEffect(() => {
     setShareToken(token);
     resolveShareToken()
-      .then(({ templateKey, customDashboardId }) => setResolved({ status: 'ok', templateKey, customDashboardId }))
+      .then(({ templateKey }) => {
+        if (!templateKey) throw new Error('This display link is not active.');
+        setResolved({ status: 'ok', templateKey });
+      })
       .catch(error => setResolved({
         status: 'error',
         message: error.response?.data?.error || 'Could not open this share link.',
       }));
     return () => setShareToken(null);
   }, [token]);
+
+  // Re-checked once a minute. The Account page promises a revoked link
+  // "takes effect on the display within a minute", but every board keeps its
+  // last good snapshot when a refresh fails (a wall must not blank on a
+  // blip), so without this a revoked or expired link kept showing owner
+  // names and pipeline numbers until somebody reloaded the screen.
+  useEffect(() => {
+    if (resolved.status !== 'ok') return undefined;
+    const timer = setInterval(() => {
+      resolveShareToken().catch(error => {
+        const status = error.response?.status;
+        if (status === 401 || status === 403 || status === 404) {
+          setResolved({ status: 'error', message: error.response?.data?.error || 'Could not open this share link.' });
+        }
+      });
+    }, 60 * 1000);
+    return () => clearInterval(timer);
+  }, [resolved.status]);
 
   if (resolved.status === 'checking') return <AppLoader fullscreen label="Opening display…" />;
   if (resolved.status === 'error') {
@@ -63,7 +83,6 @@ export default function TvDisplay() {
       <p>Ask whoever set up this screen to create a fresh link from the dashboard&rsquo;s Present view.</p>
     </main>;
   }
-  if (resolved.customDashboardId) return <TvCustomDashboard dashboardId={resolved.customDashboardId} />;
   const Board = BOARDS[resolved.templateKey];
   return Board ? <Board share /> : <Presentation share templateId={resolved.templateKey} />;
 }

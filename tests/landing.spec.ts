@@ -1,164 +1,312 @@
-/**
- * Landing page (signed out "/").
- *
- * No login needed: everything here is reachable with no session. Screenshots
- * land in .playwright/baseline/ next to the route walkthrough's.
- *
- *   npx playwright test tests/landing.spec.ts --reporter=list
- */
 import { test, expect, Page } from '@playwright/test';
 
-const BASE = process.env.BASE_URL || 'http://localhost:5174';
-const SHOTS = '.playwright/baseline';
-const SETTLED = 'matrix(1, 0, 0, 1, 0, 0)'; // fill-mode: both leaves the identity matrix, not "none"
+const BASE = process.env.BASE_URL || 'http://127.0.0.1:5173';
+const SHOTS = '.playwright/landing-redesign';
 
-// The Google Identity script in index.html is loaded from accounts.google.com
-// and logs on its own when the network is sandboxed; that is not the page.
-function collectConsoleErrors(page: Page) {
-  const errors: string[] = [];
-  page.on('console', m => {
-    if (m.type() !== 'error') return;
-    const text = m.text();
-    if (/accounts\.google|gsi|ERR_(NAME_NOT_RESOLVED|INTERNET_DISCONNECTED)/i.test(text)) return;
-    errors.push(text);
+// Test the real client against deterministic auth responses. No accounts are
+// created, and no credentials or mutations reach a live database.
+async function signedOut(page: Page, signup = false) {
+  await page.route('**/api/auth/me', route => route.fulfill({ status: 401, json: { error: 'Not signed in' } }));
+  await page.route('**/api/auth/config', route => route.fulfill({ json: { googleClientId: null, selfSignupEnabled: signup } }));
+}
+async function expectNoOverflow(page: Page) {
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+}
+async function settleBoard(page: Page) {
+  await expect(page.locator('.rv-screen-shell .rv-board')).not.toHaveClass(/is-assembling/);
+  await page.locator('.rv-screen-shell').evaluate(async el => {
+    await Promise.all(el.getAnimations({ subtree: true }).map(animation => animation.finished.catch(() => {})));
   });
-  return errors;
 }
 
-test.describe('Landing', () => {
-  test.use({ viewport: { width: 1920, height: 1080 } });
+test.describe('Revenue landing', () => {
+  test.beforeEach(async ({ page }) => { await signedOut(page); });
 
-  test('hero renders with the real sign-in form and no console errors', async ({ page }) => {
-    const errors = collectConsoleErrors(page);
-    await page.goto(BASE + '/');
+  for (const [name, width, height] of [['desktop', 1440, 1000], ['tablet', 820, 1180], ['mobile', 390, 844], ['small-mobile', 320, 740]] as const) {
+    test(`${name}: entry, story, sign-in and presentation fit`, async ({ page }) => {
+      const errors: string[] = [];
+      page.on('pageerror', error => errors.push(error.message));
+      await page.setViewportSize({ width, height });
+      await page.goto(BASE);
+      await expect(page.getByRole('heading', { level: 1 })).toContainText('Your revenue.');
+      await expect(page.locator('.rv-hero').getByRole('button', { name: 'Get started' })).toBeInViewport();
+      await expect(page.locator('.ld-tile, .ld-grid')).toHaveCount(0);
+      await expectNoOverflow(page);
+      await page.evaluate(() => document.fonts.ready);
+      const boardInView = await page.locator('.rv-screen-shell').evaluate(el => {
+        const rect = el.getBoundingClientRect();
+        return Math.min(innerHeight, rect.bottom) - Math.max(0, rect.top) > rect.height * .22;
+      });
+      if (boardInView) await settleBoard(page);
+      await page.screenshot({ path: `${SHOTS}/${name}-hero.png` });
+      await page.getByRole('button', { name: 'See it live' }).click();
+      await expect(page.locator('.rv-sticky')).toHaveClass(/rv-step-0/);
+      await expect(page.locator('.rv-stage-control')).toBeInViewport();
+      await expect.poll(() => page.locator('#experience').evaluate(el => Math.abs(el.getBoundingClientRect().top))).toBeLessThan(2);
+      await settleBoard(page);
+      await page.screenshot({ path: `${SHOTS}/${name}-board.png` });
+      await page.getByRole('button', { name: /Ask your data/ }).click();
+      await expect(page.getByRole('textbox', { name: 'Ask your data' })).toBeVisible();
+      await page.getByRole('button', { name: 'Top reps', exact: true }).click();
+      await expect(page.locator('#rv-query-status')).toContainText('Showing top reps');
+      await expect(page.locator('.rv-bar')).toHaveCount(5);
+      await settleBoard(page);
+      await page.screenshot({ path: `${SHOTS}/${name}-ask.png` });
+      await page.getByRole('button', { name: /On every screen/ }).click();
+      await expect(page.locator('.rv-screen-shell .rv-board')).toHaveClass(/is-wall/);
+      await page.getByRole('button', { name: 'Try fullscreen' }).click();
+      const wall = page.getByRole('dialog', { name: 'Presentation preview' });
+      await expect(wall).toBeVisible();
+      await wall.evaluate(async el => { await Promise.all(el.getAnimations({ subtree: true }).map(a => a.finished.catch(() => {}))); });
+      await expectNoOverflow(page);
+      await page.screenshot({ path: `${SHOTS}/${name}-wall.png` });
+      await page.keyboard.press('Escape');
+      await expect(wall).not.toBeVisible();
+      await page.locator('.rv-final').getByRole('button', { name: 'Get started' }).click();
+      const auth = page.getByRole('dialog', { name: 'Access your workspace' });
+      await expect(auth.getByLabel('Work email')).toBeFocused();
+      await expect(auth.getByRole('button', { name: 'Create account', exact: true })).toHaveCount(0);
+      await page.screenshot({ path: `${SHOTS}/${name}-auth.png` });
+      await page.keyboard.press('Escape');
+      await expect(auth).not.toBeVisible();
+      await expect(page.locator('.rv-final').getByRole('button', { name: 'Get started' })).toBeFocused();
+      await expectNoOverflow(page);
+      expect(errors).toEqual([]);
+    });
+  }
 
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('Every deal. Every rep.');
-    await expect(page.getByText('Synced from Tableau Cloud', { exact: false })).toBeVisible();
-
-    // The embedded card is the same <Login /> the suites type into.
-    const card = page.locator('#signin');
-    await expect(card.getByRole('heading', { name: 'Sign in' })).toBeVisible();
-    await expect(page.getByPlaceholder('Work email')).toBeVisible();
-    await expect(page.getByPlaceholder(/Password/)).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
-
-    // Product mock and its companions are decorative and say so.
-    await expect(page.getByRole('img', { name: /Illustrative preview of the Executive Dashboard/ })).toBeVisible();
-    await expect(page.locator('.ld-hero [data-depth]')).toHaveCount(6);
-    await expect(page.locator('.ld-hero [aria-hidden="true"][data-depth]')).toHaveCount(4);
-    await expect(page.locator('.ld-float')).toHaveCount(4);
-
-    // Nothing scrolls sideways.
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-    expect(overflow).toBeLessThanOrEqual(0);
-
-    // The last bar of the mock finishes its entrance last; once it is at rest the hero is settled.
-    await expect(page.locator('.ld-bars i').last()).toHaveCSS('transform', SETTLED, { timeout: 8000 });
-    await expect(page.locator('.ld-float').last()).toHaveCSS('opacity', '1', { timeout: 8000 });
-    await page.screenshot({ path: `${SHOTS}/landing_hero.png` });
-    expect(errors).toEqual([]);
+  test('filters, keyboard tooltips, example prompts and unsupported questions', async ({ page }) => {
+    await page.goto(BASE);
+    await page.getByRole('button', { name: 'See it live' }).click();
+    await page.getByLabel('Filter by region').selectOption('AMER');
+    await expect(page.locator('.rv-big-number')).toHaveAttribute('aria-label', /\$2\.1M/);
+    await page.locator('.rv-bar').first().focus();
+    await expect(page.locator('.rv-tooltip').first()).toHaveCSS('opacity', '1');
+    await page.getByRole('button', { name: /Ask your data/ }).click();
+    for (const question of ['ARR by region', 'Pipeline this quarter', 'Top reps', 'Win rate', 'Forecast']) {
+      await page.locator('.rv-prompts').getByRole('button', { name: question, exact: true }).click();
+      await expect(page.locator('#rv-query-status')).toContainText(`Showing ${question.toLowerCase()}`);
+      await expect(page.locator('.rv-chart-heading')).toContainText(question);
+    }
+    await page.getByRole('textbox', { name: 'Ask your data' }).fill('An unsupported question');
+    await page.getByRole('button', { name: 'Run example question' }).click();
+    await expect(page.locator('#rv-query-status')).toHaveText('Try one of the example questions below.');
+    await page.getByRole('textbox', { name: 'Ask your data' }).fill('arr by region');
+    await page.getByRole('textbox', { name: 'Ask your data' }).press('Enter');
+    await expect(page.locator('#rv-query-status')).toContainText('Showing arr by region');
   });
 
-  test('scrolling reveals every section and the anchors work', async ({ page }) => {
-    await page.goto(BASE + '/');
-    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-
-    // Ticker: every statement rendered once for readers, once for the loop.
-    await expect(page.locator('.ld-marquee-track > span:not([aria-hidden])')).toHaveCount(10);
-
-    // Boards: all seven, in the server's order, as bento tiles.
-    await page.getByRole('link', { name: 'See the boards' }).click();
-    await expect(page.locator('.ld-grid')).toHaveClass(/is-in/);
-    for (const name of ['Opportunity Analytics', 'Executive Dashboard', 'Win Board', 'Loss Board', 'Product View', 'AE Performance', 'AM Performance']) {
-      await expect(page.getByRole('heading', { level: 3, name, exact: true })).toBeVisible();
-    }
-    await expect(page.locator('.ld-tile')).toHaveCount(7);
-    await expect(page.locator('.ld-tile .viz')).toHaveCount(7);
-    // The cursor glow follows the pointer on a tile.
-    const tile = page.locator('.ld-tile').first();
-    await tile.hover({ position: { x: 40, y: 30 } });
-    await expect(tile).toHaveAttribute('style', /--mx: (39|40|41)px/);
-    await expect(page.locator('.viz-funnel i').last()).toHaveCSS('transform', 'none', { timeout: 8000 });
-    await page.screenshot({ path: `${SHOTS}/landing_boards.png` });
-
-    // Feature rows reveal on intersection.
-    for (const id of ['#builder', '#tv', '#sources']) {
-      await page.locator(id).scrollIntoViewIfNeeded();
-      await expect(page.locator(id)).toHaveClass(/is-in/);
-    }
-    await expect(page.getByRole('heading', { name: "For everything the boards don't cover." })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Put it on the wall. Leave it there.' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Three ways in. One canonical schema.' })).toBeVisible();
-    await page.locator('#tv').scrollIntoViewIfNeeded();
-    await expect(page.locator('#tv .viz-bars i').last()).toHaveCSS('transform', 'none', { timeout: 8000 });
-    await page.screenshot({ path: `${SHOTS}/landing_tv.png` });
-
-    // Manifesto lights word by word as it crosses the viewport.
-    const manifesto = page.locator('.ld-manifesto');
-    await manifesto.scrollIntoViewIfNeeded();
-    await page.evaluate(() => window.scrollBy(0, 400));
-    await expect(manifesto.locator('.w.lit').first()).toBeVisible();
-    await expect.poll(() => manifesto.locator('.w.lit').count()).toBeGreaterThan(5);
-    await page.screenshot({ path: `${SHOTS}/landing_manifesto.png` });
-
-    // The final CTA takes you back to the form and focuses it.
-    await page.getByRole('heading', { name: /Connect a Tableau source/ }).scrollIntoViewIfNeeded();
-    await page.locator('.ld-final').getByRole('link', { name: 'Sign in' }).click();
-    await expect(page.getByPlaceholder('Work email')).toBeInViewport();
-    await expect(page.getByPlaceholder('Work email')).toBeFocused();
+  test('hero actions drive the board, and bar/trend styles switch', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(BASE);
+    await page.getByRole('button', { name: 'See AMER revenue' }).click();
+    await expect(page.locator('.rv-signal-metric')).toContainText('$2.1');
+    await page.getByRole('button', { name: 'See it live' }).click();
+    await settleBoard(page);
+    await expect(page.getByLabel('Filter by region')).toHaveValue('AMER');
+    await page.getByRole('button', { name: 'Show trend chart' }).click();
+    await expect(page.locator('.rv-trend-line')).toBeVisible();
+    await expect(page.locator('.rv-bar-fill').first()).toHaveCSS('opacity', '0');
+    await page.locator('.rv-bar').nth(3).focus();
+    await expect(page.locator('.rv-tooltip').nth(3)).toHaveCSS('opacity', '1');
+    await settleBoard(page);
+    await page.screenshot({ path: `${SHOTS}/trend-mode.png` });
+    await page.getByRole('button', { name: 'Show bar chart' }).click();
+    await expect(page.locator('.rv-trend-line')).toHaveCount(0);
+    await expect(page.locator('.rv-bar-fill').first()).toHaveCSS('opacity', '1');
   });
 
-  test('/login still serves the bare form for bookmarks', async ({ page }) => {
+  test('workspace navigation and motion controls remain usable', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(BASE);
+    await page.getByRole('button', { name: 'See it live' }).click();
+    await settleBoard(page);
+    await page.getByRole('button', { name: 'View rep performance' }).click();
+    await expect(page.locator('#rv-query-status')).toContainText('Showing top reps');
+    await page.getByRole('button', { name: 'View revenue forecast' }).click();
+    await expect(page.locator('#rv-query-status')).toContainText('Showing forecast');
+    await page.getByRole('button', { name: 'View revenue overview' }).click();
+    await expect(page.locator('.rv-chart-heading')).toContainText('Revenue momentum');
+    await page.getByRole('button', { name: 'Pause animation' }).click();
+    await expect(page.locator('.revenue-landing')).toHaveClass(/rv-static/);
+    await expect(page.locator('.rv-signal-beam').first()).toHaveCSS('animation-name', 'none');
+    await page.getByRole('button', { name: 'Play animation' }).click();
+    await expect(page.locator('.revenue-landing')).not.toHaveClass(/rv-static/);
+    await page.getByRole('button', { name: 'Show trend chart' }).click();
+    await settleBoard(page);
+    await expect(page.locator('.rv-big-number')).not.toContainText('$0.0');
+  });
+
+  test('native validation, password visibility, busy and failure states', async ({ page }) => {
+    let requests = 0;
+    await page.route('**/api/auth/login', async route => {
+      requests++;
+      expect(route.request().postDataJSON()).toEqual({ email: 'demo@example.test', password: 'example-password' });
+      await new Promise(resolve => setTimeout(resolve, 400));
+      await route.fulfill({ status: 401, json: { error: 'Incorrect email or password' } });
+    });
+    await page.goto(BASE);
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByRole('button', { name: 'Sign in', exact: true }).click();
+    expect(requests).toBe(0);
+    await dialog.getByLabel('Work email').fill('demo@example.test');
+    await dialog.getByLabel('Password', { exact: true }).fill('example-password');
+    await dialog.getByRole('button', { name: 'Show password' }).click();
+    await expect(dialog.getByLabel('Password', { exact: true })).toHaveAttribute('type', 'text');
+    await dialog.getByRole('button', { name: 'Hide password' }).click();
+    await dialog.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(dialog.getByRole('button', { name: 'Please wait' })).toBeDisabled();
+    await expect(dialog.getByLabel('Work email')).toBeDisabled();
+    await expect(dialog.getByRole('alert')).toHaveText('Incorrect email or password');
+    await expect(dialog.getByRole('button', { name: 'Sign in', exact: true })).toBeEnabled();
+    expect(requests).toBe(1);
+    await page.screenshot({ path: `${SHOTS}/auth-error.png` });
+  });
+
+  test('successful password sign-in keeps the /gallery navigation', async ({ page }) => {
+    await page.route('**/api/auth/login', route => route.fulfill({ json: { id: 1, email: 'demo@example.test' } }));
+    await page.route('**/gallery', route => route.fulfill({ contentType: 'text/html', body: '<h1>Workspace destination</h1>' }));
     await page.goto(BASE + '/login');
-    await expect(page.locator('.login-wrap .login-card')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'TestMu BI' })).toBeVisible();
-    await expect(page.getByPlaceholder('Work email')).toBeVisible();
-    await expect(page.locator('.ld-hero')).toHaveCount(0);
+    await page.getByLabel('Work email').fill('demo@example.test');
+    await page.getByLabel('Password', { exact: true }).fill('example-password');
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(page).toHaveURL(BASE + '/gallery');
+    await expect(page.getByRole('heading', { name: 'Workspace destination' })).toBeVisible();
   });
 
-  test('stays a black tile with readable text when the app theme is light', async ({ page }) => {
-    await page.addInitScript(() => localStorage.setItem('testmu-theme', 'light'));
-    await page.goto(BASE + '/');
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-    await expect(page.locator('.landing')).toHaveCSS('background-color', 'rgb(0, 0, 0)');
-    await expect(page.locator('#signin h2')).toHaveCSS('color', 'rgb(255, 255, 255)');
-    await expect(page.locator('.ld-tile h3').first()).toHaveCSS('color', 'rgb(255, 255, 255)');
-    await expect(page.locator('.ld-source h3').first()).toHaveCSS('color', 'rgb(255, 255, 255)');
+  test('enabled signup validates 12 characters and handles pending accounts', async ({ page }) => {
+    await page.unroute('**/api/auth/config');
+    await page.route('**/api/auth/config', route => route.fulfill({ json: { googleClientId: null, selfSignupEnabled: true } }));
+    let requests = 0;
+    await page.route('**/api/auth/signup', route => {
+      requests++;
+      expect(route.request().postDataJSON()).toEqual({ name: 'Demo Person', email: 'demo@example.test', password: 'long-example-password' });
+      return route.fulfill({ status: 202, json: { pending: true, message: 'Check your email to finish setting up this account.' } });
+    });
+    await page.goto(BASE);
+    await page.locator('.rv-hero').getByRole('button', { name: 'Get started' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByLabel('Full name')).toBeFocused();
+    await dialog.getByLabel('Full name').fill('Demo Person');
+    await dialog.getByLabel('Work email').fill('demo@example.test');
+    await dialog.getByLabel('Password', { exact: true }).pressSequentially('short');
+    await dialog.locator('button[type=submit]').click();
+    expect(requests).toBe(0);
+    await dialog.getByLabel('Password', { exact: true }).fill('long-example-password');
+    await dialog.locator('button[type=submit]').click();
+    await expect(dialog.getByRole('status')).toHaveText('Check your email to finish setting up this account.');
+    expect(requests).toBe(1);
+    await expect(page).toHaveURL(BASE + '/');
+    await page.screenshot({ path: `${SHOTS}/signup-pending.png` });
   });
-});
 
-test.describe('Landing: reduced motion', () => {
-  test.use({ viewport: { width: 1920, height: 1080 } });
+  test('successful signup posts the existing payload and opens the gallery', async ({ page }) => {
+    await page.unroute('**/api/auth/config');
+    await page.route('**/api/auth/config', route => route.fulfill({ json: { googleClientId: null, selfSignupEnabled: true } }));
+    await page.route('**/api/auth/signup', route => {
+      expect(route.request().postDataJSON()).toEqual({ name: 'Demo Person', email: 'demo@example.test', password: 'long-example-password' });
+      return route.fulfill({ json: { id: 1, email: 'demo@example.test' } });
+    });
+    await page.route('**/gallery', route => route.fulfill({ contentType: 'text/html', body: '<h1>Workspace destination</h1>' }));
+    await page.goto(BASE);
+    await page.locator('.rv-hero').getByRole('button', { name: 'Get started' }).click();
+    await page.getByLabel('Full name').fill('Demo Person');
+    await page.getByLabel('Work email').fill('demo@example.test');
+    await page.getByLabel('Password', { exact: true }).fill('long-example-password');
+    await page.locator('.login-form button[type=submit]').click();
+    await expect(page).toHaveURL(BASE + '/gallery');
+  });
 
-  test('everything is readable with nothing moving', async ({ page }) => {
-    // Emulated on the page, not through test.use: with this config the
-    // context-level reducedMotion option never reached matchMedia.
+  test('Google is loaded only when configured and keeps the current auth intent', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 740 });
+    let sdkLoads = 0;
+    await page.unroute('**/api/auth/config');
+    await page.route('**/api/auth/config', route => route.fulfill({ json: { googleClientId: 'configured-test-client', selfSignupEnabled: true } }));
+    await page.route('https://accounts.google.com/gsi/client', route => {
+      sdkLoads++;
+      return route.fulfill({ contentType: 'application/javascript', body: `
+        let options;
+        window.google = { accounts: { id: {
+          initialize: value => { options = value; },
+          renderButton: (element, style) => {
+            const button = document.createElement('button');
+            button.textContent = 'Continue with Google';
+            button.style.width = style.width + 'px';
+            button.onclick = () => options.callback({ credential: 'synthetic-credential' });
+            element.appendChild(button);
+          }
+        } } };
+      ` });
+    });
+    await page.route('**/api/auth/verify', route => {
+      expect(route.request().postDataJSON()).toEqual({ credential: 'synthetic-credential', intent: 'signup' });
+      return route.fulfill({ status: 403, json: { error: 'Use your invited work account.' } });
+    });
+    await page.goto(BASE);
+    expect(sdkLoads).toBe(0);
+    await page.locator('.rv-hero').getByRole('button', { name: 'Get started' }).click();
+    await expect(page.getByLabel('Full name')).toBeVisible();
+    await page.getByRole('button', { name: 'Continue with Google' }).click();
+    await expect(page.getByRole('alert')).toHaveText('Use your invited work account.');
+    expect(await page.locator('.rv-auth-dialog').evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
+    expect(sdkLoads).toBe(1);
+  });
+
+  test('short landscape screens keep every demo stage reachable', async ({ page }) => {
+    await page.setViewportSize({ width: 740, height: 390 });
+    await page.goto(BASE);
+    await page.getByRole('button', { name: /Ask your data/ }).click();
+    await page.getByRole('button', { name: 'Top reps', exact: true }).click();
+    await expect(page.locator('#rv-query-status')).toContainText('Showing top reps');
+    await page.getByRole('button', { name: /On every screen/ }).click();
+    await page.getByRole('button', { name: 'Try fullscreen' }).click();
+    await page.getByRole('button', { name: 'Exit presentation mode' }).click();
+    await expect(page.getByRole('dialog')).not.toBeVisible();
+    await expectNoOverflow(page);
+  });
+
+  test('configuration failure can be retried', async ({ page }) => {
+    let attempts = 0;
+    await page.unroute('**/api/auth/config');
+    await page.route('**/api/auth/config', route => ++attempts === 1
+      ? route.fulfill({ status: 500, json: { error: 'Service unavailable' } })
+      : route.fulfill({ json: { googleClientId: null, selfSignupEnabled: false } }));
+    await page.goto(BASE);
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('Could not reach the login service');
+    await page.getByRole('button', { name: 'Try again', exact: true }).click();
+    await expect(page.getByRole('dialog').getByRole('button', { name: 'Sign in', exact: true })).toBeEnabled();
+    await expect(page.getByRole('alert')).toHaveCount(0);
+  });
+
+  test('reduced motion disables animations and supports the complete journey', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.goto(BASE + '/');
-    await expect(page.locator('.landing')).toBeVisible();
-    expect(await page.evaluate(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(true);
-    await expect(page.locator('.landing')).toHaveClass(/ld-static/);
-    // No IntersectionObserver in this mode: sections are simply visible.
-    const opacity = await page.locator('.ld-sources').evaluate(el => getComputedStyle(el).opacity);
-    expect(opacity).toBe('1');
-    await expect(page.locator('.ld-manifesto .w').first()).toHaveCSS('color', 'rgb(255, 255, 255)');
-    const heroTransform = await page.locator('.ld-mock').evaluate(el => getComputedStyle(el).transform);
-    expect(heroTransform).toBe('none');
-    // The ticker stands still and shows each statement once.
-    await expect(page.locator('.ld-marquee-track > span[aria-hidden]').first()).toBeHidden();
+    await page.goto(BASE);
+    await expect(page.locator('.revenue-landing')).toHaveClass(/rv-static/);
+    await expect(page.locator('.rv-bar-fill').first()).toHaveCSS('animation-name', 'none');
+    await expect(page.locator('.rv-screen-shell')).toHaveCSS('transition-duration', '0s');
+    await page.getByRole('button', { name: /Ask your data/ }).click();
+    await page.getByRole('button', { name: 'Win rate', exact: true }).click();
+    await expect(page.locator('#rv-query-status')).toContainText('Showing win rate');
+    await page.getByRole('button', { name: /On every screen/ }).click();
+    await expect(page.getByRole('heading', { name: 'Put it on the wall.', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Try fullscreen' }).click();
+    await expect(page.getByRole('dialog', { name: 'Presentation preview' })).toBeVisible();
   });
-});
 
-test.describe('Landing: small screen', () => {
-  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
-
-  test('no sideways scroll and a sign-in call to action above the fold', async ({ page }) => {
-    await page.goto(BASE + '/');
-    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    await expect(page.locator('.ld-hero-copy').getByRole('link', { name: 'Sign in' })).toBeInViewport();
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-    expect(overflow).toBeLessThanOrEqual(0);
-    await expect(page.locator('.ld-trust')).toHaveCSS('opacity', '1', { timeout: 8000 });
-    await page.screenshot({ path: `${SHOTS}/landing_mobile.png`, fullPage: false });
+  test('connection preview uses only supported sources and ends at authentication', async ({ page }) => {
+    await page.goto(BASE);
+    await page.getByRole('link', { name: 'Connect your data' }).click();
+    await page.getByRole('button', { name: 'File upload', exact: true }).click();
+    await expect(page.locator('.rv-source-surface h3')).toHaveText('File upload');
+    await page.getByRole('button', { name: 'Next connection step' }).click();
+    await expect(page.locator('.rv-source-surface h3')).toHaveText('Revenue overview');
+    await page.getByRole('button', { name: 'Next connection step' }).click();
+    await expect(page.locator('.rv-source-surface h3')).toHaveText('Your board is ready.');
+    await page.screenshot({ path: `${SHOTS}/connection.png` });
+    await page.getByRole('button', { name: 'Get started with your data' }).click();
+    await expect(page.getByRole('dialog', { name: 'Access your workspace' })).toBeVisible();
   });
 });
