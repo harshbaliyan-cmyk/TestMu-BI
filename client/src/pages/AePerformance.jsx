@@ -1,13 +1,12 @@
-import {useEffect,useMemo,useState} from 'react';
+import {useEffect,useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {getAePerformanceSnapshot,getOptions,getDashboardState,saveDashboardState} from '../lib/api';
 // No fmtCurrency: this board reports shares and counts, never ARR amounts.
-import {MultiSelect,ChartCard,fmtNumber,fmtPercent,ComparisonProvider} from '../components/charts';
+import {MultiSelect,fmtNumber,ComparisonProvider} from '../components/charts';
 import RefreshDataButton from '../components/RefreshDataButton';
 import AppLoader from '../components/AppLoader';
-import RankBadge from '../components/RankBadge';
 import AdvancedDateRange,{rangeFor,isoDate,refreshPreset} from '../components/AdvancedDateRange';
-import {KpiDelta} from './WinBoard';
+import { AeQuarterPanel, AeDistribution, AeRankingPanel } from '../components/AePerformanceUI';
 
 const TEMPLATE='ae-performance';
 const [DEFAULT_QUARTER_START,DEFAULT_QUARTER_TODAY]=rangeFor('currentQuarter');
@@ -22,159 +21,6 @@ const EMPTY_METRICS={
   overall:{opportunities:0,closed:0,wins:0,losses:0,closedArr:0,wonArr:0,dealWinRate:0,arrWinRate:0,contribution:0},
   reps:[],pods:[],
 };
-
-// Two-letter initials for the avatar placeholder — first + last name initial,
-// or the first two letters of a single-word name. Stands in for a real photo
-// until Slack (or another photo source) is wired up.
-function repInitials(name){
-  const parts=String(name||'').trim().split(/\s+/).filter(Boolean);
-  if(!parts.length)return '?';
-  if(parts.length===1)return parts[0].slice(0,2).toUpperCase();
-  return (parts[0][0]+parts[parts.length-1][0]).toUpperCase();
-}
-
-// Darkened from the shared Win Board palette specifically for white initials
-// on top — the original (brighter) hues read below 4.5:1 white-text contrast
-// (validated with the data-viz accessibility checker; e.g. #2FAE1D only hit
-// 2.9:1). Each hue here clears ≥4.5:1 while staying inside the same lightness
-// band and chroma floor the checker requires.
-const AVATAR_COLORS=['#1761c7','#a9410c','#007d53','#9a5e00','#b3305e','#258817','#6148c3','#b53737','#50830c'];
-function avatarColor(name){
-  const hash=Array.from(String(name||'')).reduce((total,character)=>((total*31)+character.charCodeAt(0))|0,0);
-  return AVATAR_COLORS[Math.abs(hash)%AVATAR_COLORS.length];
-}
-
-const MEDAL_CLASS={1:'gold',2:'silver',3:'bronze'};
-
-// Reused by both the interactive dashboard and the presentation view, and by
-// both the rep and POD rankings — the ranked list itself, independent of the
-// filter/Top-N chrome around it. showAvatar is off for the POD ranking: an
-// initials bubble reads as a person, and a POD is a team.
-// Attainment is null when a rep has no usable target (unmapped quota, or a
-// zero one). That is not 0% and must not render as 0% - it is shown as "No
-// quota" so a data-mapping gap never reads as a performance result.
-// Attainment bands. Colour here is DATA, not decoration: on a wall display the
-// band is readable before the number is, and it is the difference between
-// "scan five rows" and "see who is behind". The thresholds are the ones a
-// quota conversation actually turns on.
-export const attainmentBand = pct =>
-  pct >= 100 ? 'hit'
-  : pct >= 75 ? 'close'
-  : pct >= 25 ? 'behind'
-  : 'risk';
-
-const attainmentLabel=rep=>rep.attainment===null||rep.attainment===undefined
-  ?<span className="ae-no-quota" title="No quota mapped for this rep, so attainment cannot be calculated">No quota</span>
-  :<strong>{fmtPercent(rep.attainment)}</strong>;
-
-// POD leaders, supplied by the sales ops team. Keyed by the POD label exactly
-// as it arrives in the data, so a POD whose name changes upstream simply loses
-// its leader rather than showing the wrong person.
-//
-// Hardcoded on purpose: there is no leader column in the source, and inventing
-// one would mean a mapping that nobody maintains. Update this map when a POD
-// changes hands. A POD absent from here renders without a leader, which is the
-// correct state for one that has none assigned.
-export const POD_LEADERS = {
-  'EMEA AE':      { name: 'Saif Rizvi',     photo: '/pod-leaders/saif-rizvi.webp' },
-  'AMER AE II':   { name: 'Misbah Farooqi', photo: '/pod-leaders/misbah-farooqi.webp' },
-  'APAC AE':      { name: 'Karan Rana',     photo: '/pod-leaders/karan-rana.webp' },
-  'AMER AE III':  { name: 'Mohit Juneja',   photo: '/pod-leaders/mohit-juneja.webp' },
-  'AMER AE Corp': { name: 'Misbah Farooqi', photo: '/pod-leaders/misbah-farooqi.webp' },
-  'GCC':          { name: 'Saif Rizvi',     photo: '/pod-leaders/saif-rizvi.webp' },
-
-  // AM PODs. Karan Rana leads APAC on both sides, so the same asset is reused
-  // rather than stored twice.
-  'AMER AM':      { name: 'Prakhar Goyal',   photo: '/pod-leaders/prakhar-goyal.webp' },
-  'APAC AM':      { name: 'Karan Rana',      photo: '/pod-leaders/karan-rana.webp' },
-  'EMEA AM':      { name: 'Rishabh Agarwal', photo: '/pod-leaders/rishabh-agarwal.webp' },
-};
-
-// Photos are served from this app, not hotlinked from Slack. The originals were
-// ~350 KB each for a 34px circle, they would break on a TV with no route to
-// Slack's CDN, and every view leaked a request to a third party. Re-encoded to
-// 96px WebP: 1.4 MB total became 9 KB.
-//
-// The error fallback stays anyway - a missing file should degrade to initials
-// rather than collapse the row around a broken image.
-function LeaderAvatar({leader}){
-  const [failed,setFailed]=useState(false);
-  if(failed||!leader.photo){
-    return <span className="ae-avatar ae-leader-avatar" style={{background:avatarColor(leader.name)}} aria-hidden="true">{repInitials(leader.name)}</span>;
-  }
-  return <img className="ae-leader-avatar" src={leader.photo} alt="" loading="lazy" referrerPolicy="no-referrer"
-    onError={()=>setFailed(true)} />;
-}
-
-// badges swaps the small rank disc on the left for the sculpted podium badge
-// on the right, beside the percentage. It is the presentation shell's shape:
-// on a TV the rank is read off the artwork, and the left column that carried
-// it is better spent on the name. The dashboard keeps the compact form, where
-// a 68px medal per row would crowd a card sharing the screen with three others.
-export function RepLeaderboard({reps=[],comparisons=[],topN=5,showAvatar=true,leaders=null,badges=false,emptyLabel='No AE-owned won opportunities in the selected scope.'}){
-  const comparisonByLabel=useMemo(()=>new Map((comparisons||[]).map(item=>[item.label,item])),[comparisons]);
-  const rows=topN>0?reps.slice(0,topN):reps;
-  if(!rows.length)return <div className="ae-leaderboard-empty">{emptyLabel}</div>;
-  // The row is a fixed grid, so a leader avatar adds a COLUMN. Without this
-  // class the extra child overflowed the template and every row wrapped.
-  const cls=['ae-leaderboard', showAvatar?'':'ae-leaderboard-no-avatar', leaders?'ae-leaderboard-leaders':'', badges?'ae-leaderboard-badges':''].filter(Boolean).join(' ');
-  return <div className={cls}>
-    {rows.map((rep,index)=>{
-      const rank=index+1;
-      const comparison=comparisonByLabel.get(rep.label);
-      const medal=MEDAL_CLASS[rank];
-      const leader=leaders?leaders[rep.label]:null;
-      const delta=rep.priorAttainment!==null&&rep.priorAttainment!==undefined&&rep.attainment!==null&&rep.attainment!==undefined
-        ?<KpiDelta value={rep.attainment-rep.priorAttainment}/>:null;
-      return <div key={rep.label} className={`ae-leaderboard-row${medal?` ae-rank-${rank}`:''}`}>
-        {/* One rank marker per row, never two: with badges on, the podium
-            badge in the value group IS the rank. */}
-        {!badges&&(medal
-          ?<span className={`ae-rank-medal ${medal}`} aria-label={`Rank ${rank}`}>{rank}</span>
-          :<span className="ae-rank-number" aria-label={`Rank ${rank}`}>{rank}</span>)}
-        {showAvatar&&<span className="ae-avatar" style={{background:avatarColor(rep.label)}} aria-hidden="true">{repInitials(rep.label)}</span>}
-        {/* A POD with no leader still needs to occupy the avatar COLUMN, or grid
-            auto-placement slides its name left and it stops lining up with the
-            rows above it. */}
-        {leaders&&(leader?<LeaderAvatar leader={leader}/>:<span className="ae-leader-avatar-empty" aria-hidden="true"/>)}
-        <span className="ae-leaderboard-name"><strong>{rep.label}</strong>
-          {/* The POD is what is ranked, so it stays the primary label and the
-              leader sits under it rather than replacing it. */}
-          {leader&&<small className="ae-leader-name">{leader.name}</small>}</span>
-        {/* Quarter-on-quarter movement in percentage points, shown ONLY when
-            the prior quarter had a real target. It used to fall back to the
-            contribution-share delta, which put a different metric in the same
-            pill next to a quota figure with nothing to distinguish them. No
-            prior quota now means no delta. */}
-        {badges
-          ?<span className="ae-leaderboard-value">
-            <RankBadge rank={rank}/>
-            {/* The number leads and the unit sits under it, so a wall viewer
-                reads the figure before the caption explaining it. */}
-            <span className="ae-value-stack">{attainmentLabel(rep)}
-              <span className="ae-value-caption">
-                {rep.attainment!==null&&rep.attainment!==undefined&&<small>of quota</small>}
-                {delta}</span></span></span>
-          :<span className="ae-leaderboard-value">{attainmentLabel(rep)}{delta}</span>}
-        {/* Attainment as form, not only as a number. A ranked list of
-            percentages makes you read every value to compare two rows; a
-            common baseline makes the gap between them visible at a glance,
-            which is the whole job of this board.
-
-            The track is 0-100% of quota, so the notch at the end is the
-            target itself rather than a decorative tick. The fill is CAPPED at
-            100% while the printed number keeps the true value - a 134.6% rep
-            cannot overflow the row, and the number never disagrees with the
-            data. Anything over target gets its own end cap instead. */}
-        {rep.attainment!==null&&rep.attainment!==undefined&&(
-          <span className={`ae-attain ae-band-${attainmentBand(rep.attainment)}`} aria-hidden="true">
-            <span className="ae-attain-fill" style={{'--pct': Math.max(0, Math.min(100, rep.attainment)) + '%'}}/>
-          </span>
-        )}
-      </div>;
-    })}
-  </div>;
-}
 
 const savedAePerformanceState=()=>{
   try{return JSON.parse(localStorage.getItem(`testmu-dashboard-state-${TEMPLATE}`)||'{}');}
@@ -275,11 +121,6 @@ export default function AePerformance({user}){
   const priorTeamQuota=priorMeasured.reduce((total,rep)=>total+(rep.priorQuota||0),0);
   const priorTeamWon=priorMeasured.reduce((total,rep)=>total+(rep.priorWonArr||0),0);
   const priorTeamAttainment=priorTeamQuota?priorTeamWon/priorTeamQuota*100:null;
-  // Both lists arrive sorted by attainment with unmeasurable entries last, so
-  // the leader is the first entry that actually has a number.
-  const topRep=measured[0]||null;
-  const topPod=(pods||[]).find(pod=>pod.attainment!==null&&pod.attainment!==undefined)||null;
-  const groupComparisons=comparison.groups||{};
 
   if(loading&&!reps.length&&!loadError)return <AppLoader fullscreen label="Loading AE Performance…"/>;
   const filterDefs=[['region','Region'],['orgType','Org type'],['type','Opp type']];
@@ -300,7 +141,7 @@ export default function AePerformance({user}){
     window.open('/present/ae-performance','_blank','noopener');
   };
 
-  return <ComparisonProvider value={comparison}><div className="wrap win-board-wrap db-page db-reps"><header className="top"><div className="top-row"><div><h1>AE Performance</h1><div className="sub">Ranks AE reps by <strong>% of quota achieved</strong> for {quota?.currentQuarter||'the current quarter'}. <strong>Owned by an AE-prefixed role only.</strong></div><div className="board-scope-note">Opp type = New Business, New Business AM, Existing Business - Up-sell</div></div>
+  return <ComparisonProvider value={comparison}><div className="wrap win-board-wrap db-page db-reps performance-dashboard ae-studio"><header className="top"><div className="top-row"><div><h1>AE Performance</h1><div className="sub">Your quarter, your people, and the path to quota.</div><details className="perf-scope-details"><summary>What this board includes</summary><p>AE-owned opportunities only. Opportunity types: New Business, New Business AM, and Existing Business - Up-sell. Quota rankings cover the full current quarter.</p></details></div>
       <div className="db-header-actions"><RefreshDataButton templateId={TEMPLATE} onRefreshed={()=>setReloadTick(tick=>tick+1)}/><button type="button" className="present-button" onClick={startPresentation}>▶ Present</button></div></div>
       <div className="filters win-board-filter-shelf">{filterDefs.map(([key,label])=><MultiSelect key={key} label={label} options={options[key]||[]} value={filters[key]} onChange={value=>updateFilter(key,value)}/>) }
         <AdvancedDateRange filters={filters} setFilters={setFilters} fromKey="closeFrom" toKey="closeTo"
@@ -340,64 +181,15 @@ export default function AePerformance({user}){
           picker. Saying so on screen matters: without it, a viewer who has
           filtered to a fortnight reads a full-quarter number as if it were
           their filtered one. */}
-      {quotaMapped?<div className="card ae-quota-strip">
-        <div className="ae-quota-head">
-          <div><b>Quota attainment</b>
-            <span className="ae-quota-scope">All of {quota.currentQuarter}. Not affected by the close-date filter.</span></div>
-          {priorTeamAttainment!==null&&<span className="ae-quota-vs">vs {quota.previousQuarter}</span>}
-        </div>
-        <div className="ae-quota-tiles">
-          <div className="ae-quota-tile">
-            <span className="ae-quota-label">Team attainment</span>
-            <span className="ae-quota-value">{teamAttainment===null?'\u2014':fmtPercent(teamAttainment)}
-              {priorTeamAttainment!==null&&teamAttainment!==null&&<KpiDelta value={teamAttainment-priorTeamAttainment}/>}</span>
-          </div>
-          <div className="ae-quota-tile">
-            <span className="ae-quota-label">Reps at or above quota</span>
-            <span className="ae-quota-value">{atOrAbove}</span>
-          </div>
-          <div className="ae-quota-tile">
-            <span className="ae-quota-label">{quota.previousQuarter} attainment</span>
-            <span className="ae-quota-value">{priorTeamAttainment===null?'\u2014':fmtPercent(priorTeamAttainment)}</span>
-            {!quota.priorMapped&&<span className="ae-quota-meta">Prior quarter quota not mapped</span>}
-          </div>
-        </div>
-
-        {/* The two names are the point of this strip, so they are the largest
-            thing in it. Emphasis comes from size, weight and a lifted surface
-            rather than from colour: the one accent stays reserved for actions. */}
-        <div className="ae-top-tiles">
-          <div className="ae-top-tile">
-            <span className="ae-quota-label">Top AE performer</span>
-            {topRep
-              ?<><span className="ae-top-name">{topRep.label}</span>
-                 <span className="ae-top-value">{fmtPercent(topRep.attainment)}<small> of quota</small></span></>
-              :<span className="ae-top-empty">No rep carries a measurable target</span>}
-          </div>
-          <div className="ae-top-tile">
-            <span className="ae-quota-label">Top POD</span>
-            {topPod
-              ?<><span className="ae-top-name">{topPod.label}</span>
-                 <span className="ae-top-value">{fmtPercent(topPod.attainment)}<small> of quota</small></span></>
-              :<span className="ae-top-empty">No POD carries a measurable target</span>}
-          </div>
-        </div>
-      </div>:<div className="card ae-quota-strip ae-quota-unmapped">
+      {quotaMapped?<div className="ae-overview"><AeQuarterPanel quota={quota} teamAttainment={teamAttainment} priorTeamAttainment={priorTeamAttainment} atOrAbove={atOrAbove} measuredCount={measured.length}/><AeDistribution reps={reps}/></div>:<div className="card ae-quota-strip ae-quota-unmapped">
         <b>Quota is not mapped</b>
         <p>AE Performance ranks by % of quota achieved. Map <b>Current quarter quota</b> (and optionally <b>Prior quarter quota</b>) on the data source to populate this board.</p>
         <button type="button" className="btn-secondary" onClick={()=>navigate('/data-sources')}>Open data sources</button>
       </div>}
 
-      <div className="db-chart-grid db-ranking-row">
-        <ChartCard className="ae-performance-card" showComparison={false} title="AE Quota Attainment" hint={`Won ARR closed in ${quota?.currentQuarter||'the quarter'} divided by each rep’s quota. ${measured.length} of ${reps.length} rep${reps.length===1?'':'s'} carry a target.`}
-          controls={<select className="table-top-select" aria-label="Number of reps to display" value={repTopN} onChange={event=>setRepTopN(Number(event.target.value))}><option value="5">Top 5</option><option value="10">Top 10</option><option value="20">Top 20</option><option value="0">All</option></select>}>
-          <RepLeaderboard reps={reps} comparisons={groupComparisons.reps} topN={repTopN}/>
-        </ChartCard>
-        <ChartCard className="ae-performance-card" showComparison={false} title="AE POD Quota Attainment" hint={`The same attainment, grouped by POD instead of by rep — ${pods.length} POD${pods.length===1?'':'s'}. A POD quota is the sum of its reps targets, including reps who closed nothing.`}
-          controls={<select className="table-top-select" aria-label="Number of PODs to display" value={podTopN} onChange={event=>setPodTopN(Number(event.target.value))}><option value="5">Top 5</option><option value="10">Top 10</option><option value="20">Top 20</option><option value="0">All</option></select>}>
-          <RepLeaderboard reps={pods} comparisons={groupComparisons.pods} topN={podTopN} showAvatar={false} leaders={POD_LEADERS}
-            emptyLabel="No AE-owned won opportunities in the selected scope."/>
-        </ChartCard>
+      <div className="ae-rankings">
+        <AeRankingPanel reps={reps} topN={repTopN} onTopNChange={setRepTopN}/>
+        <AeRankingPanel reps={pods} topN={podTopN} onTopNChange={setPodTopN} pod/>
       </div>
     </>}
 

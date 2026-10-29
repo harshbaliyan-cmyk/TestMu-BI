@@ -1,16 +1,12 @@
-import {useEffect,useMemo,useState} from 'react';
+import {useEffect,useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {getAmPerformanceSnapshot,getOptions,getDashboardState,saveDashboardState} from '../lib/api';
 // No fmtCurrency: this board reports shares and counts, never ARR amounts.
-import {MultiSelect,ChartCard,fmtNumber,fmtPercent,ComparisonProvider} from '../components/charts';
+import {MultiSelect,fmtNumber,ComparisonProvider} from '../components/charts';
 import RefreshDataButton from '../components/RefreshDataButton';
 import AppLoader from '../components/AppLoader';
 import AdvancedDateRange,{rangeFor,isoDate,refreshPreset} from '../components/AdvancedDateRange';
-import {KpiDelta} from './WinBoard';
-// The ranking UI is shared with the AE board, not copied: both must render a
-// rep row identically, and a duplicate drifts on the first fix that lands on
-// only one of them.
-import { RepLeaderboard, POD_LEADERS } from './AePerformance';
+import { AeQuarterPanel, AeDistribution, AeRankingPanel } from '../components/AePerformanceUI';
 
 const TEMPLATE='am-performance';
 const [DEFAULT_QUARTER_START,DEFAULT_QUARTER_TODAY]=rangeFor('currentQuarter');
@@ -126,11 +122,6 @@ export default function AmPerformance({user}){
   const priorTeamQuota=priorMeasured.reduce((total,rep)=>total+(rep.priorQuota||0),0);
   const priorTeamWon=priorMeasured.reduce((total,rep)=>total+(rep.priorWonArr||0),0);
   const priorTeamAttainment=priorTeamQuota?priorTeamWon/priorTeamQuota*100:null;
-  // Both lists arrive sorted by attainment with unmeasurable entries last, so
-  // the leader is the first entry that actually has a number.
-  const topRep=measured[0]||null;
-  const topPod=(pods||[]).find(pod=>pod.attainment!==null&&pod.attainment!==undefined)||null;
-  const groupComparisons=comparison.groups||{};
 
   if(loading&&!reps.length&&!loadError)return <AppLoader fullscreen label="Loading AM Performance…"/>;
   const filterDefs=[['region','Region'],['orgType','Org type'],['type','Opp type']];
@@ -151,7 +142,7 @@ export default function AmPerformance({user}){
     window.open('/present/am-performance','_blank','noopener');
   };
 
-  return <ComparisonProvider value={comparison}><div className="wrap win-board-wrap db-page db-reps"><header className="top"><div className="top-row"><div><h1>AM Performance</h1><div className="sub">Ranks AM reps by <strong>% of quota achieved</strong> for {quota?.currentQuarter||'the current quarter'}. <strong>Owned by an AM POD only.</strong></div><div className="board-scope-note">Opp type = New Business, New Business AM, Existing Business - Up-sell</div></div>
+  return <ComparisonProvider value={comparison}><div className="wrap win-board-wrap db-page db-reps performance-dashboard ae-studio am-studio"><header className="top"><div className="top-row"><div><h1>AM Performance</h1><div className="sub">Your quarter, your people, and the path to quota.</div><details className="perf-scope-details"><summary>What this board includes</summary><p>AM-owned opportunities only. Opportunity types: New Business, New Business AM, and Existing Business - Up-sell. Quota rankings cover the full current quarter.</p></details></div>
       <div className="db-header-actions"><RefreshDataButton templateId={TEMPLATE} onRefreshed={()=>setReloadTick(tick=>tick+1)}/><button type="button" className="present-button" onClick={startPresentation}>▶ Present</button></div></div>
       <div className="filters win-board-filter-shelf">{filterDefs.map(([key,label])=><MultiSelect key={key} label={label} options={options[key]||[]} value={filters[key]} onChange={value=>updateFilter(key,value)}/>) }
         <AdvancedDateRange filters={filters} setFilters={setFilters} fromKey="closeFrom" toKey="closeTo"
@@ -191,64 +182,15 @@ export default function AmPerformance({user}){
           picker. Saying so on screen matters: without it, a viewer who has
           filtered to a fortnight reads a full-quarter number as if it were
           their filtered one. */}
-      {quotaMapped?<div className="card ae-quota-strip">
-        <div className="ae-quota-head">
-          <div><b>Quota attainment</b>
-            <span className="ae-quota-scope">All of {quota.currentQuarter}. Not affected by the close-date filter.</span></div>
-          {priorTeamAttainment!==null&&<span className="ae-quota-vs">vs {quota.previousQuarter}</span>}
-        </div>
-        <div className="ae-quota-tiles">
-          <div className="ae-quota-tile">
-            <span className="ae-quota-label">Team attainment</span>
-            <span className="ae-quota-value">{teamAttainment===null?'\u2014':fmtPercent(teamAttainment)}
-              {priorTeamAttainment!==null&&teamAttainment!==null&&<KpiDelta value={teamAttainment-priorTeamAttainment}/>}</span>
-          </div>
-          <div className="ae-quota-tile">
-            <span className="ae-quota-label">Reps at or above quota</span>
-            <span className="ae-quota-value">{atOrAbove}</span>
-          </div>
-          <div className="ae-quota-tile">
-            <span className="ae-quota-label">{quota.previousQuarter} attainment</span>
-            <span className="ae-quota-value">{priorTeamAttainment===null?'\u2014':fmtPercent(priorTeamAttainment)}</span>
-            {!quota.priorMapped&&<span className="ae-quota-meta">Prior quarter quota not mapped</span>}
-          </div>
-        </div>
-
-        {/* The two names are the point of this strip, so they are the largest
-            thing in it. Emphasis comes from size, weight and a lifted surface
-            rather than from colour: the one accent stays reserved for actions. */}
-        <div className="ae-top-tiles">
-          <div className="ae-top-tile">
-            <span className="ae-quota-label">Top AM performer</span>
-            {topRep
-              ?<><span className="ae-top-name">{topRep.label}</span>
-                 <span className="ae-top-value">{fmtPercent(topRep.attainment)}<small> of quota</small></span></>
-              :<span className="ae-top-empty">No rep carries a measurable target</span>}
-          </div>
-          <div className="ae-top-tile">
-            <span className="ae-quota-label">Top POD</span>
-            {topPod
-              ?<><span className="ae-top-name">{topPod.label}</span>
-                 <span className="ae-top-value">{fmtPercent(topPod.attainment)}<small> of quota</small></span></>
-              :<span className="ae-top-empty">No POD carries a measurable target</span>}
-          </div>
-        </div>
-      </div>:<div className="card ae-quota-strip ae-quota-unmapped">
+      {quotaMapped?<div className="ae-overview"><AeQuarterPanel role="AM" quota={quota} teamAttainment={teamAttainment} priorTeamAttainment={priorTeamAttainment} atOrAbove={atOrAbove} measuredCount={measured.length}/><AeDistribution reps={reps}/></div>:<div className="card ae-quota-strip ae-quota-unmapped">
         <b>Quota is not mapped</b>
         <p>AM Performance ranks by % of quota achieved. Map <b>Current quarter quota</b> (and optionally <b>Prior quarter quota</b>) on the data source to populate this board.</p>
         <button type="button" className="btn-secondary" onClick={()=>navigate('/data-sources')}>Open data sources</button>
       </div>}
 
-      <div className="db-chart-grid db-ranking-row">
-        <ChartCard className="ae-performance-card" showComparison={false} title="AM Quota Attainment" hint={`Won ARR closed in ${quota?.currentQuarter||'the quarter'} divided by each rep’s quota. ${measured.length} of ${reps.length} rep${reps.length===1?'':'s'} carry a target.`}
-          controls={<select className="table-top-select" aria-label="Number of reps to display" value={repTopN} onChange={event=>setRepTopN(Number(event.target.value))}><option value="5">Top 5</option><option value="10">Top 10</option><option value="20">Top 20</option><option value="0">All</option></select>}>
-          <RepLeaderboard reps={reps} comparisons={groupComparisons.reps} topN={repTopN}/>
-        </ChartCard>
-        <ChartCard className="ae-performance-card" showComparison={false} title="AM POD Quota Attainment" hint={`The same attainment, grouped by POD instead of by rep — ${pods.length} POD${pods.length===1?'':'s'}. A POD quota is the sum of its reps targets, including reps who closed nothing.`}
-          controls={<select className="table-top-select" aria-label="Number of PODs to display" value={podTopN} onChange={event=>setPodTopN(Number(event.target.value))}><option value="5">Top 5</option><option value="10">Top 10</option><option value="20">Top 20</option><option value="0">All</option></select>}>
-          <RepLeaderboard reps={pods} comparisons={groupComparisons.pods} topN={podTopN} showAvatar={false} leaders={POD_LEADERS}
-            emptyLabel="No AM-owned won opportunities in the selected scope."/>
-        </ChartCard>
+      <div className="ae-rankings">
+        <AeRankingPanel role="AM" reps={reps} topN={repTopN} onTopNChange={setRepTopN}/>
+        <AeRankingPanel role="AM" reps={pods} topN={podTopN} onTopNChange={setPodTopN} pod/>
       </div>
     </>}
 

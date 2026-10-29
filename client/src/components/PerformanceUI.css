@@ -1,0 +1,207 @@
+/* AE and AM share one visual system; no global dashboard or TV overrides. */
+:is(.performance-dashboard, .performance-presentation) {
+  --perf-paper: #1c211c;
+  --perf-soft: #252d22;
+  --perf-ink: #edf1e8;
+  --perf-muted: #b2bca9;
+  --perf-line: #3b4537;
+  --perf-green: #91c5a4;
+  --perf-amber: #d3b273;
+  --perf-track: #3b4537;
+  color: var(--perf-ink);
+  font-family: 'Space Grotesk', 'Segoe UI', sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+html[data-theme='light'] :is(.performance-dashboard, .performance-presentation) {
+  --perf-paper: #fdfcf6;
+  --perf-soft: #eeeee3;
+  --perf-ink: #30352b;
+  --perf-muted: #68715d;
+  --perf-line: #d9ddcc;
+  --perf-green: #34715a;
+  --perf-amber: #956016;
+  --perf-track: #e1e4d7;
+}
+.performance-dashboard .perf-scope-details { margin-top: 10px; color: var(--perf-muted); font-size: 12px; max-width: 75ch; }
+.performance-dashboard .perf-scope-details summary { cursor: pointer; width: fit-content; text-underline-offset: 4px; }
+.performance-dashboard .perf-scope-details[open] summary { color: var(--perf-ink); }
+.performance-dashboard .perf-scope-details p { margin: 8px 0 0; line-height: 1.6; }
+.perf-summary { background: var(--perf-paper); border: 1px solid var(--perf-line); border-radius: 12px; margin-bottom: 24px; padding: 22px 26px 26px; }
+.perf-summary-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-bottom: 18px; border-bottom: 1px solid var(--perf-line); }
+.perf-summary-heading h2 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -.02em; }
+.perf-summary-heading > span { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 12px; font-size: 13px; font-weight: 500; }
+.perf-scope-note { font-size: 11px; color: var(--perf-muted); font-weight: 400; }
+.perf-summary-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .85fr) minmax(0, 1.35fr); gap: 30px; align-items: center; padding-top: 24px; }
+.perf-label { display: block; font-size: 12px; color: var(--perf-muted); line-height: 1.4; }
+.perf-team { min-width: 0; }
+.perf-team-value { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; margin: 8px 0 18px; }
+.perf-team-value > strong { font-size: clamp(34px, 3.8vw, 54px); line-height: 1; letter-spacing: -.06em; font-weight: 500; }
+.perf-context { margin: 0; display: grid; gap: 20px; padding-left: 24px; border-left: 1px solid var(--perf-line); }
+.perf-context dt { font-size: 12px; color: var(--perf-muted); }
+.perf-context dd { margin: 5px 0 0; font-size: 24px; line-height: 1.1; font-weight: 500; letter-spacing: -.035em; }
+.perf-context dd small { font-size: 14px; font-weight: 400; color: var(--perf-muted); }
+.perf-context > div > small { display: block; font-size: 11px; color: var(--perf-muted); margin-top: 4px; }
+.perf-spotlights { display: grid; gap: 18px; padding-left: 26px; border-left: 1px solid var(--perf-line); }
+.perf-spotlight { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.perf-spotlight-identity { min-width: 0; flex: 1; }
+.perf-spotlight-identity > strong { display: block; font-size: 15px; line-height: 1.35; font-weight: 500; margin-top: 3px; overflow-wrap: anywhere; }
+.perf-spotlight-identity > small { display: block; color: var(--perf-muted); font-size: 11px; margin-top: 2px; }
+.perf-spotlight-value { flex: none; text-align: right; }
+.perf-spotlight-value > strong { display: block; font-size: 20px; font-weight: 500; letter-spacing: -.035em; }
+.perf-spotlight-value > span { display: block; font-size: 10px; color: var(--perf-muted); }
+.perf-avatar { flex: none; display: block; width: 48px; height: 48px; border-radius: 50%; object-fit: cover; object-position: center 30%; border: 1px solid var(--perf-line); background: var(--perf-soft); }
+.perf-avatar-fallback { display: grid; place-items: center; background: var(--avatar-color); color: #fff; font-size: 14px; font-weight: 500; }
+.perf-avatar-team { background: var(--perf-soft); color: var(--perf-muted); }
+.perf-avatar-team svg { width: 23px; height: 23px; }
+.perf-track { height: 5px; position: relative; border-radius: 10px; background: var(--perf-track); }
+.perf-track > span { display: block; height: 100%; border-radius: inherit; background: var(--perf-amber); }
+.perf-track > i { position: absolute; right: 0; top: -2px; bottom: -2px; width: 1px; background: var(--perf-muted); }
+.perf-progress.is-met .perf-track > span { background: var(--perf-green); }
+.perf-track-label { display: flex; justify-content: space-between; gap: 10px; margin-top: 10px; color: var(--perf-muted); font-size: 10px; }
+.ws-content .db-page.performance-dashboard .db-ranking-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; align-items: start; }
+.ws-content .db-page.performance-dashboard .ae-performance-card { padding: 24px; border-radius: 12px; }
+.ws-content .db-page.performance-dashboard .ae-performance-card .card-head { gap: 14px; align-items: flex-start; min-height: 72px; margin-bottom: 22px; }
+.ws-content .db-page.performance-dashboard .ae-performance-card .card-head h3 { font-size: 17px; font-weight: 500; }
+.ws-content .db-page.performance-dashboard .ae-performance-card .hint { font-size: 12px; line-height: 1.6; margin-top: 6px; max-width: 52ch; }
+.ws-content .db-page.performance-dashboard .table-top-select { min-height: 34px; font-size: 12px; }
+.perf-ranking { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; width: 100%; }
+:is(.performance-dashboard, .performance-presentation) .perf-ranking .perf-rank-row {
+  display: grid; grid-template-columns: 25px 48px minmax(0, 1fr) auto; grid-template-rows: auto 5px;
+  align-items: center; column-gap: 12px; row-gap: 12px; min-height: 98px; padding: 16px;
+  background: transparent; border: 1px solid var(--perf-line); border-radius: 8px; box-shadow: none;
+  container-type: normal; height: auto; width: 100%; flex: none; transform: none; transition: none;
+}
+:is(.performance-dashboard, .performance-presentation) .perf-ranking .is-first { background: var(--perf-soft); }
+.perf-rank { text-align: center; color: var(--perf-muted); font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.perf-rank-1 { color: var(--perf-amber); }
+.perf-identity { min-width: 0; }
+.perf-identity > strong { display: block; font-size: 15px; font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
+.perf-identity > span { display: block; margin-top: 4px; font-size: 11px; line-height: 1.3; color: var(--perf-muted); }
+.perf-value { display: grid; justify-items: end; gap: 6px; min-width: 0; }
+.perf-value > strong { font-size: 23px; letter-spacing: -.045em; font-weight: 500; line-height: 1.1; white-space: nowrap; }
+.perf-value .bar-comparison-delta { margin: 0; line-height: 1.15; font-size: 10px; padding: 2px 5px; white-space: nowrap; }
+.perf-rank-row > .perf-progress { grid-column: 3 / -1; }
+.perf-rank-row.is-unmeasured .perf-value > strong { font-size: 14px; letter-spacing: 0; color: var(--perf-muted); }
+.perf-rank-row.is-unmeasured .perf-track { opacity: .45; }
+.perf-ranking-empty { padding: 40px 20px; text-align: center; color: var(--perf-muted); font-size: 14px; }
+
+/* TV: two aligned rankings, five legible rows per page at every Top N. */
+.presentation-shell.win-board-tv-shell.performance-presentation {
+  display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr) auto; height: 100dvh;
+  padding: 0 clamp(18px, 2vw, 44px); gap: clamp(14px, 2vh, 24px); overflow: hidden;
+  background: #151b16; color: var(--perf-ink);
+}
+html[data-theme='light'] .presentation-shell.performance-presentation { background: #f3f2ea; }
+.perf-display-header { display: grid; grid-template-columns: 1fr 2fr 1fr; align-items: center; gap: 20px; padding-top: 20px; }
+.perf-display-brand { display: flex; align-items: center; gap: 12px; font-size: 15px; font-weight: 500; }
+.perf-display-brand img { width: 38px; height: 38px; }
+.perf-display-title { text-align: center; min-width: 0; }
+.perf-display-title h1 { margin: 0; font-size: clamp(24px, 2.2vw, 44px); font-weight: 500; letter-spacing: -.045em; }
+.perf-display-title p { margin: 4px 0 0; font-size: clamp(11px, .9vw, 17px); color: var(--perf-muted); }
+.perf-display-title p > span { margin-inline: 10px; }
+.perf-display-clock { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 11px; color: var(--perf-muted); }
+.perf-display-clock > b { color: var(--perf-ink); font-size: 22px; font-weight: 500; }
+.perf-spotlights-tv { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(16px, 1.6vw, 28px); }
+.perf-spotlights-tv .perf-spotlight { background: var(--perf-paper); border: 1px solid var(--perf-line); border-radius: 10px; padding: clamp(16px, 2vh, 26px) clamp(20px, 2vw, 32px); gap: 18px; }
+.perf-spotlights-tv .perf-avatar { width: clamp(48px, 5.4vh, 72px); height: clamp(48px, 5.4vh, 72px); font-size: 20px; }
+.perf-spotlights-tv .perf-label { font-size: clamp(12px, 1vw, 20px); }
+.perf-spotlights-tv .perf-spotlight-identity > strong { font-size: clamp(20px, 1.8vw, 38px); letter-spacing: -.03em; }
+.perf-spotlights-tv .perf-spotlight-identity > small { font-size: clamp(12px, 1vw, 20px); }
+.perf-spotlights-tv .perf-spotlight-value > strong { font-size: clamp(26px, 2.35vw, 48px); }
+.perf-spotlights-tv .perf-spotlight-value > span { font-size: clamp(11px, .9vw, 18px); }
+.perf-present-rankings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); min-height: 0; gap: clamp(16px, 1.6vw, 28px); }
+.perf-present-card { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 0; min-width: 0; padding: clamp(16px, 1.8vw, 32px); background: var(--perf-paper); border: 1px solid var(--perf-line); border-radius: 12px; gap: clamp(12px, 1.5vh, 20px); }
+.perf-present-card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.perf-present-card h2 { margin: 0; font-size: clamp(17px, 1.35vw, 28px); font-weight: 500; letter-spacing: -.025em; }
+.perf-present-card header p { margin: 6px 0 0; color: var(--perf-muted); font-size: clamp(11px, .85vw, 17px); line-height: 1.4; max-width: 52ch; }
+.perf-quarter-chip { flex: none; font-size: clamp(10px, .85vw, 17px); line-height: 1.4; background: var(--perf-soft); border-radius: 5px; padding: 5px 8px; color: var(--perf-muted); }
+.perf-present-card .perf-ranking { display: grid; grid-template-rows: repeat(5, minmax(0, 1fr)); gap: clamp(8px, 1vh, 14px); min-height: 0; }
+.performance-presentation .perf-ranking .perf-rank-row { min-height: 0; padding: clamp(8px, .75vh, 16px) clamp(12px, 1.2vw, 24px); grid-template-columns: 28px clamp(44px, 5.2vh, 76px) minmax(0, 1fr) auto; grid-template-rows: minmax(0, 1fr) 5px; gap: clamp(6px, .65vh, 12px) clamp(10px, 1vw, 20px); }
+.performance-presentation .perf-rank-row .perf-avatar { width: clamp(44px, 5.2vh, 76px); height: clamp(44px, 5.2vh, 76px); font-size: clamp(14px, 1.2vw, 24px); }
+.performance-presentation .perf-rank { font-size: clamp(12px, 1vw, 20px); }
+.performance-presentation .perf-identity > strong { font-size: clamp(17px, 1.45vw, 36px); line-height: 1.2; }
+.performance-presentation .perf-identity > span { font-size: clamp(11px, .95vw, 20px); }
+.performance-presentation .perf-value { gap: 4px; }
+.performance-presentation .perf-value > strong { font-size: clamp(24px, 1.8vw, 44px); }
+.performance-presentation .perf-value .bar-comparison-delta { font-size: clamp(9px, .65vw, 14px); padding-block: 1px; }
+.perf-present-card > footer { display: flex; justify-content: space-between; flex-wrap: wrap; align-items: center; gap: 10px; padding-top: 8px; color: var(--perf-muted); font-size: clamp(11px, .85vw, 18px); }
+.perf-target-key { display: inline-flex; align-items: center; gap: 7px; }
+.perf-target-key i { width: 16px; height: 4px; background: var(--perf-track); border-right: 1px solid var(--perf-muted); }
+.perf-page-controls { display: flex; align-items: center; gap: 10px; }
+.perf-page-controls button { width: 30px; height: 28px; border-radius: 5px; background: var(--perf-soft); border: 1px solid var(--perf-line); color: var(--perf-ink); cursor: pointer; font: inherit; font-size: 20px; }
+.presentation-shell.performance-presentation .presentation-controls { position: static; transform: none; justify-self: center; margin: -4px 0 10px; padding: 5px 10px; background: transparent; border: 0; box-shadow: none; gap: 8px; }
+.performance-presentation .presentation-controls button { background: var(--perf-paper); color: var(--perf-ink); border: 1px solid var(--perf-line); min-height: 32px; font-size: 11px; }
+.performance-presentation .presentation-controls .hide-hint { color: var(--perf-muted); }
+.performance-presentation .hidden-tile-ghost { min-height: 48px; color: var(--perf-muted); border-color: var(--perf-line); background: var(--perf-soft); }
+:is(.performance-dashboard, .performance-presentation) :is(button, summary):focus-visible { outline: 2px solid var(--perf-green); outline-offset: 3px; }
+
+@container dashboard (max-width: 1120px) {
+  .perf-summary-grid { grid-template-columns: 1fr 1fr; gap: 24px; }
+  .perf-spotlights { grid-column: 1 / -1; grid-template-columns: 1fr 1fr; border-left: 0; border-top: 1px solid var(--perf-line); padding: 20px 0 0; }
+  .ws-content .db-page.performance-dashboard .ae-performance-card { padding: 20px; }
+  .performance-dashboard .perf-ranking .perf-rank-row { grid-template-columns: 20px 40px minmax(0, 1fr) auto; gap: 10px; padding: 12px; }
+  .performance-dashboard .perf-rank-row .perf-avatar { width: 40px; height: 40px; }
+  .performance-dashboard .perf-value > strong { font-size: 21px; }
+}
+@container dashboard (max-width: 850px) {
+  .ws-content .db-page.performance-dashboard .db-ranking-row { grid-template-columns: minmax(0, 1fr); }
+  .ws-content .db-page.performance-dashboard .ae-performance-card .card-head { min-height: 0; }
+  .perf-summary-heading { align-items: flex-start; }
+  .perf-scope-note { flex-basis: 100%; text-align: right; max-width: 27ch; }
+}
+@container dashboard (max-width: 520px) {
+  .perf-summary { padding: 18px; }
+  .perf-summary-heading { flex-direction: column; gap: 8px; }
+  .perf-summary-heading > span { justify-content: flex-start; gap: 4px 10px; }
+  .perf-scope-note { text-align: left; max-width: none; }
+  .perf-summary-grid { gap: 24px 14px; align-items: start; }
+  .perf-context { padding-left: 14px; gap: 18px; }
+  .perf-context dt { font-size: 11px; }
+  .perf-context dd { font-size: 20px; }
+  .perf-team-value > strong { font-size: 33px; }
+  .perf-track-label { flex-direction: column; gap: 3px; }
+  .perf-spotlights { grid-template-columns: 1fr; }
+  .perf-spotlight-identity > strong { font-size: 14px; }
+  .perf-spotlight-value > strong { font-size: 19px; }
+  .ws-content .db-page.performance-dashboard .ae-performance-card { padding: 16px 12px; }
+  .ws-content .db-page.performance-dashboard .ae-performance-card .card-head { padding-inline: 4px; }
+  .performance-dashboard .perf-ranking .perf-rank-row { grid-template-columns: 18px 34px minmax(0, 1fr) auto; padding: 12px 8px; column-gap: 8px; }
+  .performance-dashboard .perf-rank-row .perf-avatar { width: 34px; height: 34px; font-size: 11px; }
+  .performance-dashboard .perf-identity > strong { font-size: 13px; }
+  .performance-dashboard .perf-identity > span { font-size: 10px; }
+  .performance-dashboard .perf-value > strong { font-size: 19px; }
+  .performance-dashboard .perf-value .bar-comparison-delta { font-size: 9px; }
+}
+@media (max-height: 820px) and (min-width: 901px) {
+  .presentation-shell.win-board-tv-shell.performance-presentation { gap: 10px; }
+  .perf-display-header { padding-top: 12px; }
+  .perf-spotlights-tv .perf-spotlight { padding-block: 12px; }
+  .perf-spotlights-tv .perf-avatar { width: 42px; height: 42px; }
+  .perf-present-card { gap: 8px; padding: 14px; }
+  .perf-present-card .perf-ranking { gap: 6px; }
+  .performance-presentation .perf-ranking .perf-rank-row { padding: 6px 10px; grid-template-columns: 20px 36px minmax(0, 1fr) auto; grid-template-rows: minmax(0, 1fr) 3px; gap: 4px 9px; }
+  .performance-presentation .perf-rank-row .perf-avatar { width: 36px; height: 36px; }
+  .performance-presentation .perf-identity > strong { font-size: 17px; }
+  .performance-presentation .perf-identity > span { font-size: 10px; margin-top: 2px; }
+  .performance-presentation .perf-value > strong { font-size: 24px; }
+  .performance-presentation .perf-value { gap: 2px; }
+  .performance-presentation .perf-track { height: 3px; }
+}
+@media (max-width: 900px) {
+  .presentation-shell.win-board-tv-shell.performance-presentation { height: auto; min-height: 100dvh; overflow: visible; grid-template-rows: auto auto auto auto; padding-inline: 16px; }
+  .perf-display-header { grid-template-columns: minmax(0, 1fr) auto; gap: 14px; min-width: 0; }
+  .perf-display-brand { font-size: 12px; }
+  .perf-display-title { grid-column: 1 / -1; grid-row: 2; text-align: left; }
+  .perf-display-clock { grid-column: 2; grid-row: 1; }
+  .perf-spotlights-tv, .perf-present-rankings { grid-template-columns: 1fr; }
+  .perf-spotlights-tv .perf-spotlight { padding: 16px; gap: 12px; }
+  .perf-present-card { min-height: 0; grid-template-rows: auto auto auto; }
+  .perf-present-card .perf-ranking { grid-template-rows: none; grid-auto-rows: minmax(88px, auto); }
+  .perf-present-card > header { flex-wrap: wrap; }
+  .performance-presentation .perf-ranking .perf-rank-row { grid-template-columns: 18px 36px minmax(0, 1fr) auto; padding: 10px 8px; gap: 8px; }
+  .performance-presentation .perf-rank-row .perf-avatar { width: 36px; height: 36px; }
+  .performance-presentation .perf-identity > strong { font-size: 15px; }
+  .performance-presentation .perf-value > strong { font-size: 22px; }
+  .performance-presentation .presentation-controls { flex-wrap: wrap; max-width: 100%; }
+  .performance-presentation .presentation-controls .hide-hint { flex-basis: 100%; }
+}

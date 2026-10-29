@@ -980,7 +980,10 @@ test('quarter helpers resolve boundaries and roll back across a year',()=>{
   assert.equal(previousQuarterStart('2026-01-01'),'2025-10-01');
 });
 
-test('quota figures ignore the close-date filter, so a short window cannot fake a miss',()=>{
+test('quota figures ignore the close-date filter, so a short window cannot fake a miss',t=>{
+  // This fixture is Q3 2026; the production calculation follows today's
+  // quarter, so leaving the clock live made the test fail every later quarter.
+  t.mock.timers.enable({apis:['Date'],now:new Date('2026-08-15T12:00:00Z')});
   const rows=[
     {id:'1',owner:'A',ownerRole:'AE APAC',arr:60000,isClosed:true,isWon:true,closeDate:'2026-07-05',quotaCurrent:100000},
     {id:'2',owner:'A',ownerRole:'AE APAC',arr:40000,isClosed:true,isWon:true,closeDate:'2026-09-20',quotaCurrent:100000},
